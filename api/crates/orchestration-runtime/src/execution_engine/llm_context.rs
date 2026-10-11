@@ -3,6 +3,8 @@ use std::collections::HashSet;
 
 use super::*;
 
+mod external_context;
+
 pub(super) fn build_response_format(config: &Value) -> Option<Value> {
     let response_format = config.get("response_format")?;
 
@@ -445,9 +447,11 @@ pub(super) fn provider_messages_from_prompt_messages(
 pub(super) fn provider_context_from_prompt_messages(
     prompt_messages: Vec<Value>,
 ) -> Result<ProviderPromptContext, Value> {
+    let (prompt_messages, external_context_promotions) =
+        external_context::project_tool_round_notifications(prompt_messages)?;
     let mut system_parts = Vec::new();
     let mut messages = Vec::new();
-    let mut compatibility_promotions = Vec::new();
+    let mut compatibility_promotions = external_context_promotions;
     let mut system_sources = Vec::new();
 
     for (index, message) in prompt_messages.iter().enumerate() {

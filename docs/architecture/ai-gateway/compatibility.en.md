@@ -8,6 +8,9 @@ A `function_call_output` with an absent or null `call_id` is standalone external
 
 Only nonempty call IDs participate in tool-result correlation. Empty or malformed IDs are rejected. Both full-history and `previous_response_id` continuations preserve notification/result order and continue to verify scope, complete result sets, duplicates, and history proofs. A notification cannot complete or reopen a tool task.
 
+
+Chat-style providers require a complete, contiguous group of tool results immediately after the assistant tool calls. The shared projection places notifications arriving within that group in an external-context message after the results, with a timeline recording their original order and references to real results. Canonical history, result contents, and call IDs are unchanged. This projection does not repair incomplete or invalid result correlation.
+
 ## Transport selection and response style
 
 Requests containing notifications or only `text.verbosity` retain both a semantic representation and the original Responses body. A selected provider supporting both `responses.native_passthrough` and `responses.native_output.v1` receives the original body; other providers use the semantic representation. Required native fields and existing provider continuation affinity cannot fall back. Recovery, output, and history metadata follow the transport actually selected.

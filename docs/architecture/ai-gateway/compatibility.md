@@ -8,6 +8,9 @@
 
 非空 `call_id` 才参与工具回执关联；空字符串及错误类型被拒绝。完整历史和 `previous_response_id` 增量续接都保留通知与回执顺序，并继续检查调用所属 scope、完整回执集合、重复回执和历史证明。通知不完成或重开工具任务。
 
+
+Chat 类供应商要求 assistant 工具调用后紧邻完整工具回执集合。共享投影将该集合内交错到达的通知放到回执组后的外部上下文消息，并用原始消息顺序和真实回执引用记录时间线；canonical 历史、真实回执内容和 ID 不变。未完成或关联非法的工具轮不会被这一投影修补。
+
 ## 传输选择与表达提示
 
 通知及仅包含 `text.verbosity` 的请求同时保留语义表示和原始 Responses body。选定供应商同时具备 `responses.native_passthrough` 与 `responses.native_output.v1` 时优先使用原始请求，否则走语义表示。必须使用原生协议的字段以及已有供应商 continuation affinity 不允许降级。恢复、输出及历史元数据依据实际选定的传输模式。
