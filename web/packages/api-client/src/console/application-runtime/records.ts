@@ -7,6 +7,12 @@ import type {
 
 export interface ConsoleApplicationLogRecordOverview {
   record_id: string;
+  status: string;
+  source_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  requested_model_id: string | null;
+  reasoning_effort: string | null;
   source_kind: 'native' | 'imported';
   source_client: string | null;
   source_session_id: string | null;
@@ -21,6 +27,36 @@ export interface ConsoleApplicationLogRecordOverview {
   input_cache_hit_tokens: number | null;
   cost_breakdown: { total_cost: string | null };
   available_views: Array<'conversation' | 'client_trajectory'>;
+}
+export interface ApplicationLogRecordConversationPage {
+  items: ConsoleApplicationLogRecordOverview[];
+  page: {
+    has_before: boolean;
+    has_after: boolean;
+    before_cursor: string | null;
+    after_cursor: string | null;
+    newest_cursor: string | null;
+  };
+}
+export interface ApplicationLogRecordConversationQuery {
+  before?: string;
+  after?: string;
+  limit?: number;
+}
+export function getConsoleApplicationLogRecordConversationMessages(
+  applicationId: string,
+  recordId: string,
+  input: ApplicationLogRecordConversationQuery = {},
+  baseUrl?: string
+) {
+  const query = new URLSearchParams();
+  if (input.before) query.set('before', input.before);
+  if (input.after) query.set('after', input.after);
+  if (input.limit !== undefined) query.set('limit', String(input.limit));
+  return apiFetch<ApplicationLogRecordConversationPage>({
+    path: `${recordPath(applicationId, recordId)}/conversation/messages?${query}`,
+    baseUrl
+  });
 }
 export type RecordClientTrajectoryCursor = number | string;
 export interface RecordClientTrajectoryPage {

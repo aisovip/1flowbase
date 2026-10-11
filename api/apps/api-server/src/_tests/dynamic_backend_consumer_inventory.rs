@@ -110,6 +110,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "applications.logs.delete.jobs.latest"
                     | "applications.logs.delete.jobs.get"
                     | "get_log_record"
+                    | "list_record_conversation_messages"
                     | "list_record_client_trajectory"
                     | "get_record_client_trajectory_section"
                     | "departments.list"

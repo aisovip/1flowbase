@@ -39,6 +39,7 @@ async fn replace_log_read_policy(app: &axum::Router, cookie: &str, csrf: &str, s
         "get_query_fields",
         "query_log_records",
         "get_log_record",
+        "list_record_conversation_messages",
         "query_record_trajectory",
         "list_record_client_trajectory",
         "get_record_client_trajectory_section",
@@ -250,6 +251,53 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         format!("/api/console/applications/{id}/logs/records/{record}"),
     )
     .await;
+    let conversation_uri =
+        format!("/api/console/applications/{id}/logs/records/{record}/conversation/messages");
+    let conversation = get_console_json(&app, &cookie, conversation_uri.clone()).await;
+    assert_eq!(conversation["data"]["items"][0], overview["data"]);
+    assert_eq!(
+        conversation["data"]["items"][0]["requested_model_id"],
+        "gpt-route"
+    );
+    assert_eq!(conversation["data"]["items"][0]["reasoning_effort"], "high");
+    assert!(conversation["data"]["items"][0]["started_at"].is_string());
+    assert_eq!(
+        conversation["data"]["page"]["newest_cursor"],
+        record.to_string()
+    );
+    for (url, cookie_value, status) in [
+        (conversation_uri.clone(), None, StatusCode::UNAUTHORIZED),
+        (
+            format!("{conversation_uri}?before={other_record}"),
+            Some(cookie.as_str()),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!("{conversation_uri}?before={record}&after={record}"),
+            Some(cookie.as_str()),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!(
+                "/api/console/applications/{other_id}/logs/records/{record}/conversation/messages"
+            ),
+            Some(cookie.as_str()),
+            StatusCode::NOT_FOUND,
+        ),
+    ] {
+        let mut request = Request::builder().uri(url);
+        if let Some(cookie) = cookie_value {
+            request = request.header("cookie", cookie);
+        }
+        assert_eq!(
+            app.clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap()
+                .status(),
+            status
+        );
+    }
     assert_eq!(overview["data"]["source_id"], "actual-route-source");
     assert_eq!(overview["data"]["messages"][0]["content"], "route needle");
     let old = get_console_json(
@@ -395,7 +443,66 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
         StatusCode::FORBIDDEN,
         "VIEW must not silently grant the independent LIST operation"
     );
+    let own_page = get_console_json(
+        &app,
+        &cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages",
+            fixtures[0].0, fixtures[0].1
+        ),
+    )
+    .await;
+    assert_eq!(
+        own_page["data"]["items"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    let own_cursor_page = get_console_json(
+        &app,
+        &cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages?after={}",
+            fixtures[0].0, fixtures[0].1, fixtures[0].1
+        ),
+    )
+    .await;
+    assert_eq!(own_cursor_page["data"]["items"], json!([]));
     for index in [1, 2] {
+        let cursor_denied = format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages?after={}",
+            fixtures[index].0, fixtures[index].1, fixtures[0].1
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(cursor_denied)
+                        .header("cookie", &cookie)
+                        .body(Body::empty())
+                        .unwrap()
+                )
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        let denied = format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages",
+            fixtures[index].0, fixtures[index].1
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(denied)
+                        .header("cookie", &cookie)
+                        .body(Body::empty())
+                        .unwrap()
+                )
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
         let explicit = query_request(
             &app,
             uri,
@@ -535,9 +642,72 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
         .status(),
         StatusCode::NOT_FOUND
     );
+    let all_page = get_console_json(
+        &app,
+        &all_cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages",
+            fixtures[1].0, fixtures[1].1
+        ),
+    )
+    .await;
+    assert_eq!(
+        all_page["data"]["items"][0]["record_id"],
+        fixtures[1].1.to_string()
+    );
+    let all_cursor_page = get_console_json(
+        &app,
+        &all_cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages?after={}",
+            fixtures[1].0, fixtures[1].1, fixtures[1].1
+        ),
+    )
+    .await;
+    assert_eq!(all_cursor_page["data"]["items"], json!([]));
+    for (anchor_index, cursor_index, status) in [
+        (1, 0, StatusCode::BAD_REQUEST),
+        (2, 1, StatusCode::NOT_FOUND),
+    ] {
+        let url = format!(
+            "/api/console/applications/{}/logs/records/{}/conversation/messages?after={}",
+            fixtures[anchor_index].0, fixtures[anchor_index].1, fixtures[cursor_index].1
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(url)
+                        .header("cookie", &all_cookie)
+                        .body(Body::empty())
+                        .unwrap()
+                )
+                .await
+                .unwrap()
+                .status(),
+            status
+        );
+    }
     replace_role_permissions(&app, &root_cookie, &root_csrf, "log_query_viewer", &[]).await;
     let (denied_cookie, denied_csrf) =
         login_and_capture_cookie(&app, "log-query-viewer", "temp-pass").await;
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/applications/{}/logs/records/{}/conversation/messages",
+                        fixtures[0].0, fixtures[0].1
+                    ))
+                    .header("cookie", &denied_cookie)
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
     assert_eq!(
         query_request(
             &app,

@@ -40,6 +40,7 @@ pub(super) async fn ingest(
         record_ids: vec![],
     };
     let mut records = BTreeSet::new();
+    let mut changed_records = BTreeSet::new();
     for (event, cost) in batch.events.iter().zip(costs) {
         let payload = serde_json::to_value(event)?;
         let (hash, _) = canonical_runtime_json_identity(
@@ -132,13 +133,16 @@ pub(super) async fn ingest(
         sqlx::query("insert into application_log_upload_receipts(application_id,source_id,event_id,payload_hash,record_id,step_id,rated_cost) values($1,$2,$3,$4,$5,$6,$7::numeric)")
             .bind(application_id).bind(&batch.source_id).bind(&event.event_id).bind(hash).bind(record_id).bind(step_id).bind(cost).execute(&mut *tx).await?;
         records.insert(record_id);
+        changed_records.insert(record_id);
         receipt.accepted_events += 1;
     }
-    for record in &records {
+    for record in &changed_records {
         refresh_task(&mut tx, application_id, *record).await?;
     }
-    sqlx::query("update application_run_log_tasks child set parent_task_run_id=parent.id from application_run_log_tasks parent where child.application_id=$1 and parent.application_id=$1 and child.source_id=$2 and parent.source_id=$2 and child.source_session_id=parent.source_session_id and child.parent_source_task_id=parent.source_task_id and child.id<>parent.id and child.parent_task_run_id is distinct from parent.id")
+    if !changed_records.is_empty() {
+        sqlx::query("update application_run_log_tasks child set parent_task_run_id=parent.id from application_run_log_tasks parent where child.application_id=$1 and parent.application_id=$1 and child.source_id=$2 and parent.source_id=$2 and child.source_session_id=parent.source_session_id and child.parent_source_task_id=parent.source_task_id and child.id<>parent.id and child.parent_task_run_id is distinct from parent.id")
         .bind(application_id).bind(&batch.source_id).execute(&mut *tx).await?;
+    }
     receipt.record_ids = records.into_iter().collect();
     tx.commit().await?;
     Ok(receipt)
@@ -333,6 +337,7 @@ async fn refresh_task(
     Ok(())
 }
 
+pub(super) mod conversation;
 pub(super) mod reads;
 pub(super) use reads::{overview, page, section};
 

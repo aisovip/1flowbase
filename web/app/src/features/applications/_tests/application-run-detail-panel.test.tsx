@@ -62,7 +62,8 @@ const debugConsoleState = vi.hoisted(() => ({
 vi.mock('../api/runtime', () => runtimeApi);
 
 const trajectoryApi = vi.hoisted(() => ({
-  fetchApplicationLogRecord: vi.fn()
+  fetchApplicationLogRecord: vi.fn(),
+  fetchApplicationLogRecordConversationMessages: vi.fn()
 }));
 vi.mock('../api/trajectory', () => trajectoryApi);
 
@@ -221,6 +222,23 @@ describe('ApplicationRunDetailPanel', () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
     runtimeApi.fetchApplicationLogConversationMessages.mockReset();
     trajectoryApi.fetchApplicationLogRecord.mockReset();
+    trajectoryApi.fetchApplicationLogRecordConversationMessages.mockImplementation(
+      async () => ({
+        items: [
+          {
+            ...(await trajectoryApi.fetchApplicationLogRecord()),
+            status: 'succeeded'
+          }
+        ],
+        page: {
+          has_before: false,
+          has_after: false,
+          before_cursor: null,
+          after_cursor: null,
+          newest_cursor: null
+        }
+      })
+    );
     debugConsoleState.latestMessages = [];
   });
 

@@ -15,6 +15,7 @@ import {
 
 const api = vi.hoisted(() => ({
   fetchApplicationLogRecord: vi.fn(),
+  fetchApplicationLogRecordConversationMessages: vi.fn(),
   fetchApplicationLogRecordClientTrajectory: vi.fn(),
   fetchApplicationLogRecordClientTrajectorySection: vi.fn()
 }));
@@ -32,6 +33,12 @@ vi.mock('../../api/runtime', async (original) => ({
 }));
 const record = {
   record_id: 'record-1',
+  status: 'succeeded',
+  source_id: 'source-1',
+  started_at: '2026-10-12T00:00:00Z',
+  finished_at: '2026-10-12T00:00:01Z',
+  requested_model_id: 'gpt-6-luna',
+  reasoning_effort: 'max',
   source_kind: 'imported',
   source_client: 'codex',
   source_session_id: 'session-1',
@@ -66,6 +73,18 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await appI18n.changeLanguage('zh_Hans');
   api.fetchApplicationLogRecord.mockResolvedValue(record);
+  api.fetchApplicationLogRecordConversationMessages.mockImplementation(
+    async (appId, recordId) => ({
+      items: [await api.fetchApplicationLogRecord(appId, recordId)],
+      page: {
+        has_before: false,
+        has_after: false,
+        before_cursor: null,
+        after_cursor: null,
+        newest_cursor: 'record-1'
+      }
+    })
+  );
   api.fetchApplicationLogRecordClientTrajectory.mockResolvedValue({
     items: [],
     next_cursor: null,
