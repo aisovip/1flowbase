@@ -1482,3 +1482,6 @@ fn openai_text_translation_preserves_nul_and_literal_escape_in_each_content_shap
     assert_eq!(mapped.text, text);
     assert_eq!(mapped.content_blocks.unwrap()[0]["text"], json!(text));
 }
+
+#[path = "_tests/chat_reasoning_content.rs"]
+mod chat_reasoning_content;

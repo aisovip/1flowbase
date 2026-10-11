@@ -137,7 +137,7 @@ pub(super) fn validate_chat_message_fields(
         .filter(|field| {
             !matches!(
                 field.as_str(),
-                "role" | "content" | "tool_calls" | "tool_call_id" | "name"
+                "role" | "content" | "tool_calls" | "tool_call_id" | "name" | "reasoning_content"
             )
         })
         .collect::<Vec<_>>();
@@ -192,6 +192,25 @@ pub(super) fn validate_chat_message_fields(
         None,
         TranslationSafeRepresentation::Present,
     );
+    if let Some(reasoning) = object.get("reasoning_content") {
+        let reason = if role != "assistant" {
+            Some("reasoning_content is only valid on assistant messages")
+        } else if !matches!(reasoning, Value::String(_) | Value::Null) {
+            Some("assistant reasoning_content must be text or null")
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            report.record(
+                &format!("$.messages[{index}].reasoning_content"),
+                None,
+                TranslationDecisionKind::Rejected,
+                Some(reason),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(OpenAiCompatError::invalid("messages", reason).with_report(report.clone()));
+        }
+    }
     if !object.contains_key("content") && !object.contains_key("tool_calls") {
         let path = format!("$.messages[{index}].content");
         report.record(

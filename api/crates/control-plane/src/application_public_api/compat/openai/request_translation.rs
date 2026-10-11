@@ -115,6 +115,44 @@ pub fn translate_chat_completion_request(
         if let Some(content_blocks) = content.content_blocks {
             history_entry["content_blocks"] = content_blocks;
         }
+        if let Some(reasoning) = message.get("reasoning_content") {
+            let reasoning_path = format!("$.messages[{index}].reasoning_content");
+            if let Some(text) = reasoning.as_str() {
+                // Canonical blocks own reasoning independently of visible text.
+                // Include the visible blocks as well because content_blocks is
+                // the complete ordered representation consumed by providers.
+                let mut blocks = history_entry
+                    .get("content_blocks")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let visible = history_entry["content"].as_str().unwrap_or_default();
+                        if visible.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![serde_json::json!({"type":"text","text":visible})]
+                        }
+                    });
+                blocks.insert(0, serde_json::json!({"type":"reasoning","text":text}));
+                history_entry["content_blocks"] = Value::Array(blocks);
+                report.record(
+                    &reasoning_path,
+                    Some("$.history[].content_blocks"),
+                    TranslationDecisionKind::Normalized,
+                    None,
+                    TranslationSafeRepresentation::Redacted,
+                );
+            } else {
+                // Validation allows null only as an absent assistant value.
+                report.record(
+                    &reasoning_path,
+                    None,
+                    TranslationDecisionKind::Dropped,
+                    Some("null reasoning_content is an absent optional parameter"),
+                    TranslationSafeRepresentation::Present,
+                );
+            }
+        }
         if let Some(tool_calls) = message.get("tool_calls").filter(|value| value.is_array()) {
             history_entry["tool_calls"] = super::openai_chat_history_tool_calls(tool_calls);
         }
