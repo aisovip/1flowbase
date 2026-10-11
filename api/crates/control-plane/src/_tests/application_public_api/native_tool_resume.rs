@@ -9,6 +9,9 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/standalone_notifications.rs"]
+mod standalone_notifications;
+
 async fn fixture() -> (
     ApplicationPublicApiTestRepository,
     ApplicationApiKeyActor,
@@ -1291,6 +1294,8 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
     .await
     .is_err());
     for unsupported in [
+        json!({"type":"function_call_output","name":"notification","output":"context"}),
+        json!({"type":"function_call_output","call_id":null,"output":"context"}),
         json!({"role":"user","content":"context","phase":"analysis"}),
         json!({"role":"assistant","content":"context","id":"msg_unowned"}),
         json!({"role":7,"content":"context"}),

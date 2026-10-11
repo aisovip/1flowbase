@@ -257,12 +257,14 @@ fn issue_2048_low_budget_local_summary_keeps_one_opaque_responses_ingress_plan()
 fn issue_2052_encoded_callback_selects_restored_provider_transport() {
     let callback_task_id = Uuid::now_v7();
     let external_call_id = encode_openai_callback_tool_call_id(callback_task_id, "call_provider");
+    let notice = json!({"type":"function_call_output","name":"send_message_to_thread","namespace":"codex_app","output":"Continue","extension":{"source":"another-thread"}});
     let envelope = OpenAiResponsesEnvelope::capture(json!({
         "model": "gpt-test",
         "store": false,
         "input": [
             {"type": "function_call", "call_id": external_call_id, "name": "exec", "arguments": "{}"},
-            {"type": "function_call_output", "call_id": external_call_id, "output": "done"}
+            {"type": "function_call_output", "call_id": external_call_id, "output": "done"},
+            notice
         ]
     }))
     .expect("Responses callback envelope should be valid");
@@ -272,6 +274,7 @@ fn issue_2052_encoded_callback_selects_restored_provider_transport() {
         .expect("encoded callback must not fall back to semantic rendering");
 
     assert_eq!(transport.wire_body()["store"], false);
+    assert_eq!(transport.wire_body()["input"][2], notice);
     assert_eq!(
         transport.wire_body()["input"][0]["call_id"],
         "call_provider"

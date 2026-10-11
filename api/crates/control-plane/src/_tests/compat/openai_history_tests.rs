@@ -12,6 +12,44 @@ fn seed() -> (Value, Vec<Value>) {
 }
 
 #[test]
+fn standalone_notifications_remain_ordered_history_evidence() {
+    let (input, output) = seed();
+    let history = completed_history(&json!({"input":input}), None, &output)
+        .unwrap()
+        .unwrap();
+    let notice = json!({"type":"function_call_output","name":"notification","namespace":"app","output":"context","extension":true});
+    let mut full = input.as_array().unwrap().clone();
+    full.extend(output);
+    full.push(notice.clone());
+    full.push(json!({"type":"function_call_output","call_id":"call_1","output":"result"}));
+    let full_input = json!(full);
+    let proof = prove_full_context_input(&full_input, &history, &["call_1".into()]).unwrap();
+    assert_eq!(proof.context, vec![&notice]);
+    assert_eq!(proof.ordered, &full[5..]);
+    assert!(
+        validate_full_retry_input(&full_input, &history, &["call_1".into()]).is_err(),
+        "fresh notification context is not an identical inference retry"
+    );
+
+    let next_call =
+        json!({"type":"function_call","call_id":"call_next","name":"exec","arguments":"{}"});
+    let next_history = completed_history(&json!({"input":full}), None, &[next_call.clone()])
+        .unwrap()
+        .unwrap();
+    full.push(next_call);
+    full.push(json!({"type":"function_call_output","call_id":"call_next","output":"done"}));
+    validate_full_retry_input(&json!(full), &next_history, &["call_next".into()]).unwrap();
+    for field in ["name", "namespace", "output", "extension"] {
+        let mut changed = full.clone();
+        changed[5][field] = json!("tampered notification");
+        assert!(
+            validate_full_retry_input(&json!(changed), &next_history, &["call_next".into()])
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn completed_history_v2_digest_matches_frozen_nested_wire_vector() {
     let body = json!({"input": [{"role": "user", "content": "line\n\"雪\""}]});
     let output = [json!({"type": "future_item", "opaque": {"z": 1, "a": "x"}})];

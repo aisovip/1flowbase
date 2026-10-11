@@ -620,6 +620,11 @@ pub(super) fn responses_input_requires_native_passthrough(input: &Value) -> bool
 }
 
 pub(super) fn responses_input_item_requires_native_passthrough(item: &Value) -> bool {
+    if super::is_standalone_function_output(item) {
+        // Semantic tool messages require a call ID. Preserve standalone context
+        // in the original Responses representation, including anonymous notices.
+        return true;
+    }
     let Some(item) = item.as_object() else {
         return false;
     };

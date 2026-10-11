@@ -169,7 +169,9 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
     let mut results = Vec::new();
     for item in &ordered_input {
         match item.get("type").and_then(Value::as_str) {
-            Some("function_call_output") => {
+            Some("function_call_output")
+                if !super::super::compat::openai::is_standalone_function_output(item) =>
+            {
                 let id = item.get("call_id").and_then(Value::as_str).ok_or(
                     ControlPlaneError::InvalidInput("responses_tool_output_call_id"),
                 )?;

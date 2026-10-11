@@ -183,7 +183,9 @@ pub(crate) fn prove_full_context_input<'a>(
     };
     for item in &items[expected.item_count..] {
         match item.get("type").and_then(Value::as_str) {
-            Some("function_call_output" | "custom_tool_call_output") => {
+            Some("function_call_output" | "custom_tool_call_output")
+                if !super::is_standalone_function_output(item) =>
+            {
                 let call_id = item
                     .get("call_id")
                     .and_then(Value::as_str)
