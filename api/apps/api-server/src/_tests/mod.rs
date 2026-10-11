@@ -77,3 +77,6 @@ mod workspace_routes;
 mod interface_lifecycle_acceptance;
 
 mod mcp_oauth_routes;
+
+// Shared only within the standard API test host; keep the fixture module private.
+pub(crate) use host_extensions::host_extension_boot_tests::NativeSettingsFixture;

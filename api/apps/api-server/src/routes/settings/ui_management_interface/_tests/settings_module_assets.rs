@@ -1,5 +1,5 @@
 use super::*;
-use crate::_tests::host_extensions::host_extension_boot_tests::NativeSettingsFixture;
+use crate::_tests::NativeSettingsFixture;
 use axum::{http::StatusCode, response::IntoResponse};
 use control_plane_contracts::ports::PluginRepository;
 

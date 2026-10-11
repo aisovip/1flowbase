@@ -839,6 +839,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 #[path = "ui_management_interface/_tests/settings_module_assets.rs"]
 mod settings_module_asset_tests;
