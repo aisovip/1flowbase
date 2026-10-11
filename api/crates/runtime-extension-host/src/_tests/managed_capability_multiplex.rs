@@ -164,6 +164,25 @@ fn mount_service(
     contribution: &str,
     idle: Option<u64>,
 ) -> ManagedExecutionHandle {
+    mount_service_with_limits(
+        workers,
+        executable,
+        contribution,
+        idle,
+        PluginRuntimeLimits {
+            timeout_ms: Some(5000),
+            ..Default::default()
+        },
+    )
+}
+#[cfg(unix)]
+fn mount_service_with_limits(
+    workers: &mut ManagedWorkers,
+    executable: &std::path::Path,
+    contribution: &str,
+    idle: Option<u64>,
+    limits: PluginRuntimeLimits,
+) -> ManagedExecutionHandle {
     let identity = ManagedExecutionIdentity::new(
         ManagedInstallationId::new("installation").unwrap(),
         ManagedWorkspaceId::new("system-scope").unwrap(),
@@ -185,10 +204,7 @@ fn mount_service(
                     &std::fs::read(executable).unwrap(),
                 ),
                 execution_mode: PluginExecutionMode::ProcessPerCall,
-                limits: PluginRuntimeLimits {
-                    timeout_ms: Some(5000),
-                    ..Default::default()
-                },
+                limits,
                 handler: contribution.into(),
                 worker_idle_timeout_ms: idle,
                 interface_protocol: None,
@@ -583,6 +599,92 @@ async fn managed_duplex_drain_cancels_before_waiting_for_stream_scope() {
         .unwrap();
     assert!(stream.await.unwrap().is_err());
     drop(event);
+    workers
+        .service_pool_for_handle(&handle)
+        .unwrap()
+        .unwrap()
+        .retire_all()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn managed_duplex_lifetime_ignores_provider_limits_and_retains_explicit_deadline() {
+    use runtime_core::runtime_backend::RuntimeManagedDuplex;
+    use std::time::Duration;
+    let (_fixture, executable) = duplex_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service_with_limits(
+        &mut workers,
+        &executable,
+        "service.duplex",
+        Some(60000),
+        PluginRuntimeLimits {
+            timeout_ms: Some(1),
+            first_token_timeout_ms: Some(1),
+            stream_idle_timeout_ms: Some(1),
+            ..Default::default()
+        },
+    );
+    let (input, receiver) = tokio::sync::mpsc::channel(8);
+    let (events, mut output) = tokio::sync::mpsc::channel(8);
+    let mut request = service_request(&handle, Some("actor"), serde_json::json!({"duplex":true}));
+    request.principal.deadline_unix_ms = i64::MAX;
+    request.duplex = Some(RuntimeManagedDuplex {
+        input: Arc::new(tokio::sync::Mutex::new(receiver)),
+        events,
+    });
+    let stream = tokio::spawn(workers.execute(request).unwrap());
+    let first = tokio::time::timeout(Duration::from_secs(2), output.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = output.recv().await.unwrap();
+    first.consumed.send(()).unwrap();
+    second.consumed.send(()).unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(
+        !stream.is_finished(),
+        "duplex must outlive unary/provider limits"
+    );
+    input.send(serde_json::json!("still-live")).await.unwrap();
+    let event = tokio::time::timeout(Duration::from_secs(2), output.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(event.event["pty_output"], "still-live");
+    event.consumed.send(()).unwrap();
+    drop(input);
+    assert!(tokio::time::timeout(Duration::from_secs(2), stream)
+        .await
+        .unwrap()
+        .unwrap()
+        .is_err());
+
+    // A finite trusted deadline still bounds a new duplex invocation.
+    let (_input, receiver) = tokio::sync::mpsc::channel(8);
+    let (events, mut output) = tokio::sync::mpsc::channel(8);
+    let mut request = service_request(&handle, Some("actor"), serde_json::json!({"duplex":true}));
+    request.principal.deadline_unix_ms =
+        (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + 100;
+    request.duplex = Some(RuntimeManagedDuplex {
+        input: Arc::new(tokio::sync::Mutex::new(receiver)),
+        events,
+    });
+    let stream = tokio::spawn(workers.execute(request).unwrap());
+    let first = tokio::time::timeout(Duration::from_secs(2), output.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = output.recv().await.unwrap();
+    first.consumed.send(()).unwrap();
+    second.consumed.send(()).unwrap();
+    assert!(tokio::time::timeout(Duration::from_secs(2), stream)
+        .await
+        .unwrap()
+        .unwrap()
+        .is_err());
     workers
         .service_pool_for_handle(&handle)
         .unwrap()

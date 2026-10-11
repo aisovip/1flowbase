@@ -314,7 +314,6 @@ impl MultiplexProviderWorker {
         let mut first_error: Option<ProviderRuntimeError> = None;
         let mut pending_acks = tokio::task::JoinSet::new();
         loop {
-            let (duration, kind, timeout_ms) = timeout.next_read_timeout(limits);
             let receive = async {
                 loop {
                     tokio::select! {
@@ -336,21 +335,22 @@ impl MultiplexProviderWorker {
                     }
                 }
             };
-            let mut message = match tokio::time::timeout(duration, receive).await {
-                Ok(Some(message)) => message,
-                Ok(None) => {
-                    return Err(prefer_first_error(
-                        &first_error,
-                        transport_error("multiplex call channel closed"),
-                    ))
-                }
-                Err(_) => {
-                    return Err(prefer_first_error(
-                        &first_error,
-                        provider_timeout_error(kind, timeout_ms),
-                    ))
-                }
+            let received = if duplex.is_some() {
+                // Raw streams have no provider token or wall-clock timeout. The managed
+                // admission owner enforces any explicit finite principal deadline.
+                receive.await
+            } else {
+                let (duration, kind, timeout_ms) = timeout.next_read_timeout(limits);
+                tokio::time::timeout(duration, receive).await.map_err(|_| {
+                    prefer_first_error(&first_error, provider_timeout_error(kind, timeout_ms))
+                })?
             };
+            let mut message = received.ok_or_else(|| {
+                prefer_first_error(
+                    &first_error,
+                    transport_error("multiplex call channel closed"),
+                )
+            })?;
             let frame = message
                 .message
                 .map_err(|error| prefer_first_error(&first_error, transport_error(&error)))?;
@@ -828,6 +828,12 @@ async fn execute_callback(
                         false,
                     ));
                 }
+                if context.binding.deadline_unix_ms == i64::MAX {
+                    return context
+                        .plugin_data
+                        .execute(&context.binding, &request)
+                        .await;
+                }
                 tokio::time::timeout(
                     Duration::from_millis(remaining as u64),
                     context.plugin_data.execute(&context.binding, &request),
@@ -859,6 +865,9 @@ async fn execute_callback(
                 let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
                 if remaining <= 0 {
                     return Err(PluginCredentialError::new("plugin_credential_deadline"));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
                 }
                 tokio::time::timeout(
                     Duration::from_millis(remaining as u64),

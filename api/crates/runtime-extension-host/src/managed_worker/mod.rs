@@ -339,19 +339,24 @@ impl ManagedWorkers {
             None
         };
         let mut binding = mounted.binding.clone();
-        binding.limits.timeout_ms = Some(
-            binding
-                .limits
-                .timeout_ms
-                .unwrap_or(
-                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-                        remaining_ms
-                    } else {
-                        30_000
-                    },
-                )
-                .min(remaining_ms),
-        );
+        // Duplex lifetimes belong to the admitted principal and protocol/plugin cancellation.
+        // Provider/unary runtime limits do not impose a total terminal session duration.
+        let duplex_call = request.duplex.is_some();
+        if !duplex_call {
+            binding.limits.timeout_ms = Some(
+                binding
+                    .limits
+                    .timeout_ms
+                    .unwrap_or(
+                        if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                            remaining_ms
+                        } else {
+                            30_000
+                        },
+                    )
+                    .min(remaining_ms),
+            );
+        }
         if request.duplex.is_some()
             && binding.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
         {
@@ -376,6 +381,7 @@ impl ManagedWorkers {
                 }
             }
             let _cancel_task = CancelTask(cancel_task);
+            let indefinite = duplex_call && request.principal.deadline_unix_ms == i64::MAX;
             let duplex = request.duplex;
             let cancel = duplex.as_ref().map(|_| cancel_rx);
             let lease = Arc::new(lease);
@@ -395,33 +401,38 @@ impl ManagedWorkers {
                     "input_payload": request.input_payload,
                 }),
             };
-            // The request deadline also bounds process start and stdin writes, not only output.
-            tokio::time::timeout(
-                std::time::Duration::from_millis(
-                    remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms)),
-                ),
-                async {
-                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-                        if let Some((pool, epoch, actor)) = shared {
-                            let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
-                            capability_multiplex::exchange_shared(
-                                &worker, &binding, &request, lease, activity, host_calls, duplex,
-                                cancel,
-                            )
-                            .await
-                        } else {
-                            capability_multiplex::exchange(
-                                &binding, &request, lease, host_calls, duplex, cancel,
-                            )
-                            .await
-                        }
+            let duration_ms = if duplex_call {
+                remaining_ms
+            } else {
+                remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms))
+            };
+            let operation = async {
+                if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                    if let Some((pool, epoch, actor)) = shared {
+                        let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
+                        capability_multiplex::exchange_shared(
+                            &worker, &binding, &request, lease, activity, host_calls, duplex,
+                            cancel,
+                        )
+                        .await
                     } else {
-                        capability::exchange(&binding, &request, lease).await
+                        capability_multiplex::exchange(
+                            &binding, &request, lease, host_calls, duplex, cancel,
+                        )
+                        .await
                     }
-                },
-            )
-            .await
-            .map_err(|_| invalid("managed execution deadline elapsed"))?
+                } else {
+                    capability::exchange(&binding, &request, lease).await
+                }
+            };
+            if indefinite {
+                // Do not create an enormous timer: i64::MAX is the trusted stream sentinel.
+                operation.await
+            } else {
+                tokio::time::timeout(std::time::Duration::from_millis(duration_ms), operation)
+                    .await
+                    .map_err(|_| invalid("managed execution deadline elapsed"))?
+            }
         })
     }
 
