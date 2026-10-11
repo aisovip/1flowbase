@@ -2,7 +2,7 @@
 
 [中文](README.zh-CN.md)
 
-New log applications start with reception disabled. After configuring the collector, enable **Log reception** in application management or the API page. You can create an API key beforehand.
+New log applications start with **Log reception** enabled. Create an API key and configure the collector to start uploading. You can disable reception at any time in application management or the API page.
 
 The collector has two installation stages. First, install the signed distribution package from the remote extension catalog **in 1flowbase**. Then open its **Download collector CLI** detail and run the command on your computer. The installer, native archive, checksums and documentation are served by your own 1flowbase at version-pinned URLs. They remain available if the remote repository is offline. “Installed in platform” describes the retained distribution package; it does not indicate that a client process is online.
 
@@ -97,4 +97,4 @@ A task contains `job_id`, `application_id`, `scope`, `ingested_at_before`, `stat
 
 ## Log reception
 
-Log applications do not publish orchestration versions. Use **Log reception** in application management or the API page to enable or disable uploads. New applications start disabled; existing log applications keep receiving after the upgrade. While disabled, `/api/logs/v1/events` returns HTTP 403 (`agent_logs_ingestion_disabled`) without storing new events. Saved logs and API keys remain available, and keys can still be created or revoked. After enabling reception again, the collector retries pending data on the next Hook or an explicit `flush`.
+Log applications do not publish orchestration versions. Use **Log reception** in application management or the API page to enable or disable uploads. New log applications start with reception enabled; existing applications retain their current reception state. While disabled, `/api/logs/v1/events` returns HTTP 403 (`agent_logs_ingestion_disabled`) without storing new events. Saved logs and API keys remain available, and keys can still be created or revoked. After enabling reception again, the collector retries pending data on the next Hook or an explicit `flush`.

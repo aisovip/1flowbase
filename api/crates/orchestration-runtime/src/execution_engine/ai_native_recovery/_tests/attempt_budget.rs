@@ -168,3 +168,44 @@ fn validated_terminal_receipt_blocks_rotation_even_with_unspent_budget() {
     assert!(!ledger.allows_configured_replay_at(1));
     assert!(ledger.rotate_epoch_for_configured_replay().is_err());
 }
+
+#[test]
+fn selected_representation_changes_policy_without_replenishing_budget_or_commit() {
+    let mut ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
+        100,
+        2,
+        false,
+        RecoveryInputMode::NativeOpaque,
+        3,
+    )
+    .unwrap();
+    let epoch = ledger.current_epoch();
+    ledger.select_input_representation(RecoveryInputMode::SemanticMapped, true);
+    assert!(matches!(
+        ledger.provider_directive().policy,
+        RecoveryPolicy::SemanticMapped { .. }
+    ));
+    assert!(ledger.allows_configured_replay_at(1));
+    let provider_receipt = receipt(&ledger, 0);
+    let outcome = decide(&mut ledger, Some(&provider_receipt));
+    assert_eq!(outcome.total_attempts_charged, 1);
+    ledger.select_input_representation(RecoveryInputMode::NativeOpaque, true);
+    assert!(matches!(
+        ledger.provider_directive().policy,
+        RecoveryPolicy::NativeOpaque { .. }
+    ));
+    assert!(!ledger.allows_configured_replay_at(1));
+    assert_eq!(
+        ledger
+            .provider_directive()
+            .policy
+            .budget()
+            .max_inner_attempts,
+        2
+    );
+    ledger.semantic_committed = true;
+    ledger.select_input_representation(RecoveryInputMode::SemanticMapped, true);
+    assert!(ledger.semantic_replay_blocked());
+    assert!(!ledger.allows_configured_replay_at(1));
+    assert_ne!(ledger.current_epoch(), epoch);
+}

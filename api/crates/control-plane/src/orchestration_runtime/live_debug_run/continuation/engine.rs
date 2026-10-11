@@ -107,7 +107,7 @@ where
     let lifecycle =
         PersistedNodeLifecycle::new(service, flow_run.id, flow_execution_context.clone());
 
-    let provider_invocation_capability = provider_transport_payload.as_ref().map(|payload| {
+    let provider_invocation_capability = provider_transport_payload.as_ref().filter(|payload| !payload.is_preferred()).map(|payload| {
         match payload.protocol() {
             crate::ports::ProviderTransportProtocol::OpenAiResponses => {
                 plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough

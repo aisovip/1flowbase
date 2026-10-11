@@ -1,6 +1,21 @@
 use super::*;
 
 impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime> {
+    pub fn for_tests_with_captured_provider_outputs(
+        outputs: Vec<crate::ports::ProviderRuntimeInvocationOutput>,
+    ) -> (
+        Self,
+        std::sync::Arc<std::sync::Mutex<Vec<ProviderInvocationInput>>>,
+    ) {
+        let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![
+            "application.view.all",
+            "application.create.all",
+        ]);
+        let (runtime, captured) =
+            InMemoryProviderRuntime::with_provider_outputs(outputs).capturing_invocations();
+        (Self::with_test_runtime(repository, runtime), captured)
+    }
+
     /// Use the real service/invoker assembly while keeping the upstream deterministically scripted.
     pub async fn enable_native_responses_fixture(&self) {
         self.repository.enable_native_responses_fixture().await;
@@ -14,6 +29,26 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         crate::orchestration_runtime::live_debug_run::continue_flow_debug_run_with_provider_transport(
             self, command, Some(payload), None, None,
         ).await
+    }
+
+    pub fn gate_llm_selection_fixture(
+        &self,
+        fail: bool,
+    ) -> (
+        std::sync::Arc<tokio::sync::Notify>,
+        std::sync::Arc<tokio::sync::Notify>,
+    ) {
+        self.repository.gate_llm_selection_append(fail)
+    }
+
+    pub async fn llm_selection_events_fixture(
+        &self,
+        run_id: Uuid,
+    ) -> Vec<domain::RuntimeEventRecord> {
+        self.repository
+            .list_runtime_events(run_id, 0)
+            .await
+            .unwrap()
     }
 
     pub async fn native_continuation_fixture(

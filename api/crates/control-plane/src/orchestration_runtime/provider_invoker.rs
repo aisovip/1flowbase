@@ -506,14 +506,31 @@ where
             .await
     }
 
+    fn prepare_selected_llm_input(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        route: &orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode>
+    {
+        self.ensure_continuation_route(runtime, &route.runtime_capabilities)?;
+        self.apply_selected_provider_transport(runtime, &route.runtime_capabilities, input)?;
+        Ok(if input.native_transport.is_some() {
+            orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque
+        } else {
+            orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::SemanticMapped
+        })
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         resolved_route: orchestration_runtime::execution_engine::ResolvedProviderRoute,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        self.ensure_continuation_route(runtime, &resolved_route.runtime_capabilities)?;
-        self.apply_provider_transport(runtime, &mut input)?;
+        let selected_mode =
+            self.prepare_selected_llm_input(runtime, &resolved_route, &mut input)?;
+        let selected_native_transport = selected_mode == orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque;
         let pin = resolved_route
             .invocation_pin::<RuntimeProviderInvocationPin>()
             .ok_or(ControlPlaneError::InvalidInput("resolved_provider_route"))?
@@ -628,6 +645,38 @@ where
             (Some(stream), Some(run_id)) => stream.terminal_writer(run_id).await.ok(),
             _ => None,
         };
+        // This host fact owns downstream protocol projection. Unlike the context
+        // estimate, failure to commit it prevents the provider from producing output.
+        if let (Some(node), Some(run_id)) = (active_node.as_ref(), self.flow_run_id) {
+            let selection = crate::ports::LlmInputSelection {
+                node_id: node.node_id.clone(),
+                node_run_id: node.node_run_id,
+                representation: if selected_native_transport {
+                    crate::ports::LlmInputRepresentation::NativeOpaque
+                } else {
+                    crate::ports::LlmInputRepresentation::SemanticMapped
+                },
+            }
+            .runtime_event();
+            if let Some(stream) = self.runtime_event_stream.as_ref() {
+                runtime_events::forward_required_runtime_event(
+                    &self.repository,
+                    stream.as_ref(),
+                    run_id,
+                    selection,
+                    provider_generation_writer.as_deref(),
+                )
+                .await?;
+            } else {
+                runtime_event_persister::persist_runtime_event_payload_for_generation(
+                    &self.repository,
+                    run_id,
+                    &selection,
+                    None,
+                )
+                .await?;
+            }
+        }
         if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
             active_node.as_ref(),
             self.runtime_event_stream.as_ref(),
@@ -727,7 +776,7 @@ where
             let repository_for_events = self.repository.clone();
             let generation_writer_for_task = provider_generation_writer.clone();
             let native_output_items_for_task = native_output_items.clone();
-            let capture_native_history = self.provider_transport_payload.is_some();
+            let capture_native_history = selected_native_transport;
             let response_round_id_for_task = self.response_round_id.or(self.flow_run_id);
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
@@ -1113,7 +1162,9 @@ where
             invocation_error.get_or_insert(error);
         }
         if let (Some(transport), Some(flow_run_id), Some(output)) = (
-            &self.provider_transport_payload,
+            self.provider_transport_payload
+                .as_ref()
+                .filter(|_| selected_native_transport),
             self.flow_run_id,
             invocation_output.as_mut(),
         ) {
@@ -1165,17 +1216,19 @@ where
             })
             .filter(|value| value.is_object())
             .cloned();
-        if let Some(error) = invocation_error.take() {
-            let configuration_digest = self
-                .provider_transport_payload
-                .as_ref()
-                .map(|transport| transport.configuration_digest())
-                .transpose()?;
-            invocation_error = Some(seal_native_failure_binding(
-                error,
-                &native_inference_binding,
-                configuration_digest.as_deref(),
-            ));
+        if selected_native_transport {
+            if let Some(error) = invocation_error.take() {
+                let configuration_digest = self
+                    .provider_transport_payload
+                    .as_ref()
+                    .map(|transport| transport.configuration_digest())
+                    .transpose()?;
+                invocation_error = Some(seal_native_failure_binding(
+                    error,
+                    &native_inference_binding,
+                    configuration_digest.as_deref(),
+                ));
+            }
         }
         let billing_result = fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
@@ -1193,7 +1246,10 @@ where
             .await;
         // Preserve provider continuation even on late billing failure, but only successful
         // host completion may carry a complete history proof into the next response round.
-        if let Some(output) = invocation_output.as_ref() {
+        if let Some(output) = invocation_output
+            .as_ref()
+            .filter(|_| selected_native_transport)
+        {
             let history = if billing_result.is_ok() && invocation_error.is_none() {
                 continuation_history
             } else {
@@ -1764,6 +1820,44 @@ where
                 "selected LLM Provider does not support native continuation",
             ))
         }
+    }
+
+    pub(super) fn apply_selected_provider_transport(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        capabilities: &std::collections::BTreeSet<String>,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<()> {
+        if self
+            .provider_transport_payload
+            .as_ref()
+            .is_some_and(|payload| payload.is_preferred())
+            && input.native_transport.is_none()
+            && !input.required_capabilities.contains(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough)
+            && !input.required_capabilities.contains(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1)
+            && self.continuation_affinity().is_none()
+            && !(capabilities.contains("responses.native_passthrough")
+                && capabilities.contains("responses.native_output.v1"))
+        {
+            input.native_transport = None;
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough);
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1);
+            return Ok(());
+        }
+        self.apply_provider_transport(runtime, input)?;
+        if self
+            .provider_transport_payload
+            .as_ref()
+            .is_some_and(|payload| payload.is_preferred())
+        {
+            input.required_capabilities.insert(
+                plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1);
+        }
+        Ok(())
     }
 
     pub(super) fn apply_provider_transport(

@@ -103,6 +103,48 @@ impl RuntimeEventEnvelope {
     }
 }
 
+/// Host-selected input representation, committed before this node invokes its provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmInputRepresentation {
+    SemanticMapped,
+    NativeOpaque,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LlmInputSelection {
+    pub node_id: String,
+    pub node_run_id: Uuid,
+    pub representation: LlmInputRepresentation,
+}
+
+impl LlmInputSelection {
+    pub const EVENT_TYPE: &'static str = "llm_input_selected";
+
+    pub fn runtime_event(&self) -> RuntimeEventPayload {
+        RuntimeEventPayload {
+            event_type: Self::EVENT_TYPE.into(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: false,
+            payload: serde_json::to_value(self).expect("typed LLM selection is serializable"),
+        }
+    }
+
+    pub fn from_host_event(event: &RuntimeEventEnvelope) -> Option<Self> {
+        if event.event_type != Self::EVENT_TYPE
+            || event.source != RuntimeEventSource::Runtime
+            || event.durability != RuntimeEventDurability::DurableRequired
+        {
+            return None;
+        }
+        let selection: Self = serde_json::from_value(event.payload.clone()).ok()?;
+        (event.node_run_id == Some(selection.node_run_id) && !selection.node_id.is_empty())
+            .then_some(selection)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEventOverflowBehavior {
     DropOldEphemeralKeepRequired,

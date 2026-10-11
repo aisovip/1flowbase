@@ -194,12 +194,20 @@ pub(crate) fn durable_record_to_runtime_event_envelope(
         node_run_id: record.node_run_id,
         sequence: record.sequence,
         event_id: format!("{}:{}", record.flow_run_id, record.sequence),
-        event_type: record.event_type,
+        event_type: record.event_type.clone(),
         occurred_at: record.created_at,
         delta_index,
         content_type,
         text,
+        // Selection authority is a HostFact; other durable producers must not
+        // acquire that authority through the generic cold replay source mapping.
         source: match record.source {
+            _ if record.event_type == control_plane::ports::LlmInputSelection::EVENT_TYPE
+                && (record.source != domain::RuntimeEventSource::Host
+                    || record.trust_level != domain::RuntimeTrustLevel::HostFact) =>
+            {
+                control_plane::ports::RuntimeEventSource::Provider
+            }
             domain::RuntimeEventSource::ProviderPlugin => {
                 control_plane::ports::RuntimeEventSource::Provider
             }

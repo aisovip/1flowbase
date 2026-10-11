@@ -9,6 +9,9 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/standalone_notifications.rs"]
+mod standalone_notifications;
+
 async fn fixture() -> (
     ApplicationPublicApiTestRepository,
     ApplicationApiKeyActor,
@@ -1322,6 +1325,58 @@ async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modifie
             .unwrap();
         assert_eq!(unchanged.status, CallbackTaskStatus::Pending);
         assert!(unchanged.response_payload.is_none());
+    }
+    for notice in [
+        json!({"type":"function_call_output","name":"notification","namespace":"codex_app","output":[{"type":"input_text","text":"context"}],"extension":{"role":"system"}}),
+        json!({"type":"function_call_output","call_id":null,"output":"context"}),
+    ] {
+        let mut mixed_delta = delta.clone();
+        mixed_delta["input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(0, notice.clone());
+        mixed_delta["input"]
+            .as_array_mut()
+            .unwrap()
+            .push(notice.clone());
+        let mut mixed_without_cursor = mixed_delta.clone();
+        mixed_without_cursor
+            .as_object_mut()
+            .unwrap()
+            .remove("previous_response_id");
+        let mut mixed_full = full.clone();
+        let prefix = mixed_full["input"].as_array().unwrap()[..2].to_vec();
+        mixed_full["input"] = json!(prefix
+            .into_iter()
+            .chain(mixed_delta["input"].as_array().unwrap().iter().cloned())
+            .collect::<Vec<_>>());
+        for mixed in [mixed_delta, mixed_without_cursor, mixed_full] {
+            let mixed_grant = correlate_semantic_responses_callback(
+                &repository,
+                &actor,
+                &OpenAiResponsesEnvelope::capture(mixed).unwrap(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let continuation = &mixed_grant.payload()["responses_continuation"];
+            assert_eq!(continuation["ordered_input"][0], notice);
+            assert_eq!(
+                continuation["ordered_messages"][0]["external_context"]["output"],
+                notice["output"]
+            );
+            assert!(continuation["ordered_messages"][0]
+                .get("tool_call_id")
+                .is_none());
+            assert_eq!(
+                continuation["ordered_messages"][2]["tool_call_id"],
+                "call_semantic"
+            );
+            assert_eq!(
+                continuation["ordered_messages"].as_array().unwrap().len(),
+                5
+            );
+        }
     }
     let mut media = delta.clone();
     media["input"][0] = json!({"role":"user","content":[{"type":"input_text","text":"inspect"},{"type":"input_image","image_url":"https://example.test/image.png"}]});

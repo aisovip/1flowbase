@@ -118,20 +118,27 @@ pub(crate) fn correlate_openai_responses_callback(
         }
         Some(function_call_ids)
     };
-    let results = trailing.iter().map(|item| {
-        let external_id = item.get("call_id").and_then(Value::as_str).ok_or_else(|| {
-            CallbackCorrelationError::new(
-                "input",
-                "callback function_call_output call_id is required",
+    let results = trailing
+        .iter()
+        .filter(|item| {
+            !control_plane::application_public_api::compat::openai::is_standalone_function_output(
+                item,
             )
-        })?;
-        let output = match item.get("output") {
-            Some(Value::String(output)) => output.clone(),
-            Some(output) => output.to_string(),
-            None => String::new(),
-        };
-        Ok((external_id, output))
-    });
+        })
+        .map(|item| {
+            let external_id = item.get("call_id").and_then(Value::as_str).ok_or_else(|| {
+                CallbackCorrelationError::new(
+                    "input",
+                    "callback function_call_output call_id is required",
+                )
+            })?;
+            let output = match item.get("output") {
+                Some(Value::String(output)) => output.clone(),
+                Some(output) => output.to_string(),
+                None => String::new(),
+            };
+            Ok((external_id, output))
+        });
     correlate_openai_results(results, "input", paired_ids.as_ref())
 }
 

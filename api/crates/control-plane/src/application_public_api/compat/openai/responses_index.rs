@@ -8,6 +8,14 @@ use crate::ports::ProviderTransportPayload;
 
 pub(crate) const MAX_NATIVE_RESPONSES_INPUT_ITEMS: usize = 4_096;
 
+/// Codex can start or steer a turn with a standalone function output. Its
+/// optional call_id is absent/null, so it is context, not a callback receipt.
+/// Empty or malformed IDs remain receipts for the correlation owner to reject.
+pub fn is_standalone_function_output(item: &Value) -> bool {
+    item.get("type").and_then(Value::as_str) == Some("function_call_output")
+        && item.get("call_id").is_none_or(Value::is_null)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResponsesInputIndexError {
     RequestKind,
@@ -201,7 +209,9 @@ impl ResponsesInputIndex {
                 {
                     index.last_assistant_message_position = Some(position);
                 }
-                Some("function_call_output" | "custom_tool_call_output") => {
+                Some("function_call_output" | "custom_tool_call_output")
+                    if !is_standalone_function_output(item) =>
+                {
                     index.tool_output_positions.push(position);
                     if let Some(call_id) = object
                         .get("call_id")

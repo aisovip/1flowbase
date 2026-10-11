@@ -316,3 +316,338 @@ async fn unfinished_native_output_item_never_creates_complete_history_proof() {
         1
     );
 }
+
+fn text_output(formal_native: bool) -> ProviderRuntimeInvocationOutput {
+    let item = json!({"type":"message","id":"msg_selected","role":"assistant","status":"completed","content":[{"type":"output_text","text":"selected transport reply","annotations":[]}]});
+    let mut events = Vec::new();
+    if formal_native {
+        events.extend([
+            ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Added,
+                output_index: 0,
+                item: item.clone(),
+            },
+            ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Done,
+                output_index: 0,
+                item,
+            },
+        ]);
+    }
+    events.push(ProviderStreamEvent::Finish {
+        reason: ProviderFinishReason::Stop,
+    });
+    ProviderRuntimeInvocationOutput {
+        events,
+        result: ProviderInvocationResult {
+            final_content: Some("selected transport reply".into()),
+            response_id: Some("upstream-selected".into()),
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..Default::default()
+        },
+    }
+}
+
+fn preferred_notice() -> ProviderTransportPayload {
+    ProviderTransportPayload::openai_responses(
+        json!({"model":"gpt-5.4-mini","input":[{"type":"function_call_output","output":"notice"}]}),
+    )
+    .unwrap()
+    .preferred()
+}
+
+#[tokio::test]
+async fn preferred_selected_mode_controls_real_executor_output_recovery_and_metadata() {
+    use plugin_framework::provider_contract::{
+        ProviderRecoveryDirective, RecoveryPolicy, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
+    };
+    for (native_target, formal_output, expected_success) in [
+        (false, false, true),
+        (true, false, false),
+        (true, true, true),
+    ] {
+        let (service, captured) =
+            OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![
+                text_output(formal_output),
+            ]);
+        if native_target {
+            service.enable_native_responses_fixture().await;
+        }
+        let seeded = service
+            .seed_application_with_flow("Preferred selected transport")
+            .await;
+        let started = service
+            .start_flow_debug_run(StartFlowDebugRunCommand {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                input_payload: json!({"node-start":{"query":"canonical notice"}}),
+                document_snapshot: None,
+                debug_session_id: None,
+            })
+            .await
+            .unwrap();
+        let detail = service
+            .continue_native_responses_fixture(
+                ContinueFlowDebugRunCommand {
+                    application_id: seeded.application_id,
+                    flow_run_id: started.flow_run.id,
+                    workspace_id: Uuid::nil(),
+                },
+                preferred_notice(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            detail.flow_run.status,
+            if expected_success {
+                domain::FlowRunStatus::Succeeded
+            } else {
+                domain::FlowRunStatus::Failed
+            },
+            "{:?}",
+            detail.flow_run.error_payload
+        );
+        let inputs = captured.lock().unwrap();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].native_transport.is_some(), native_target);
+        let directive: ProviderRecoveryDirective = serde_json::from_value(
+            inputs[0].run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. }),
+            native_target
+        );
+        drop(inputs);
+        if !native_target {
+            assert!(service
+                .optional_native_continuation_fixture(started.flow_run.id)
+                .await
+                .is_none());
+            assert!(!detail
+                .flow_run
+                .output_payload
+                .to_string()
+                .contains("native_response"));
+        }
+        if native_target && !formal_output {
+            assert!(detail
+                .flow_run
+                .error_payload
+                .as_ref()
+                .expect("native failure payload")
+                .to_string()
+                .contains("missing or duplicate formal output item"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn required_native_affinity_never_falls_back_in_the_real_executor() {
+    let (service, captured) = OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(
+        vec![text_output(false)],
+    );
+    service.enable_native_responses_fixture().await;
+    let seeded = service
+        .seed_application_with_flow("Required affinity")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"canonical notice"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let required = preferred_notice().with_affinity(crate::ports::ProviderTransportAffinity::new(
+        Uuid::now_v7().to_string(),
+        "fixture_provider",
+        "openai_compatible",
+        "gpt-5.4-mini",
+    ));
+    let detail = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: started.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            required,
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Failed);
+    assert!(captured.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn semantic_callback_resume_with_preferred_sidecar_keeps_selected_semantic_recovery() {
+    use plugin_framework::provider_contract::{
+        ProviderRecoveryDirective, RecoveryPolicy, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
+    };
+    let calls = vec![ProviderToolCall {
+        id: "call-selected".into(),
+        name: "lookup_weather".into(),
+        arguments: json!({}),
+        provider_metadata: json!({}),
+    }];
+    let (service, captured) =
+        OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![
+            ProviderRuntimeInvocationOutput {
+                events: vec![ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::ToolCall,
+                }],
+                result: ProviderInvocationResult {
+                    tool_calls: calls,
+                    finish_reason: Some(ProviderFinishReason::ToolCall),
+                    ..Default::default()
+                },
+            },
+            text_output(false),
+        ]);
+    let seeded = service.seed_application_with_flow("Preferred resume").await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"weather"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let waiting = service
+        .continue_native_responses_fixture(
+            ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: started.flow_run.id,
+                workspace_id: Uuid::nil(),
+            },
+            preferred_notice(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        waiting.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    let completed = service.complete_callback_task(CompleteCallbackTaskCommand {
+        responses_continuation:None, transport_connection_scope:None, observation_context:None,
+        native_transport:Some(preferred_notice()), actor_user_id:seeded.actor_user_id,
+        application_id:seeded.application_id, callback_task_id:waiting.callback_tasks[0].id,
+        response_payload:json!({"tool_results":[{"tool_call_id":"call-selected","content":"sunny"}]}),
+    }).await.unwrap();
+    assert_eq!(
+        completed.flow_run.status,
+        domain::FlowRunStatus::Succeeded,
+        "{:?}",
+        completed.flow_run.error_payload
+    );
+    let inputs = captured.lock().unwrap();
+    assert_eq!(inputs.len(), 2);
+    for input in inputs.iter() {
+        assert!(input.native_transport.is_none());
+        let directive: ProviderRecoveryDirective = serde_json::from_value(
+            input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+        )
+        .unwrap();
+        assert!(matches!(
+            directive.policy,
+            RecoveryPolicy::SemanticMapped { .. }
+        ));
+    }
+}
+
+#[tokio::test]
+async fn selected_input_fact_commits_before_provider_output_and_failure_prevents_invocation() {
+    for fail_commit in [false, true] {
+        let stream = std::sync::Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
+        let mut output = text_output(false);
+        output.events.insert(
+            0,
+            ProviderStreamEvent::TextDelta {
+                delta: "selected transport reply".into(),
+            },
+        );
+        let (service, captured) =
+            OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![output]);
+        let service = std::sync::Arc::new(service.with_runtime_event_stream(stream.clone()));
+        let seeded = service
+            .seed_application_with_flow("Selected input commit gate")
+            .await;
+        let started = service
+            .start_flow_debug_run(StartFlowDebugRunCommand {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                input_payload: json!({"node-start":{"query":"canonical notice"}}),
+                document_snapshot: None,
+                debug_session_id: None,
+            })
+            .await
+            .unwrap();
+        let run_id = started.flow_run.id;
+        let (entered, release) = service.gate_llm_selection_fixture(fail_commit);
+        let owner = tokio::spawn({
+            let service = service.clone();
+            async move {
+                service
+                    .continue_native_responses_fixture(
+                        ContinueFlowDebugRunCommand {
+                            application_id: seeded.application_id,
+                            flow_run_id: run_id,
+                            workspace_id: Uuid::nil(),
+                        },
+                        preferred_notice(),
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(3), entered.notified())
+            .await
+            .unwrap();
+        assert!(
+            captured.lock().unwrap().is_empty(),
+            "provider ran before selection commit"
+        );
+        assert!(!owner.is_finished());
+        assert!(service
+            .llm_selection_events_fixture(run_id)
+            .await
+            .iter()
+            .all(|event| event.event_type != crate::ports::LlmInputSelection::EVENT_TYPE));
+        release.notify_one();
+        let detail = owner.await.unwrap().unwrap();
+        let rows = service.llm_selection_events_fixture(run_id).await;
+        let selected = rows
+            .iter()
+            .filter(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+            .collect::<Vec<_>>();
+        if fail_commit {
+            assert!(
+                captured.lock().unwrap().is_empty(),
+                "provider ran after selection commit failed"
+            );
+            assert!(selected.is_empty());
+            assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Failed);
+        } else {
+            assert_eq!(captured.lock().unwrap().len(), 1);
+            assert_eq!(selected.len(), 1);
+            assert_eq!(selected[0].source, domain::RuntimeEventSource::Host);
+            assert_eq!(selected[0].trust_level, domain::RuntimeTrustLevel::HostFact);
+            assert_eq!(selected[0].payload["representation"], "semantic_mapped");
+            let live = stream.events();
+            let selection_index = live
+                .iter()
+                .position(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+                .unwrap();
+            let output_index = live
+                .iter()
+                .position(|event| event.event_type == "text_delta")
+                .unwrap();
+            assert!(selection_index < output_index);
+            assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Succeeded);
+        }
+    }
+}

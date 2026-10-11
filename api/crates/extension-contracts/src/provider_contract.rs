@@ -8,6 +8,9 @@ use serde_json::Value;
 
 use crate::error::ExtensionContractError;
 
+mod external_context;
+pub use external_context::*;
+
 mod media;
 pub use media::*;
 

@@ -855,7 +855,8 @@ async fn dispatch_response_for_endpoint(
                 command.response_payload = grant.payload().clone();
                 command.responses_continuation = Some(grant);
             }
-            let uses_native_transport = native_transport.is_some();
+            let projection_mode =
+                compat_sse::ResponsesProjectionMode::from_transport(native_transport.as_ref());
             command.native_transport = native_transport;
             command.transport_connection_scope = transport_connection_scope.clone();
             command.observation_context = recorder.as_ref().map(|recorder| {
@@ -904,9 +905,7 @@ async fn dispatch_response_for_endpoint(
                                     compat_sse::openai_responses_interface_projection_with_mode(
                                         model,
                                         previous_response_id,
-                                        compat_sse::ResponsesProjectionMode::from_native_transport(
-                                            uses_native_transport,
-                                        ),
+                                        projection_mode,
                                     ),
                                 )
                                 .await
@@ -926,9 +925,7 @@ async fn dispatch_response_for_endpoint(
                                         model,
                                         previous_response_id,
                                         runtime,
-                                        projection_mode: compat_sse::ResponsesProjectionMode::from_native_transport(
-                                            uses_native_transport,
-                                        ),
+                                        projection_mode,
                                     },
                                 )))
                             }
@@ -959,6 +956,7 @@ async fn dispatch_response_for_endpoint(
                         model,
                         previous_response_id,
                         recorder.as_ref(),
+                        projection_mode,
                     )
                     .await?;
                     return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
@@ -1084,9 +1082,8 @@ async fn dispatch_response_for_endpoint(
     }
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    let projection_mode = compat_sse::ResponsesProjectionMode::from_native_transport(
-        provider_transport_payload.is_some(),
-    );
+    let projection_mode =
+        compat_sse::ResponsesProjectionMode::from_transport(provider_transport_payload.as_ref());
     let blocking_binding_id = match endpoint {
         OpenAiResponsesEndpoint::ResponsesCompact => {
             compatibility_interface::OPENAI_RESPONSES_COMPACT_BINDING_ID
@@ -1127,6 +1124,7 @@ async fn dispatch_response_for_endpoint(
                     model,
                     previous_response_id,
                     recorder.as_ref(),
+                    projection_mode,
                 )
                 .await?;
                 info!(
@@ -1704,12 +1702,14 @@ async fn collect_blocking_native_response(
     model: String,
     previous_response_id: Option<String>,
     recorder: Option<&ClientTrajectoryRecorder>,
+    projection_mode: compat_sse::ResponsesProjectionMode,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     let (mut events, completion) = invocation.into_parts();
     // The typed turn already applies the resume sequence boundary. Keep the
     // completion owner alive even if the blocking HTTP caller disconnects.
     let completion = tokio::spawn(completion.complete());
     let mut items = None;
+    let mut selector = compat_sse::ResponsesProjectionSelector::new(projection_mode);
     // A blocking response is written once, after the whole turn is collected;
     // the tool deliveries are projected together with that single body.
     let mut deliveries = Vec::new();
@@ -1723,7 +1723,7 @@ async fn collect_blocking_native_response(
                 }
             }
         }
-        collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
+        collect_selected_blocking_response_event(&mut items, &mut selector, run.id, &envelope);
         deliveries.extend(delivery);
     }
     let terminal = completion
@@ -1774,6 +1774,19 @@ async fn collect_blocking_native_response(
     if let Some(recorder) = recorder {
         recorder.bind_run(run.id, None);
     }
+    if selector.selection_missing()
+        && !matches!(
+            run.status,
+            NativeRunStatus::Failed | NativeRunStatus::Cancelled
+        )
+    {
+        return Err(native::NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "llm_input_selection_missing",
+            "host input selection is unavailable",
+        )
+        .into());
+    }
     let response =
         to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
     let _receipt = receipt.projected();
@@ -1781,6 +1794,19 @@ async fn collect_blocking_native_response(
         delivery.projected();
     }
     Ok(response)
+}
+
+fn collect_selected_blocking_response_event(
+    items: &mut Option<Vec<Value>>,
+    selector: &mut compat_sse::ResponsesProjectionSelector,
+    run_id: Uuid,
+    event: &control_plane::ports::RuntimeEventEnvelope,
+) {
+    selector.observe(run_id, event);
+    if selector.native_event(event) {
+        items.get_or_insert_with(Vec::new);
+        collect_blocking_response_output_item(items, &event.event_type, &event.payload);
+    }
 }
 
 fn collect_blocking_response_output_item(

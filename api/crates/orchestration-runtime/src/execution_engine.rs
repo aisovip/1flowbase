@@ -217,6 +217,27 @@ pub trait ProviderInvoker: Send + Sync {
         Ok(ResolvedProviderRoute::new(BTreeSet::new(), ()))
     }
 
+    /// Host preparation after target selection, before recovery directives and output validation.
+    /// The returned representation is authoritative for this attempt, not Provider metadata.
+    fn prepare_selected_llm_input(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _resolved_route: &ResolvedProviderRoute,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<ai_native_recovery::RecoveryInputMode> {
+        Ok(
+            if input.native_transport.is_some()
+                || input
+                    .required_capabilities
+                    .contains(&ProviderInvocationCapability::ResponsesNativePassthrough)
+            {
+                ai_native_recovery::RecoveryInputMode::NativeOpaque
+            } else {
+                ai_native_recovery::RecoveryInputMode::SemanticMapped
+            },
+        )
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &CompiledLlmRuntime,

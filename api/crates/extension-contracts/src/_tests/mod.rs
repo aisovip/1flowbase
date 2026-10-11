@@ -13,3 +13,5 @@ mod managed_interface_contract_tests;
 mod managed_interface_reference_tests;
 
 mod plugin_credential_contract_tests;
+
+mod provider_external_context_tests;

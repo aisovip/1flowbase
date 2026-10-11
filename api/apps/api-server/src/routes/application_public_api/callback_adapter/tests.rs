@@ -94,6 +94,56 @@ fn responses_previous_response_preserves_only_current_parallel_results() {
 }
 
 #[test]
+fn responses_encoded_receipts_ignore_standalone_notifications_without_dropping_context() {
+    let task = callback(21);
+    let first = encode_openai_callback_tool_call_id(task, "call_a");
+    let second = encode_openai_callback_tool_call_id(task, "call_b");
+    let notice = json!({"type":"function_call_output","name":"notification","namespace":"app","output":"context"});
+    let request = json!({"input":[
+        {"type":"function_call","call_id":first,"name":"a","arguments":"{}"},
+        {"type":"function_call","call_id":second,"name":"b","arguments":"{}"},
+        notice,
+        {"type":"function_call_output","call_id":first,"output":"A"},
+        {"type":"function_call_output","call_id":null,"output":"middle context"},
+        {"type":"function_call_output","call_id":second,"output":"B"},
+        notice
+    ]});
+    for previous in [None, Some("resp_previous")] {
+        let correlated = correlate_openai_responses_callback(&request, previous)
+            .unwrap()
+            .unwrap();
+        assert_eq!(correlated.callback_task_id, task);
+        assert_eq!(
+            correlated.tool_results,
+            json!([
+                {"tool_call_id":"call_a","content":"A"},
+                {"tool_call_id":"call_b","content":"B"}
+            ])
+        );
+    }
+    let mut expected = request.clone();
+    for (index, call_id) in [(0, "call_a"), (1, "call_b"), (3, "call_a"), (5, "call_b")] {
+        expected["input"][index]["call_id"] = json!(call_id);
+    }
+    assert_eq!(
+        restore_openai_responses_provider_call_ids(&request),
+        expected
+    );
+    let only_notices = json!({"input":[notice]});
+    assert!(correlate_openai_responses_callback(&only_notices, None)
+        .unwrap()
+        .is_none());
+    for malformed in [json!(""), json!(7), json!(false)] {
+        let mut invalid = request.clone();
+        invalid["input"][4]["call_id"] = malformed;
+        assert!(correlate_openai_responses_callback(&invalid, Some("resp_previous")).is_err());
+    }
+    let mut duplicate = request;
+    duplicate["input"][5]["call_id"] = duplicate["input"][3]["call_id"].clone();
+    assert!(correlate_openai_responses_callback(&duplicate, Some("resp_previous")).is_err());
+}
+
+#[test]
 fn responses_encoded_callback_restores_provider_ids_without_changing_wire_policy() {
     let task = callback(19);
     let original_id = "call_provider";

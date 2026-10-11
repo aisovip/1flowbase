@@ -150,7 +150,13 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
                 ))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let ordered_input = if previous.is_none() && input.len() > expected.len() {
+    let ordered_input = if previous.is_none()
+        && input.iter().any(|item| {
+            matches!(
+                item.get("type").and_then(Value::as_str),
+                Some("function_call" | "custom_tool_call")
+            )
+        }) {
         super::super::compat::openai::history::prove_full_context_input(
             &request["input"],
             &evidence.history,
@@ -169,7 +175,9 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
     let mut results = Vec::new();
     for item in &ordered_input {
         match item.get("type").and_then(Value::as_str) {
-            Some("function_call_output") => {
+            Some("function_call_output")
+                if !super::super::compat::openai::is_standalone_function_output(item) =>
+            {
                 let id = item.get("call_id").and_then(Value::as_str).ok_or(
                     ControlPlaneError::InvalidInput("responses_tool_output_call_id"),
                 )?;

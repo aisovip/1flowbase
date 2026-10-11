@@ -620,7 +620,6 @@ where
         } else {
             None
         };
-        let native_resume = input.native_transport.is_some();
         let transport = match (input.native_transport, provider_continuation.as_ref()) {
             (Some(payload), Some(continuation))
                 if payload.wire_body().get("previous_response_id").is_some() =>
@@ -630,6 +629,7 @@ where
             (Some(payload), Some(continuation)) => {
                 Some(payload.with_affinity(continuation.affinity().clone()))
             }
+            (Some(payload), None) if payload.is_preferred() => Some(payload),
             (Some(_), None) => return Err(anyhow!("ephemeral_continuation_missing")),
             (None, _) => None,
         };
@@ -638,8 +638,11 @@ where
                 &input.flow_run.input_payload, payload,
             )
         }).transpose()?;
+        let requires_native_transport = transport
+            .as_ref()
+            .is_some_and(|payload| !payload.is_preferred());
         let mut invoker = invoker
-            .with_provider_continuation(if native_resume {
+            .with_provider_continuation(if requires_native_transport {
                 None
             } else {
                 provider_continuation
@@ -697,7 +700,7 @@ where
                 runtime_context,
             )
             .await;
-        if native_resume {
+        if requires_native_transport {
             runtime_context = runtime_context.with_provider_invocation_capability(
                 extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
             );

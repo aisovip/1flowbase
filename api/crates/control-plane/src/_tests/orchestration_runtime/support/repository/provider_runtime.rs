@@ -142,6 +142,14 @@ impl InMemoryProviderRuntime {
         }
     }
 
+    pub(crate) fn capturing_invocations(
+        mut self,
+    ) -> (Self, Arc<Mutex<Vec<ProviderInvocationInput>>>) {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        self.captured_inputs = Some(captured.clone());
+        (self, captured)
+    }
+
     pub(crate) fn with_invocation_capture() -> (Self, Arc<Mutex<Vec<ProviderInvocationInput>>>) {
         let captured_inputs = Arc::new(Mutex::new(Vec::new()));
         (

@@ -159,3 +159,25 @@ fn reasoning_default_configuration_digest_matches_sealed_wire_without_input() {
         "provider_transport_reasoning_must_be_object"
     );
 }
+
+#[test]
+fn preferred_raw_transport_keeps_digest_and_native_affinity_remains_required() {
+    let body =
+        json!({"model":"fixture","input":[{"type":"function_call_output","output":"notice"}]});
+    let required = ProviderTransportPayload::openai_responses(body.clone()).unwrap();
+    let preferred = required.clone().preferred();
+    assert!(preferred.is_preferred());
+    assert_eq!(required.digest(), preferred.digest());
+    assert_eq!(preferred.wire_body(), &body);
+    let affinity =
+        ProviderTransportAffinity::new("instance", "provider", "openai_responses", "fixture");
+    assert!(!preferred
+        .clone()
+        .with_affinity(affinity.clone())
+        .is_preferred());
+    assert!(!preferred
+        .bind_openai_continuation(ProviderContinuation::new("resp_native", affinity).unwrap())
+        .unwrap()
+        .preferred()
+        .is_preferred());
+}

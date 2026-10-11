@@ -410,7 +410,9 @@ pub(super) fn append_llm_tool_result_messages(
             .iter()
             .zip(continuation.ordered_messages)
         {
-            if item.get("type").and_then(Value::as_str) == Some("function_call_output") {
+            if item.get("type").and_then(Value::as_str) == Some("function_call_output")
+                && !item.get("call_id").is_none_or(Value::is_null)
+            {
                 let id = item
                     .get("call_id")
                     .and_then(Value::as_str)
@@ -921,5 +923,20 @@ mod tests {
         assert_eq!(delta[1]["is_error"], true);
         assert_eq!(delta[0]["content"], "before");
         assert_eq!(delta[2]["content"], "after");
+    }
+    #[test]
+    fn semantic_callback_notices_are_context_without_fabricated_receipt_ids() {
+        let mut pool = json!({"llm":{"__llm_tool_callback":{"pending_tool_calls":[{"id":"a","name":"read"}],"history":[],"system":[]}}}).as_object().unwrap().clone();
+        let notice = json!({"type":"function_call_output","call_id":null,"name":"notification","output":{"message":"context"}});
+        let context = extension_contracts::provider_contract::ProviderExternalContext::from_responses_notification(&notice).unwrap();
+        let ordered = json!([{"role":"user","external_context":context},{"role":"tool","tool_call_id":"a","content":"ignored"},{"role":"user","external_context":context}]);
+        append_llm_tool_result_messages(&mut pool, "llm", &json!({"tool_results":[{"tool_call_id":"a","content":"real result"}],"responses_continuation":{"ordered_input":[notice,{"type":"function_call_output","call_id":"a","output":"real result"},notice],"ordered_messages":ordered}})).unwrap();
+        let delta = &pool["llm"]["__llm_tool_callback"]["delta_messages"];
+        assert_eq!(delta.as_array().unwrap().len(), 3);
+        assert_eq!(delta[0], ordered[0]);
+        assert_eq!(delta[2], ordered[2]);
+        assert_eq!(delta[1]["content"], "real result");
+        assert!(delta[0].get("tool_call_id").is_none());
+        assert!(delta[2].get("tool_call_id").is_none());
     }
 }
