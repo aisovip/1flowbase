@@ -696,7 +696,13 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
         .await
         .unwrap();
 
-    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        completed.flow_run.status,
+        domain::FlowRunStatus::Succeeded,
+        "callback must persist its terminal answer: error={:?}; nodes={:?}",
+        completed.flow_run.error_payload,
+        completed.node_runs
+    );
     assert_eq!(
         completed.flow_run.output_payload["answer"],
         json!(final_answer)

@@ -78,7 +78,7 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                     .get(&self.target)
                     .ok_or(Error::InvalidInput("managed_candidate_installation"))?;
                 crate::plugin_settings_template_repository::apply_managed_in_transaction(
-                    &mut **transaction,
+                    transaction,
                     installation,
                 )
                 .await?;

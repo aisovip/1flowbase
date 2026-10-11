@@ -152,6 +152,7 @@ impl ManagedWorkers {
         self.mounted.len()
     }
 
+    #[cfg(test)]
     pub(crate) fn execute(
         &self,
         request: RuntimeManagedCapabilityRequest,

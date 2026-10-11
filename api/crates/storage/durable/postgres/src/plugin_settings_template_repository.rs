@@ -107,7 +107,7 @@ async fn apply_defaults(
             sqlx::query("insert into ui_code_templates (id,scope_id,provider_code,contribution_code,name,owner_plugin_code,owner_feature_id,applied_plugin_version,created_by,updated_by,applied_installation_id,applied_application_generation,owner_category,owner_organization,owner_artifact_id) values ($1,$2,$3,$4,$5,$3,$6,$7,$8,$8,$9,$10,$11,$12,$13)")
                 .bind(id).bind(SYSTEM_SCOPE_ID).bind(owner).bind(&code).bind(&feature)
                 .bind(&feature).bind(&installation.plugin_version).bind(actor_user_id)
-                .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(&artifact_id)
+                .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(artifact_id)
                 .execute(&mut *connection).await?;
             id
         };
@@ -126,7 +126,7 @@ async fn apply_defaults(
             .execute(&mut *connection).await?;
         sqlx::query("update ui_code_templates set applied_plugin_version=$2,updated_by=$3,updated_at=now(),applied_installation_id=$4,applied_application_generation=$5,owner_category=$6,owner_organization=$7,owner_artifact_id=$8 where id=$1")
             .bind(template_id).bind(&installation.plugin_version).bind(actor_user_id)
-            .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(&artifact_id).execute(&mut *connection).await?;
+            .bind(installation.id).bind(generation).bind(installation.category.as_str()).bind(&installation.organization).bind(artifact_id).execute(&mut *connection).await?;
         let default_write = sqlx::query("insert into ui_code_template_defaults (scope_id,provider_code,contribution_code,template_id,updated_by) values ($1,$2,$3,$4,$5) on conflict (scope_id,provider_code,contribution_code) do update set template_id=excluded.template_id,updated_by=excluded.updated_by,updated_at=now() where ui_code_template_defaults.template_id=excluded.template_id")
             .bind(SYSTEM_SCOPE_ID).bind(owner).bind(&code).bind(template_id).bind(actor_user_id).execute(&mut *connection).await?;
         if default_write.rows_affected() != 1 {
@@ -180,7 +180,7 @@ pub(crate) async fn apply_managed_in_transaction(
             .bind(SYSTEM_SCOPE_ID).bind(installation.category.as_str()).bind(&installation.organization).bind(&installation.provider_code).fetch_one(&mut *connection).await?;
         apply_defaults(
             connection,
-            &installation,
+            installation,
             &installation.provider_code,
             generation,
         )
