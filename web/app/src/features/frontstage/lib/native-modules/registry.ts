@@ -290,11 +290,12 @@ export function getFrontstageNativeReactModuleRegistry(): NativeReactModuleRegis
 }
 
 export function createFrontstageNativeReactModuleRegistry(
-  overrides: NativeTrustedBlockInjectedModuleMap = {}
+  overrides: NativeTrustedBlockInjectedModuleMap = {},
+  additionalRegistrations: readonly NativeReactFrontendModuleRegistration[] = []
 ): NativeReactModuleRegistry {
   // Each artifact evaluation owns its module flights and generated style assets.
-  return createNativeReactModuleRegistry(
-    registrations.map((entry) => {
+  return createNativeReactModuleRegistry([
+    ...registrations.map((entry) => {
       const override = overrides[entry.module_source];
       if (!override) return entry;
       return {
@@ -304,8 +305,9 @@ export function createFrontstageNativeReactModuleRegistry(
           return { ...loaded, module: { ...loaded.module, ...override } };
         }
       };
-    })
-  );
+    }),
+    ...additionalRegistrations
+  ]);
 }
 
 function registration(

@@ -13,6 +13,7 @@ import {
   searchConsoleUiCatalog,
   fetchConsoleUiTemplates,
   fetchConsolePluginSettingsPage,
+  fetchConsolePluginSettingsModuleAsset,
   type ConsolePluginSettingsPage,
   type ConsoleUiManagedTemplate,
   publishConsoleUiTemplate,
@@ -66,7 +67,8 @@ describe('console UI management client', () => {
       language: 'tsx',
       revision: 3,
       applied_plugin_version: '2.0.0',
-      overwrite_on_plugin_upgrade: true
+      overwrite_on_plugin_upgrade: true,
+      code_modules: []
     };
     const template: ConsoleUiManagedTemplate = {
       id: page.template_id,
@@ -100,6 +102,31 @@ describe('console UI management client', () => {
       });
     expect(await fetchConsolePluginSettingsPage(page.route_id)).toEqual(page);
     expect((await fetchConsoleUiTemplates()).managed[0]).toEqual(template);
+  });
+
+  test('fetches settings assets through credentialed binary transport with version and abort signal', async () => {
+    const signal = new AbortController().signal;
+    const asset = new Blob(['export const Fixture = true;']);
+    const spy = vi.spyOn(transport, 'apiFetchBlob').mockResolvedValueOnce({
+      blob: asset,
+      filename: null,
+      contentType: 'text/javascript; charset=utf-8'
+    });
+    const value = await fetchConsolePluginSettingsModuleAsset(
+      'fixture.settings',
+      '2.0.0',
+      'a'.repeat(64),
+      signal
+    );
+    expect(new TextDecoder().decode(value)).toBe(
+      'export const Fixture = true;'
+    );
+    expect(spy).toHaveBeenCalledWith({
+      path: `/api/console/settings/ui-management/plugin-settings-module-asset?route_id=fixture.settings&applied_plugin_version=2.0.0&sha256=${'a'.repeat(64)}`,
+      signal,
+      baseUrl: undefined
+    });
+    spy.mockRestore();
   });
 
   test('publishes an immutable template revision', async () => {

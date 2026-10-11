@@ -37,6 +37,7 @@ pub(crate) struct NativeSettingsPage {
     pub plugin_code: String,
     pub plugin_version: String,
     pub contribution_code: String,
+    pub code_modules: Vec<plugin_framework::FrontendBlockCodeModuleManifest>,
 }
 
 impl ConsoleSurfaceRegistry {
@@ -81,6 +82,7 @@ impl ConsoleSurfaceRegistry {
                     plugin_code: contribution.extension_id.clone(),
                     plugin_version: contribution.version.clone(),
                     contribution_code: page.contribution_code.clone(),
+                    code_modules: page.code_modules.clone(),
                 });
             }
             for feature in &contribution.settings_features {
@@ -190,6 +192,7 @@ impl ConsoleSurfaceRegistry {
                     plugin_code: service.plugin_code.clone(),
                     plugin_version: service.plugin_version.clone(),
                     contribution_code: page.contribution_code.clone(),
+                    code_modules: page.code_modules.clone(),
                 });
             }
         }

@@ -1,4 +1,4 @@
-import { apiFetch } from './transport';
+import { apiFetch, apiFetchBlob } from './transport';
 
 export type UiCodeTemplateLanguage = 'jsx' | 'tsx';
 export type UiComponentOrigin = 'official' | 'custom';
@@ -22,6 +22,19 @@ export interface ConsoleUiManagedTemplate {
   applied_plugin_version: string | null;
   overwrite_on_plugin_upgrade: boolean;
 }
+export interface ConsolePluginSettingsCodeModule {
+  source: string;
+  version: string;
+  exports: string[];
+  binding: 'host' | 'fetched';
+  assets: {
+    path: string;
+    role: 'browser_module' | 'shadow_style' | 'support';
+    media_type: string;
+    sha256: string;
+  }[];
+  type_declarations: string;
+}
 export interface ConsolePluginSettingsPage {
   route_id: string;
   feature_id: string;
@@ -33,6 +46,7 @@ export interface ConsolePluginSettingsPage {
   revision: number;
   applied_plugin_version: string;
   overwrite_on_plugin_upgrade: boolean;
+  code_modules: ConsolePluginSettingsCodeModule[];
 }
 
 export interface ConsoleUiOfficialTemplate {
@@ -169,6 +183,21 @@ export interface ConsoleUiCatalogUpdateStatus {
 }
 
 const root = '/api/console/settings/ui-management';
+export async function fetchConsolePluginSettingsModuleAsset(
+  route_id: string,
+  applied_plugin_version: string,
+  sha256: string,
+  signal?: AbortSignal,
+  baseUrl?: string
+): Promise<ArrayBuffer> {
+  const response = await apiFetchBlob({
+    path: `${root}/plugin-settings-module-asset?${new URLSearchParams({ route_id, applied_plugin_version, sha256 })}`,
+    signal,
+    baseUrl
+  });
+  return response.blob.arrayBuffer();
+}
+
 export const fetchConsolePluginSettingsPage = (
   route_id: string,
   baseUrl?: string

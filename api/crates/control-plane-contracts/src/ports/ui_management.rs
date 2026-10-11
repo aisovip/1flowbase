@@ -159,6 +159,18 @@ pub trait UiComponentCatalogRepository: Send + Sync {
 
 #[async_trait]
 pub trait UiManagementRepository: Send + Sync {
+    /// Settings-owned system assets; callers authorize the page and prove digest membership.
+    /// This does not grant workspace assignment or frontstage resource access.
+    async fn get_settings_frontend_module_asset(
+        &self,
+        _template_id: Uuid,
+        _plugin_code: &str,
+        _plugin_version: &str,
+        _sha256: &str,
+    ) -> Result<Option<crate::ports::RetainedFrontendModuleAsset>> {
+        Ok(None)
+    }
+
     async fn native_template_is_available(
         &self,
         _template_id: Uuid,

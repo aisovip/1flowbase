@@ -56,7 +56,8 @@ async fn hot_generation_new_service_freezes_against_older_workspace_snapshot() {
             }]
         })).unwrap(),
         pages: vec![plugin_framework::PluginSettingsPageManifest {
-            feature_id: "coexistence.settings".into(), contribution_code: "settings".into(),
+            code_modules: Vec::new(),
+feature_id: "coexistence.settings".into(), contribution_code: "settings".into(),
             source_file: "ui/Settings.tsx".into(), language: "tsx".into(),
         }],
     };

@@ -121,7 +121,8 @@ const page = {
   language: 'tsx',
   revision: 2,
   applied_plugin_version: '1.0.0',
-  overwrite_on_plugin_upgrade: true
+  overwrite_on_plugin_upgrade: true,
+  code_modules: []
 };
 function renderSurface(
   children: import('react').ReactNode,

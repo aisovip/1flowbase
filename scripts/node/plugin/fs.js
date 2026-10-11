@@ -63,12 +63,13 @@ function writeKeepFile(targetPath) {
   writeFile(targetPath, '');
 }
 
-function copyTree(sourcePath, targetPath) {
+function copyTree(sourcePath, targetPath, excludedEntries = new Set()) {
   const stats = fs.statSync(sourcePath);
   if (stats.isDirectory()) {
     fs.mkdirSync(targetPath, { recursive: true });
     for (const entry of fs.readdirSync(sourcePath)) {
-      copyTree(path.join(sourcePath, entry), path.join(targetPath, entry));
+      if (excludedEntries.has(entry)) continue;
+      copyTree(path.join(sourcePath, entry), path.join(targetPath, entry), excludedEntries);
     }
     return;
   }
@@ -79,6 +80,7 @@ function copyTree(sourcePath, targetPath) {
 
 function createArtifactRoot(pluginPath, options = {}) {
   const excludedEntries = new Set(options.excludedEntries || []);
+  const recursiveExcludedEntries = new Set(options.recursiveExcludedEntries || []);
   const includedEntries = options.includedEntries
     ? new Set(options.includedEntries)
     : null;
@@ -94,7 +96,7 @@ function createArtifactRoot(pluginPath, options = {}) {
     if (excludedEntries.has(entry)) {
       continue;
     }
-    copyTree(path.join(pluginPath, entry), path.join(artifactRoot, entry));
+    copyTree(path.join(pluginPath, entry), path.join(artifactRoot, entry), recursiveExcludedEntries);
   }
 
   return artifactRoot;
@@ -110,6 +112,7 @@ function createDemoPackageRoot(pluginPath) {
 function createPackageArtifactRoot(pluginPath) {
   return createArtifactRoot(pluginPath, {
     prefix: '1flowbase-plugin-package',
+    recursiveExcludedEntries: ['node_modules', '.npm'],
     includedEntries: [
       '_assets',
       'i18n',

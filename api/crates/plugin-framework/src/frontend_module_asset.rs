@@ -11,11 +11,19 @@ pub fn validate_frontend_module_assets(
     package_root: &Path,
     manifest: &PluginManifestV1,
 ) -> FrameworkResult<()> {
-    for contribution in &manifest.block_contributions {
-        for module in &contribution.code_modules {
-            for asset in &module.assets {
-                load_frontend_module_asset(package_root, asset)?;
-            }
+    for module in manifest
+        .block_contributions
+        .iter()
+        .flat_map(|entry| &entry.code_modules)
+        .chain(
+            manifest
+                .settings_pages
+                .iter()
+                .flat_map(|entry| &entry.code_modules),
+        )
+    {
+        for asset in &module.assets {
+            load_frontend_module_asset(package_root, asset)?;
         }
     }
     Ok(())

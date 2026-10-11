@@ -245,3 +245,36 @@ fn d2_ac_004_registered_asset_requires_existing_digest_matching_bytes() {
         .contains("is unavailable"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn settings_pages_reuse_canonical_module_validation_and_asset_discovery() {
+    let raw = include_str!("../../../../plugins/fixtures/northwind.settings-page/manifest.yaml");
+    let old = parse_plugin_manifest(raw).unwrap();
+    assert!(old.settings_pages[0].code_modules.is_empty());
+    let root = std::env::temp_dir().join(format!("settings-module-{}", Uuid::now_v7()));
+    fs::create_dir_all(root.join("assets")).unwrap();
+    let bytes = b"export function Fixture() {}\n";
+    fs::write(root.join("assets/native.js"), bytes).unwrap();
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    let module = valid_module(
+        "@fixture/native",
+        "1.0.0",
+        "assets/native.js",
+        &digest,
+        "Fixture",
+    );
+    let raw = format!("{raw}    code_modules:\n{module}");
+    let manifest = parse_plugin_manifest(&raw).unwrap();
+    assert_eq!(manifest.settings_pages[0].code_modules.len(), 1);
+    crate::validate_frontend_module_assets(&root, &manifest).unwrap();
+    assert!(parse_plugin_manifest(&raw.replace("assets/native.js", "../native.js")).is_err());
+    assert!(
+        parse_plugin_manifest(&raw.replace("exports: [Fixture]", "exports: [bad-export]")).is_err()
+    );
+    assert!(parse_plugin_manifest(&raw.replace("binding: fetched", "binding: host")).is_err());
+    fs::write(root.join("assets/native.js"), b"tampered").unwrap();
+    assert!(crate::validate_frontend_module_assets(&root, &manifest).is_err());
+    fs::remove_file(root.join("assets/native.js")).unwrap();
+    assert!(crate::validate_frontend_module_assets(&root, &manifest).is_err());
+    fs::remove_dir_all(root).unwrap();
+}

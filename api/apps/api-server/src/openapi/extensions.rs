@@ -56,6 +56,7 @@ use utoipa::OpenApi;
         crate::routes::file_tables::create_file_table,
         crate::routes::file_tables::bind_file_table_storage,
         crate::routes::ui_management::plugin_settings_page,
+        crate::routes::ui_management::plugin_settings_module_asset,
         crate::routes::ui_management::list_templates,
         crate::routes::ui_management::create_template,
         crate::routes::ui_management::update_template,

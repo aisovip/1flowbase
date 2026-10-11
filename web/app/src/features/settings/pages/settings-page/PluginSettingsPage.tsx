@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ConsolePluginSettingsPage } from '@1flowbase/api-client';
+import {
+  fetchConsolePluginSettingsModuleAsset,
+  type ConsolePluginSettingsPage
+} from '@1flowbase/api-client';
+import { createFetchedNativeReactModuleRegistry } from '../../../../shared/code-block/fetched-modules/registry';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime/browser';
 import { Alert, Spin } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -93,10 +97,28 @@ function PublishedPluginSettingsPage({
     let current = true;
     setPrepared(null);
     setFailed(false);
+    let loader: ReturnType<typeof createFetchedNativeReactModuleRegistry>;
+    try {
+      loader = createFetchedNativeReactModuleRegistry({
+        modules: page.code_modules,
+        hostRegistryFactory: (registrations) =>
+          createFrontstageNativeReactModuleRegistry({}, registrations),
+        fetchAsset: (asset, signal) =>
+          fetchConsolePluginSettingsModuleAsset(
+            page.route_id,
+            page.applied_plugin_version,
+            asset.sha256,
+            signal
+          )
+      });
+    } catch {
+      setFailed(true);
+      return;
+    }
     void prepareNativeReactSource({
       frozenSource: page.source,
       requestId: renderEpoch,
-      registryFactory: createFrontstageNativeReactModuleRegistry
+      registryFactory: () => loader.registry
     })
       .then((result) => {
         if (current) setPrepared(result);
@@ -106,8 +128,9 @@ function PublishedPluginSettingsPage({
       });
     return () => {
       current = false;
+      loader.dispose();
     };
-  }, [page.source, renderEpoch]);
+  }, [page, renderEpoch]);
 
   if (failed || prepared?.ok === false) {
     return (

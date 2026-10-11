@@ -31,6 +31,13 @@ managed:
         entry: bin/other
 `);
     fs.writeFileSync(path.join(plugin, 'ui/settings.tsx'), 'export default () => null;');
+    fs.mkdirSync(path.join(plugin, 'ui/_assets'), { recursive: true });
+    fs.writeFileSync(path.join(plugin, 'ui/_assets/terminal.js'), 'export const Terminal = {};');
+    fs.writeFileSync(path.join(plugin, 'ui/_assets/terminal.css'), '.terminal {}');
+    fs.mkdirSync(path.join(plugin, 'ui/node_modules/@xterm/xterm'), { recursive: true });
+    fs.writeFileSync(path.join(plugin, 'ui/node_modules/@xterm/xterm/package.json'), '{}');
+    fs.mkdirSync(path.join(plugin, 'ui/.npm/_cacache'), { recursive: true });
+    fs.writeFileSync(path.join(plugin, 'ui/.npm/_cacache/cache'), 'DEV CACHE');
     fs.mkdirSync(path.join(plugin, 'src'));
     fs.writeFileSync(path.join(plugin, 'src/main.rs'), 'PRIVATE BUSINESS SOURCE');
     const binary = path.join(root, 'worker.exe');
@@ -40,6 +47,9 @@ managed:
     assert.equal(entries.status, 0);
     assert.match(entries.stdout, /ui\/settings.tsx/);
     assert.doesNotMatch(entries.stdout, /src\/main.rs/);
+    assert.doesNotMatch(entries.stdout, /node_modules|\.npm/);
+    assert.match(entries.stdout, /ui\/_assets\/terminal.js/);
+    assert.match(entries.stdout, /ui\/_assets\/terminal.css/);
     const manifest = spawnSync('tar', ['-xOzf', artifact.packageFile, './manifest.yaml'], { encoding: 'utf8' });
     assert.equal(manifest.status, 0);
     assert.equal((manifest.stdout.match(/entry: bin\/worker.exe/g) || []).length, 2);

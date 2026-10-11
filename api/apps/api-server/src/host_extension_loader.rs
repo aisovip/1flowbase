@@ -397,6 +397,7 @@ fn validate_host_extension_installation(
         );
     }
     contribution.validate_package_settings_pages(&manifest)?;
+    plugin_framework::validate_frontend_module_assets(install_root, &manifest)?;
     for page in &manifest.settings_pages {
         plugin_framework::read_plugin_settings_page_source(install_root, page)?;
     }

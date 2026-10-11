@@ -723,38 +723,11 @@ pub(crate) fn validate_frontend_block_contributions(
             FRONTEND_BLOCK_ALLOWED_RUNTIMES,
         )?;
         validate_isolated_frontend_block_runtime(contribution)?;
-        for code_module in &contribution.code_modules {
-            validate_non_empty(
-                &code_module.source,
-                "block_contributions[].code_modules[].source",
-            )?;
-            validate_non_empty(
-                &code_module.version,
-                "block_contributions[].code_modules[].version",
-            )?;
-            if !registered_module_identities.insert(code_module.source.as_str()) {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_modules[].source must be unique",
-                ));
-            }
-            validate_frontend_module_exports(code_module)?;
-            validate_frontend_module_binding(code_module)?;
-            for asset in &code_module.assets {
-                if let Some(existing_media_type) =
-                    registered_asset_media_types.insert(&asset.sha256, &asset.media_type)
-                {
-                    if existing_media_type != &asset.media_type {
-                        return Err(PluginFrameworkError::invalid_provider_package(
-                            "one frontend asset digest cannot declare multiple media types",
-                        ));
-                    }
-                }
-            }
-            validate_non_empty(
-                &code_module.type_declarations,
-                "block_contributions[].code_modules[].type_declarations",
-            )?;
-        }
+        validate_frontend_code_modules_with_identities(
+            &contribution.code_modules,
+            &mut registered_module_identities,
+            &mut registered_asset_media_types,
+        )?;
         validate_frontend_block_permissions(&contribution.permissions)?;
         for primitive in &contribution.context_contract.primitives {
             validate_allowed(
@@ -811,6 +784,56 @@ fn validate_isolated_frontend_block_runtime(
         return Err(PluginFrameworkError::invalid_provider_package(
             "isolated_iframe entry code module requires exactly one browser_module asset",
         ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_frontend_code_modules(
+    modules: &[FrontendBlockCodeModuleManifest],
+) -> FrameworkResult<()> {
+    validate_frontend_code_modules_with_identities(
+        modules,
+        &mut HashSet::new(),
+        &mut BTreeMap::new(),
+    )
+}
+
+fn validate_frontend_code_modules_with_identities<'a>(
+    modules: &'a [FrontendBlockCodeModuleManifest],
+    registered_module_identities: &mut HashSet<&'a str>,
+    registered_asset_media_types: &mut BTreeMap<&'a String, &'a String>,
+) -> FrameworkResult<()> {
+    for code_module in modules {
+        validate_non_empty(
+            &code_module.source,
+            "block_contributions[].code_modules[].source",
+        )?;
+        validate_non_empty(
+            &code_module.version,
+            "block_contributions[].code_modules[].version",
+        )?;
+        if !registered_module_identities.insert(code_module.source.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "block_contributions[].code_modules[].source must be unique",
+            ));
+        }
+        validate_frontend_module_exports(code_module)?;
+        validate_frontend_module_binding(code_module)?;
+        for asset in &code_module.assets {
+            if let Some(existing_media_type) =
+                registered_asset_media_types.insert(&asset.sha256, &asset.media_type)
+            {
+                if existing_media_type != &asset.media_type {
+                    return Err(PluginFrameworkError::invalid_provider_package(
+                        "one frontend asset digest cannot declare multiple media types",
+                    ));
+                }
+            }
+        }
+        validate_non_empty(
+            &code_module.type_declarations,
+            "block_contributions[].code_modules[].type_declarations",
+        )?;
     }
     Ok(())
 }

@@ -242,6 +242,43 @@ async fn replace_official_group_in_transaction(
 
 #[async_trait]
 impl UiManagementRepository for PgControlPlaneStore {
+    async fn get_settings_frontend_module_asset(
+        &self,
+        template_id: Uuid,
+        plugin_code: &str,
+        plugin_version: &str,
+        sha256: &str,
+    ) -> Result<Option<control_plane_contracts::ports::RetainedFrontendModuleAsset>> {
+        let row = sqlx::query(
+            r#"
+            select retained.sha256, retained.media_type, retained.bytes
+            from retained_frontend_module_assets retained
+            join extension_installations installation on installation.id = retained.installation_id
+            join ui_code_templates template on template.applied_installation_id = installation.id
+            where template.id = $1
+              and installation.artifact_id = $2
+              and installation.artifact_version = $3
+              and installation.verification_status = 'valid'
+              and template.applied_plugin_version = $3
+              and retained.sha256 = $4
+            limit 1
+            "#,
+        )
+        .bind(template_id)
+        .bind(plugin_code)
+        .bind(plugin_version)
+        .bind(sha256)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(
+            |row| control_plane_contracts::ports::RetainedFrontendModuleAsset {
+                sha256: row.get("sha256"),
+                media_type: row.get("media_type"),
+                bytes: row.get("bytes"),
+            },
+        ))
+    }
+
     async fn native_template_is_available(
         &self,
         template_id: Uuid,

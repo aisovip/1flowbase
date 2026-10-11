@@ -77,3 +77,27 @@ delivery is at-least-once, so consumers must deduplicate by `event_id`.
 - Start from `plugins/templates/data_source_http_fixture` for an external data-source runtime-extension fixture.
 - Keep the method names and JSON output shapes aligned with the runtime contract.
 - Replace the shell fixture runtime with your real executable after the package passes runtime-extension-host conformance tests.
+
+## Settings Page Frontend Modules (host 0.5.5+)
+
+`settings_pages[].code_modules` uses the same module manifest as block contributions:
+`source`, `version`, `exports`, `binding`, `assets`, and inline `type_declarations`.
+Existing pages omit it and receive an empty module list. A fetched module declares
+exactly one package-relative `browser_module` asset (`text/javascript; charset=utf-8`)
+and optional `shadow_style` assets (`text/css; charset=utf-8`), each with lowercase
+SHA-256. Ship self-contained browser ESM bundles: relative/bare dependencies must
+be bundled into that entry, and styles remain inside the page ShadowRoot.
+
+Installation validates and retains these bytes in the existing installation
+transaction. Page metadata and asset reads use the registered settings page's
+permission and applied plugin version; they grant no frontstage access or workspace
+assignment. The dedicated authenticated asset API rejects undeclared digests and
+stale versions, and the browser verifies bytes before module evaluation/style use.
+Page changes abort pending reads and dispose temporary blob URLs. Package-owned
+npm preparation runs during plugin development/build; customers do not install npm
+dependencies. The public packager excludes nested `node_modules` and `.npm` caches while retaining
+built JS/CSS assets, declarations and licenses.
+
+设置页从宿主 0.5.5 起支持同一 `code_modules` 契约；旧页默认空列表。插件在构建时
+打包自包含 ESM、ShadowRoot CSS、声明和许可，用户无需安装 npm 依赖。资源读取沿用
+设置页授权并绑定已应用插件版本，校验清单归属及 SHA-256，不扩大前台权限或工作区分配。

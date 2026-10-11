@@ -295,17 +295,25 @@ fn prepare_installation_commit(
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
     let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
     let mut retained_frontend_module_assets = Vec::new();
-    for block in &manifest.block_contributions {
-        for module in &block.code_modules {
-            for asset in &module.assets {
-                retained_frontend_module_assets.push(RetainedFrontendModuleAssetInput {
-                    module_source: module.source.clone(),
-                    sha256: asset.sha256.clone(),
-                    media_type: asset.media_type.clone(),
-                    bytes: plugin_framework::load_frontend_module_asset(package_root, asset)
-                        .map_err(map_framework_error)?,
-                });
-            }
+    for module in manifest
+        .block_contributions
+        .iter()
+        .flat_map(|entry| &entry.code_modules)
+        .chain(
+            manifest
+                .settings_pages
+                .iter()
+                .flat_map(|entry| &entry.code_modules),
+        )
+    {
+        for asset in &module.assets {
+            retained_frontend_module_assets.push(RetainedFrontendModuleAssetInput {
+                module_source: module.source.clone(),
+                sha256: asset.sha256.clone(),
+                media_type: asset.media_type.clone(),
+                bytes: plugin_framework::load_frontend_module_asset(package_root, asset)
+                    .map_err(map_framework_error)?,
+            });
         }
     }
     let root = UpsertPluginInstallationInput {

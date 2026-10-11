@@ -732,6 +732,7 @@ fn load_host_contribution(
     let package_root = api_workspace_root
         .join("plugins/host-extensions")
         .join(listed_module_id);
+    plugin_framework::validate_frontend_module_assets(&package_root, manifest)?;
     for page in &manifest.settings_pages {
         plugin_framework::read_plugin_settings_page_source(&package_root, page)?;
     }

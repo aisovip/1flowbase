@@ -5,7 +5,17 @@ impl InterfaceContract for UiManagementOutput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema(&[
+                ("variant", mp::tag_schema("PluginSettingsModuleAsset")),
+                ("sha256", mp::text_schema()),
+                ("media_type", mp::text_schema()),
+                ("byte_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[
                 ("variant", mp::tag_schema("PluginSettingsPage")),
+                (
+                    "code_modules",
+                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                ),
                 ("route_id", mp::text_schema()),
                 ("feature_id", mp::text_schema()),
                 ("template_id", mp::text_schema()),
@@ -313,8 +323,18 @@ impl InterfaceContract for UiManagementOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::PluginSettingsModuleAsset(asset) => mp::object_value(&[
+                ("variant", serde_json::json!("PluginSettingsModuleAsset")),
+                ("sha256", mp::text(&asset.sha256)?),
+                ("media_type", mp::text(&asset.media_type)?),
+                ("byte_count", serde_json::json!(asset.bytes.len())),
+            ]),
             Self::PluginSettingsPage(page) => mp::object_value(&[
                 ("variant", serde_json::json!("PluginSettingsPage")),
+                (
+                    "code_modules",
+                    mp::object_value(&[("item_count", serde_json::json!(page.code_modules.len()))]),
+                ),
                 ("route_id", mp::text(&page.route_id)?),
                 ("feature_id", mp::text(&page.feature_id)?),
                 ("template_id", mp::text(&page.template_id)?),

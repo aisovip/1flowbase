@@ -13,6 +13,8 @@ pub struct PluginSettingsPageManifest {
     pub contribution_code: String,
     pub source_file: String,
     pub language: String,
+    #[serde(default)]
+    pub code_modules: Vec<crate::manifest_v1::FrontendBlockCodeModuleManifest>,
 }
 
 pub fn validate_plugin_settings_pages(
@@ -22,6 +24,7 @@ pub fn validate_plugin_settings_pages(
     let mut features = BTreeSet::new();
     let mut templates = BTreeSet::new();
     for page in pages {
+        crate::manifest_v1::validate_frontend_code_modules(&page.code_modules)?;
         if !page.feature_id.starts_with(&format!("{owner}."))
             || page.feature_id.len() <= owner.len() + 1
             || !features.insert(&page.feature_id)

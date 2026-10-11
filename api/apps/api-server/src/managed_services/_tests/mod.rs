@@ -6,7 +6,8 @@ fn fixture() -> ManagedServiceRegistration {
         declaration:serde_json::from_value(json!({"scope":"system","feature":{"feature_id":"fixture.settings","label":"Fixture service","description":"Configure fixture service","route_id":"fixture","path":"/settings/fixture"},"operations":[{
             "interface_id":"fixture.list","contribution_id":"fixture.list","method":"GET","path":"/api/console/managed-services/fixture/items","summary":"List fixture items","description":"List shared fixture items.","input_schema":{"type":"object","properties":{"path":{"type":"object"},"query":{"type":"object"},"body":{"type":"object"}}},"output_schema":{"type":"object"}
         }]})).unwrap(),
-        pages:vec![plugin_framework::PluginSettingsPageManifest { feature_id:"fixture.settings".into(), contribution_code:"settings".into(), source_file:"ui/Settings.tsx".into(), language:"tsx".into() }],
+        pages:vec![plugin_framework::PluginSettingsPageManifest { code_modules: Vec::new(),
+feature_id:"fixture.settings".into(), contribution_code:"settings".into(), source_file:"ui/Settings.tsx".into(), language:"tsx".into() }],
     }
 }
 #[test]
@@ -35,12 +36,11 @@ fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
         operation.routes[0].path,
         "/api/console/managed-services/fixture/items"
     );
-    assert!(
-        plan.route_assembly
-            .bindings()
-            .iter()
-            .any(|binding| binding.route.path == operation.routes[0].path)
-    );
+    assert!(plan
+        .route_assembly
+        .bindings()
+        .iter()
+        .any(|binding| binding.route.path == operation.routes[0].path));
     assert_eq!(
         plan.console_surface_registry
             .page("fixture")

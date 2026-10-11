@@ -641,3 +641,67 @@ console_locale_catalog:
         assert_eq!(response.status(), expected);
     }
 }
+
+#[tokio::test]
+async fn plugin_settings_module_asset_has_a_dedicated_canonical_binary_route() {
+    use crate::_tests::host_extensions::host_extension_boot_tests::NativeSettingsFixture;
+    use control_plane::ports::PluginRepository;
+    let fixture = NativeSettingsFixture::new().await;
+    let target = fixture.select_with_modules("1.0.0", true).await;
+    fixture
+        .state
+        .store
+        .apply_native_plugin_settings_templates(&target)
+        .await
+        .unwrap();
+    let state = fixture.process_state("1.0.0", target);
+    let digest = state
+        .console_surface_registry
+        .page("northwind.settings-page.settings")
+        .unwrap()
+        .code_modules[0]
+        .assets[0]
+        .sha256
+        .clone();
+    let app = crate::app_with_state(state);
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let uri = format!("/api/console/settings/ui-management/plugin-settings-module-asset?route_id=northwind.settings-page.settings&applied_plugin_version=1.0.0&sha256={digest}");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["content-type"],
+        "text/javascript; charset=utf-8"
+    );
+    assert_eq!(response.headers()["cache-control"], "private, no-store");
+    assert_eq!(
+        to_bytes(response.into_body(), 1024).await.unwrap().as_ref(),
+        b"export const version = '1.0.0';"
+    );
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri.replace("1.0.0", "2.0.0"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let response = app
+        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}

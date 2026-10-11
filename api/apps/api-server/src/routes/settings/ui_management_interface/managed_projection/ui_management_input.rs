@@ -5,6 +5,12 @@ impl InterfaceContract for UiManagementInput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema(&[
+                ("variant", mp::tag_schema("PluginSettingsModuleAsset")),
+                ("route_id", mp::text_schema()),
+                ("applied_plugin_version", mp::text_schema()),
+                ("sha256", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
                 ("variant", mp::tag_schema("PluginSettingsPage")),
                 ("route_id", mp::text_schema()),
             ]),
@@ -217,6 +223,16 @@ impl InterfaceContract for UiManagementInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::PluginSettingsModuleAsset {
+                route_id,
+                applied_plugin_version,
+                sha256,
+            } => mp::object_value(&[
+                ("variant", serde_json::json!("PluginSettingsModuleAsset")),
+                ("route_id", mp::text(route_id)?),
+                ("applied_plugin_version", mp::text(applied_plugin_version)?),
+                ("sha256", mp::text(sha256)?),
+            ]),
             Self::PluginSettingsPage { route_id } => mp::object_value(&[
                 ("variant", serde_json::json!("PluginSettingsPage")),
                 ("route_id", mp::text(route_id)?),

@@ -41,6 +41,13 @@ pub struct PluginSettingsPageQuery {
     pub route_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PluginSettingsModuleAssetQuery {
+    pub route_id: String,
+    pub applied_plugin_version: String,
+    pub sha256: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PluginSettingsPageResponse {
     pub route_id: String,
@@ -54,6 +61,8 @@ pub struct PluginSettingsPageResponse {
     pub revision: i32,
     pub applied_plugin_version: String,
     pub overwrite_on_plugin_upgrade: bool,
+    #[schema(value_type = Vec<Object>)]
+    pub code_modules: Vec<plugin_framework::FrontendBlockCodeModuleManifest>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -309,6 +318,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/ui-management/plugin-settings-module-asset",
+            console_get(
+                plugin_settings_module_asset,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            ),
+        )
+        .route(
             "/settings/ui-management/templates",
             console_get(list_templates, owner("ui_management.templates.list"))
                 .post(create_template, owner("ui_management.templates.create")),
@@ -399,6 +415,45 @@ pub async fn plugin_settings_page(
         unreachable!()
     };
     Ok(Json(ApiSuccess::new(page)))
+}
+
+#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-module-asset", summary = "Read a declared settings page module asset", description = "Returns retained bytes after registered settings page authorization, applied version and digest membership checks.", params(("route_id" = String, Query), ("applied_plugin_version" = String, Query), ("sha256" = String, Query)), responses((status = 200, description = "Verified module asset"), (status = 403, body = crate::error_response::ErrorBody)))]
+pub async fn plugin_settings_module_asset(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<PluginSettingsModuleAssetQuery>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    let UiManagementOutput::PluginSettingsModuleAsset(asset) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.plugin-settings-module-asset.get.v1",
+        UiManagementInput::PluginSettingsModuleAsset {
+            route_id: query.route_id,
+            applied_plugin_version: query.applied_plugin_version,
+            sha256: query.sha256,
+        },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, asset.media_type),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "private, no-store".to_string(),
+            ),
+            (
+                axum::http::header::X_CONTENT_TYPE_OPTIONS,
+                "nosniff".to_string(),
+            ),
+        ],
+        asset.bytes,
+    )
+        .into_response())
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/templates", responses((status = 200, body = TemplateListResponse), (status = 403, body = crate::error_response::ErrorBody)))]

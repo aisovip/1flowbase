@@ -202,7 +202,8 @@ export async function apiFetchBlob({
   contentType,
   headers: extraHeaders,
   csrfToken,
-  baseUrl = getDefaultApiBaseUrl()
+  baseUrl = getDefaultApiBaseUrl(),
+  signal
 }: Omit<
   ApiRequestOptions,
   'expectJson' | 'unwrapSuccess'
@@ -232,6 +233,7 @@ export async function apiFetchBlob({
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     credentials: 'include',
+    signal,
     headers,
     body:
       body !== undefined

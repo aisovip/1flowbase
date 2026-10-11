@@ -161,6 +161,7 @@ pub(crate) async fn load_installations(
             owners.insert(code.clone()),
             "duplicate active managed service owner"
         );
+        plugin_framework::validate_frontend_module_assets(root, &manifest)?;
         for page in &manifest.settings_pages {
             plugin_framework::read_plugin_settings_page_source(root, page)?;
         }

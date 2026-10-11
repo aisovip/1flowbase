@@ -33,6 +33,11 @@ use crate::{
 };
 
 pub(crate) enum UiManagementInput {
+    PluginSettingsModuleAsset {
+        route_id: String,
+        applied_plugin_version: String,
+        sha256: String,
+    },
     PluginSettingsPage {
         route_id: String,
     },
@@ -81,6 +86,7 @@ pub(crate) enum UiManagementInput {
 }
 
 pub(crate) enum UiManagementOutput {
+    PluginSettingsModuleAsset(control_plane_contracts::ports::RetainedFrontendModuleAsset),
     PluginSettingsPage(super::ui_management::PluginSettingsPageResponse),
     Templates(TemplateListResponse),
     Template(ManagedTemplateResponse),
@@ -132,6 +138,58 @@ impl UiManagementAdapter {
         let actor_user_id = principal.actor().user_id;
         let workspace_id = principal.actor().current_workspace_id;
         match input {
+            UiManagementInput::PluginSettingsModuleAsset {
+                route_id,
+                applied_plugin_version,
+                sha256,
+            } => {
+                let UiManagementOutput::PluginSettingsPage(page) = Box::pin(self.execute_inner(
+                    principal,
+                    UiManagementInput::PluginSettingsPage { route_id },
+                ))
+                .await?
+                else {
+                    unreachable!()
+                };
+                if page.applied_plugin_version != applied_plugin_version {
+                    return Err(control_plane::errors::ControlPlaneError::Conflict(
+                        "native_plugin_version_mismatch",
+                    )
+                    .into());
+                }
+                let declared = page
+                    .code_modules
+                    .iter()
+                    .flat_map(|module| &module.assets)
+                    .find(|asset| asset.sha256 == sha256)
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "settings_module_asset",
+                    ))?;
+                use control_plane_contracts::ports::UiManagementRepository;
+                let asset = self
+                    .0
+                    .store
+                    .get_settings_frontend_module_asset(
+                        parse_template_id(&page.template_id)?,
+                        &page.provider_code,
+                        &applied_plugin_version,
+                        &sha256,
+                    )
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "settings_module_asset",
+                    ))?;
+                use sha2::{Digest, Sha256};
+                if asset.media_type != declared.media_type
+                    || format!("{:x}", Sha256::digest(&asset.bytes)) != declared.sha256
+                {
+                    return Err(control_plane::errors::ControlPlaneError::Conflict(
+                        "settings_module_asset_integrity",
+                    )
+                    .into());
+                }
+                Ok(UiManagementOutput::PluginSettingsModuleAsset(asset))
+            }
             UiManagementInput::PluginSettingsPage { route_id } => {
                 let page = self.0.surfaces.page(&route_id).ok_or(
                     control_plane::errors::ControlPlaneError::NotFound("plugin_settings_page"),
@@ -202,6 +260,7 @@ impl UiManagementAdapter {
                         revision: revision.revision,
                         applied_plugin_version: page.plugin_version.clone(),
                         overwrite_on_plugin_upgrade: true,
+                        code_modules: page.code_modules.clone(),
                     },
                 ))
             }
@@ -581,6 +640,13 @@ fn catalog_update_status_response(
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
+        interface_id: "ui_management.plugin_settings_module_asset.view",
+        binding_id: "http.console.ui-management.plugin-settings-module-asset.get.v1",
+        method: "GET",
+        path: "/api/console/settings/ui-management/plugin-settings-module-asset",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
         interface_id: "ui_management.plugin_settings_page.view",
         binding_id: "http.console.ui-management.plugin-settings-page.get.v1",
         method: "GET",
@@ -768,7 +834,11 @@ mod tests {
             assert_eq!(route.method(), declaration.method);
             assert_eq!(route.path(), declaration.path);
         }
-        assert_eq!(DECLARATIONS.len(), 19);
+        assert_eq!(DECLARATIONS.len(), 20);
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+#[cfg(test)]
+#[path = "ui_management_interface/_tests/settings_module_assets.rs"]
+mod settings_module_asset_tests;
