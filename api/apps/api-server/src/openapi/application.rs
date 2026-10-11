@@ -38,6 +38,7 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::log_query::query_log_records,
         crate::routes::application_runtime::log_query::query_record_trajectory,
         crate::routes::application_runtime::provider_trajectory::get_log_record,
+        crate::routes::application_runtime::provider_trajectory::list_record_conversation_messages,
         crate::routes::application_runtime::provider_trajectory::list_record_client_trajectory,
         crate::routes::application_runtime::provider_trajectory::get_record_client_trajectory_section,
         crate::routes::application_public_api::native::list_native_models,

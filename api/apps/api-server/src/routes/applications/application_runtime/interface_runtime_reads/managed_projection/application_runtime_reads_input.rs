@@ -243,7 +243,8 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
             | Self::QueryRecordTrajectory { .. } => {
                 mp::object_value(&[("variant", serde_json::json!("LogQuery"))])
             }
-            Self::GetRecord { .. }
+            Self::RecordConversationPage { .. }
+            | Self::GetRecord { .. }
             | Self::RecordClientTrajectoryPage { .. }
             | Self::RecordClientTrajectorySection { .. } => {
                 mp::object_value(&[("variant", serde_json::json!("RecordRead"))])

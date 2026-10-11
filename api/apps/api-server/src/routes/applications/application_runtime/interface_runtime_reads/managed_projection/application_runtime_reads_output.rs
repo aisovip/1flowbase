@@ -14,6 +14,10 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
             ]),
             mp::object_schema(&[("variant", mp::tag_schema("Record"))]),
             mp::object_schema(&[
+                ("variant", mp::tag_schema("RecordConversationPage")),
+                ("item_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[
                 ("variant", mp::tag_schema("WorkflowTrajectoryPage")),
                 ("item_count", mp::count_schema()),
             ]),
@@ -1015,7 +1019,7 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
             Self::CurrentContext(response) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(usize::from(response.record_id.is_some())))]),
             Self::QueryFields(fields) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(fields.record_fields.len()+fields.trajectory_fields.len()))]),
             Self::Records(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),
-            Self::RecordTrajectoryQuery(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),Self::RecordClientTrajectoryPage(page)=>mp::object_value(&[("variant",serde_json::json!("RecordClientTrajectoryPage")),("item_count",serde_json::json!(page.items.len()))]),Self::Record(_) => mp::object_value(&[("variant",serde_json::json!("Record"))]),
+            Self::RecordTrajectoryQuery(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),Self::RecordClientTrajectoryPage(page)=>mp::object_value(&[("variant",serde_json::json!("RecordClientTrajectoryPage")),("item_count",serde_json::json!(page.items.len()))]),Self::RecordConversationPage(page) => mp::object_value(&[("variant",serde_json::json!("RecordConversationPage")),("item_count",serde_json::json!(page.items.len()))]),Self::Record(_) => mp::object_value(&[("variant",serde_json::json!("Record"))]),
 Self::WorkflowTrajectoryPage(value) => mp::object_value(&[("variant", serde_json::json!("WorkflowTrajectoryPage")), ("item_count", serde_json::json!(value.items.len()))]),
 Self::WorkflowTrajectoryBody(value) => mp::object_value(&[("variant", serde_json::json!("WorkflowTrajectoryBody")), ("item_count", serde_json::json!(value.sections.len()))]),
 

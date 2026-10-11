@@ -101,6 +101,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<RecordClientTrajectoryQueryPage> {
         anyhow::bail!("query_record_client_trajectory not implemented")
     }
+    async fn application_log_record_conversation_page(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+        _before: Option<Uuid>,
+        _after: Option<Uuid>,
+        _limit: i64,
+    ) -> anyhow::Result<ApplicationLogRecordConversationPage> {
+        anyhow::bail!("application_log_record_conversation_page not implemented")
+    }
     async fn application_log_record(
         &self,
         _application_id: Uuid,
