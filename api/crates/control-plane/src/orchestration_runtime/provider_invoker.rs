@@ -506,19 +506,31 @@ where
             .await
     }
 
+    fn prepare_selected_llm_input(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        route: &orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode>
+    {
+        self.ensure_continuation_route(runtime, &route.runtime_capabilities)?;
+        self.apply_selected_provider_transport(runtime, &route.runtime_capabilities, input)?;
+        Ok(if input.native_transport.is_some() {
+            orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque
+        } else {
+            orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::SemanticMapped
+        })
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         resolved_route: orchestration_runtime::execution_engine::ResolvedProviderRoute,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
-        self.ensure_continuation_route(runtime, &resolved_route.runtime_capabilities)?;
-        self.apply_selected_provider_transport(
-            runtime,
-            &resolved_route.runtime_capabilities,
-            &mut input,
-        )?;
-        let selected_native_transport = input.native_transport.is_some();
+        let selected_mode =
+            self.prepare_selected_llm_input(runtime, &resolved_route, &mut input)?;
+        let selected_native_transport = selected_mode == orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque;
         let pin = resolved_route
             .invocation_pin::<RuntimeProviderInvocationPin>()
             .ok_or(ControlPlaneError::InvalidInput("resolved_provider_route"))?
@@ -1110,10 +1122,7 @@ where
         // Validate the provider-owned typed receipt before any host metadata wrapping.
         // Keep the validation result until settlement completes so invalid metadata does
         // not skip accounting for upstream usage that has already occurred.
-        let recovery_receipt = match invocation_output
-            .as_ref()
-            .filter(|_| selected_native_transport)
-        {
+        let recovery_receipt = match invocation_output.as_ref() {
             Some(output) => output.result.recovery_receipt().map_err(anyhow::Error::msg),
             None => Ok(None),
         };
@@ -1791,6 +1800,12 @@ where
             .provider_transport_payload
             .as_ref()
             .is_some_and(|payload| payload.is_preferred())
+            && input.native_transport.is_none()
+            && !input.required_capabilities.contains(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough)
+            && !input.required_capabilities.contains(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1)
+            && self.continuation_affinity().is_none()
             && !(capabilities.contains("responses.native_passthrough")
                 && capabilities.contains("responses.native_output.v1"))
         {

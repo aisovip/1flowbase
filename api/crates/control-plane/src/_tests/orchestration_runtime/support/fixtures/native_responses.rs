@@ -1,6 +1,21 @@
 use super::*;
 
 impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime> {
+    pub fn for_tests_with_captured_provider_outputs(
+        outputs: Vec<crate::ports::ProviderRuntimeInvocationOutput>,
+    ) -> (
+        Self,
+        std::sync::Arc<std::sync::Mutex<Vec<ProviderInvocationInput>>>,
+    ) {
+        let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(vec![
+            "application.view.all",
+            "application.create.all",
+        ]);
+        let (runtime, captured) =
+            InMemoryProviderRuntime::with_provider_outputs(outputs).capturing_invocations();
+        (Self::with_test_runtime(repository, runtime), captured)
+    }
+
     /// Use the real service/invoker assembly while keeping the upstream deterministically scripted.
     pub async fn enable_native_responses_fixture(&self) {
         self.repository.enable_native_responses_fixture().await;

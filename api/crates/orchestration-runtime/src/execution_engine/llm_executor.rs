@@ -412,26 +412,15 @@ where
         }
     };
     let required_capabilities = routing_probe.input.required_capabilities.clone();
-    let recovery_input_mode = if required_capabilities.contains(
-        &extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
-    ) {
-        RecoveryInputMode::NativeOpaque
-    } else {
-        RecoveryInputMode::SemanticMapped
-    };
     let recovery_deadline =
         recovery_absolute_deadline(&routing_probe.input, OffsetDateTime::now_utc());
-    // An opaque transport payload can still contain a cursor even when semantic messages do
-    // not. Full-context reconstruction must pass Native's separate owned-history admission.
-    let recovery_reproducible = recovery_input_mode == RecoveryInputMode::SemanticMapped
-        && routing_probe.input.previous_response_id.is_none();
     let configured_request_count = llm_request_count(node);
     let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
     let mut recovery_ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
         recovery_deadline,
         u16::try_from(AUTOMATIC_TRANSPORT_RETRY_LIMIT).unwrap_or(u16::MAX),
-        recovery_reproducible,
-        recovery_input_mode,
+        false,
+        RecoveryInputMode::NativeOpaque,
         routing_probe
             .input
             .run_context
@@ -632,6 +621,19 @@ where
                 content_blocks: None,
             });
         }
+        let tool_prompt_transcript =
+            llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
+        let invocation_tools = invocation.input.tools.clone();
+        let selected_input_mode = invoker.prepare_selected_llm_input(
+            attempt_runtime,
+            &resolved_route,
+            &mut invocation.input,
+        )?;
+        recovery_ledger.select_input_representation(
+            selected_input_mode,
+            invocation.input.previous_response_id.is_none(),
+        );
+        let native_responses_passthrough = selected_input_mode == RecoveryInputMode::NativeOpaque;
         let reasoning_effort = invocation
             .input
             .model_parameters
@@ -653,11 +655,7 @@ where
             variable_pool,
             &invocation.input,
         );
-        if invocation.input.messages.is_empty()
-            && !invocation.input.required_capabilities.contains(
-                &extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
-            )
-        {
+        if invocation.input.messages.is_empty() && !native_responses_passthrough {
             let attempt_finished_at = OffsetDateTime::now_utc();
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);
             let mut attempt = build_attempt_metric(AttemptMetricInput {
@@ -705,12 +703,6 @@ where
                 },
             );
         }
-        let tool_prompt_transcript =
-            llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
-        let invocation_tools = invocation.input.tools.clone();
-        let native_responses_passthrough = invocation.input.required_capabilities.contains(
-            &extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
-        );
         let attempt_started_at = OffsetDateTime::now_utc();
         invocation.input.trace_context.insert(
             "provider_attempt_index".to_string(),

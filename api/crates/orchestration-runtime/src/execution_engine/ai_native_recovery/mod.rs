@@ -288,6 +288,17 @@ impl AiNativeRecoveryLedger {
         Ok(())
     }
 
+    /// Update only the selected attempt's representation. Selection never replenishes
+    /// attempt budgets, rotates epochs, or clears an observed commit/terminal fact.
+    pub fn select_input_representation(
+        &mut self,
+        input_mode: RecoveryInputMode,
+        reproducible: bool,
+    ) {
+        self.input_mode = input_mode;
+        self.reproducible = input_mode == RecoveryInputMode::SemanticMapped && reproducible;
+    }
+
     pub fn provider_directive(&self) -> ProviderRecoveryDirective {
         let budget = RecoveryBudget {
             max_inner_attempts: self
