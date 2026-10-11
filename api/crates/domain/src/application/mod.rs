@@ -10,6 +10,10 @@ pub enum ApplicationType {
 }
 
 impl ApplicationType {
+    pub fn initial_api_enabled(self) -> bool {
+        self == Self::AgentLogs
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::AgentFlow => "agent_flow",

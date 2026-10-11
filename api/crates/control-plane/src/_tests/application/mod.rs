@@ -85,6 +85,17 @@ async fn ac_001_application_sections_express_product_api_capabilities() {
         Some("/api/agent/v1/runs")
     );
 
+    assert_eq!(
+        agent_flow.sections.api.api_capability_status,
+        "not_published"
+    );
+
+    let mut logs_command = create_command(Uuid::nil(), "Agent Logs");
+    logs_command.application_type = ApplicationType::AgentLogs;
+    let logs = service.create_application(logs_command).await.unwrap();
+    assert_eq!(logs.sections.api.api_capability_status, "enabled");
+    assert_eq!(logs.sections.api.credentials_status, "missing");
+
     let extension = service
         .create_application(create_workflow_command(
             Uuid::nil(),

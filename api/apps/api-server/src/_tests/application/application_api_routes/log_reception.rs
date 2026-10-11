@@ -41,6 +41,19 @@ async fn agent_logs_reception_controls_writes_without_publication_or_key_revocat
     let id = create_application_with_type(&app, &cookie, &csrf, "Reception", "agent_logs").await;
     let status_uri = format!("/api/console/applications/{id}/api-status");
     let key_uri = format!("/api/console/applications/{id}/api-keys");
+    assert_eq!(
+        console(
+            &app,
+            "PATCH",
+            &status_uri,
+            Some(&cookie),
+            Some(&csrf),
+            json!({"api_enabled":false}),
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
     let key = console(
         &app,
         "POST",
@@ -242,4 +255,64 @@ async fn agent_logs_reception_controls_writes_without_publication_or_key_revocat
         StatusCode::OK
     );
     assert_eq!(counts().await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn agent_logs_reception_is_enabled_on_creation_without_changing_other_types() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let created = console(
+        &app,
+        "POST",
+        "/api/console/applications",
+        Some(&cookie),
+        Some(&csrf),
+        json!({"application_type":"agent_logs","name":"Default reception","description":""}),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = response_json(created).await;
+    assert_eq!(
+        created["data"]["sections"]["api"]["api_capability_status"],
+        "enabled"
+    );
+    let id = created["data"]["id"].as_str().unwrap();
+    let key = console(
+        &app,
+        "POST",
+        &format!("/api/console/applications/{id}/api-keys"),
+        Some(&cookie),
+        Some(&csrf),
+        json!({"name":"Ready after creation"}),
+    )
+    .await;
+    assert_eq!(key.status(), StatusCode::CREATED);
+    let key = response_json(key).await;
+    let accepted = upload(&app, key["data"]["token"].as_str().unwrap(), "first").await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    assert_eq!(response_json(accepted).await["data"]["accepted_events"], 1);
+
+    let flow = create_application(&app, &cookie, &csrf, "Default flow").await;
+    let workflow = create_extension_workflow(&app, &cookie, &csrf, "Default workflow").await;
+    for (application_id, expected) in [
+        (id, true),
+        (flow.as_str(), false),
+        (workflow.as_str(), false),
+    ] {
+        let enabled: bool = sqlx::query_scalar("select api_enabled from applications where id=$1")
+            .bind(Uuid::parse_str(application_id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(enabled, expected);
+    }
+    let publications: i64 = sqlx::query_scalar(
+        "select count(*) from application_publication_versions where application_id=$1",
+    )
+    .bind(Uuid::parse_str(id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(publications, 0);
 }

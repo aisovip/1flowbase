@@ -348,8 +348,9 @@ impl ApplicationRepository for PgControlPlaneStore {
                 icon,
                 icon_background,
                 created_by,
-                updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+                updated_by,
+                api_enabled
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)
             returning
                 id,
                 workspace_id,
@@ -383,6 +384,7 @@ impl ApplicationRepository for PgControlPlaneStore {
         .bind(input.icon.as_deref())
         .bind(input.icon_background.as_deref())
         .bind(input.actor_user_id)
+        .bind(input.application_type.initial_api_enabled())
         .fetch_one(&mut *tx)
         .await?;
 
