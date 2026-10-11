@@ -45,6 +45,12 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
                 "agent_logs.event_conflict" => {
                     crate::errors::ControlPlaneError::Conflict("agent_logs_event_conflict").into()
                 }
+                "agent_logs.ingestion_disabled" => {
+                    crate::errors::ControlPlaneError::PermissionDenied(
+                        "agent_logs_ingestion_disabled",
+                    )
+                    .into()
+                }
                 "agent_logs.application_type" => {
                     crate::errors::ControlPlaneError::PermissionDenied(
                         "agent_logs_application_type",

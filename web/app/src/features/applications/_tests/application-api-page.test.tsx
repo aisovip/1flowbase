@@ -39,6 +39,7 @@ const publicApi = vi.hoisted(() => ({
   fetchApplicationApiPublication: vi.fn(),
   publishApplicationApiVersion: vi.fn(),
   unpublishApplicationApiVersion: vi.fn(),
+  updateApplicationApiStatus: vi.fn(),
   fetchApplicationApiDocsCatalog: vi.fn(),
   fetchApplicationApiDocsCategoryOperations: vi.fn(),
   fetchApplicationApiDocsOperationSpec: vi.fn(),
@@ -133,11 +134,13 @@ describe('ApplicationApiPage', () => {
     const statusBar = await screen.findByRole('region', {
       name: '公开 API 状态'
     });
-    expect(within(statusBar).getByText('已启用')).toBeVisible();
+    expect(within(statusBar).getByText('接收中')).toBeVisible();
     expect(screen.getByText('docs explorer')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText('API Keys')).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: '日志接收' })
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(publicApi.fetchApplicationApiKeys).toHaveBeenCalledWith('app-1')
     );
@@ -166,8 +169,10 @@ describe('ApplicationApiPage', () => {
         }}
       />
     );
-    expect(await screen.findByText('未启用')).toBeVisible();
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(await screen.findByText('已停用')).toBeVisible();
+    expect(
+      screen.getByRole('switch', { name: '日志接收' })
+    ).toBeInTheDocument();
     expect(publicApi.fetchApplicationApiPublication).not.toHaveBeenCalled();
   });
 

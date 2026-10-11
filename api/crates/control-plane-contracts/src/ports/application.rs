@@ -45,6 +45,7 @@ pub struct ApplicationManagementRecord {
     pub updated_at: OffsetDateTime,
     pub tags: Vec<domain::ApplicationTag>,
     pub publication_status: domain::ApplicationPublicationStatus,
+    pub api_enabled: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -348,8 +348,6 @@
     "source_client": "来源客户端",
     "collected": "采集观察",
     "client_collector": "客户端采集",
-    "api_enabled": "已启用",
-    "api_disabled": "未启用",
     "install_collector": "安装到 1flowbase",
     "collector_version": "版本 {{version}}",
     "documentation": "查看文档",
@@ -390,7 +388,14 @@
     "generate_key": "快速生成 Key",
     "collector_key_name": "采集 CLI：{{client}}",
     "key_generation_failed": "无法生成 API Key，请重试或检查应用权限。",
-    "enter_application_key": "输入当前应用的 API Key"
+    "enter_application_key": "输入当前应用的 API Key",
+    "reception": "日志接收",
+    "reception_enabled": "接收中",
+    "reception_disabled": "已停用",
+    "reception_help": "停用后拒绝上传；已保存日志和 API Key 保留。",
+    "reception_updated": "日志接收状态已更新",
+    "reception_update_failed": "更新日志接收状态失败，请检查权限后重试。",
+    "publication_not_applicable": "不适用（日志应用）"
   },
   "log_deletion": {
     "button": "删除日志",

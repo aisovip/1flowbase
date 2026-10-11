@@ -200,6 +200,7 @@ async fn agent_logs_delete_rejects_other_workspace_native_and_ungranted_actor() 
         })
         .await
         .unwrap();
+    enable_reception_fixture(&store, wrong, foreign_app.id).await;
     let foreign_id = ingest_turn(
         &store,
         wrong,

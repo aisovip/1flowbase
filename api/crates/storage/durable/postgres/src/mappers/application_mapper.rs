@@ -153,7 +153,12 @@ pub fn application_sections(
         sections.orchestration.status = "unavailable".into();
         sections.orchestration.subject_status = "not_applicable".into();
         sections.api.status = "available".into();
-        sections.api.api_capability_status = "enabled".into();
+        sections.api.api_capability_status = if api_state.api_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+        .into();
         sections.api.invoke_path_template = Some("/api/logs/v1/events".into());
         sections.logs.status = "available".into();
         sections.logs.runs_capability_status = "available".into();

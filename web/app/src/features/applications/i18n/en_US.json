@@ -348,8 +348,6 @@
     "source_client": "Source client",
     "collected": "Collected observation",
     "client_collector": "Client collector",
-    "api_enabled": "Enabled",
-    "api_disabled": "Disabled",
     "install_collector": "Install in 1flowbase",
     "collector_version": "Version {{version}}",
     "documentation": "View documentation",
@@ -390,7 +388,14 @@
     "generate_key": "Generate key",
     "collector_key_name": "Collector CLI: {{client}}",
     "key_generation_failed": "Could not generate an API key. Try again or check your application permissions.",
-    "enter_application_key": "Enter an API key for this application"
+    "enter_application_key": "Enter an API key for this application",
+    "reception": "Log reception",
+    "reception_enabled": "Receiving",
+    "reception_disabled": "Disabled",
+    "reception_help": "Disabling reception rejects uploads. Saved logs and API keys are preserved.",
+    "reception_updated": "Log reception updated",
+    "reception_update_failed": "Could not update log reception. Check your permissions and try again.",
+    "publication_not_applicable": "Not applicable (log applications)"
   },
   "log_deletion": {
     "button": "Delete logs",

@@ -28,8 +28,12 @@ pub(super) async fn ingest(
         .bind(format!("agent-logs:{application_id}:{}", batch.source_id))
         .execute(&mut *tx)
         .await?;
-    let supported:bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type='agent_logs')").bind(application_id).bind(scope_id).fetch_one(&mut *tx).await?;
-    anyhow::ensure!(supported, "agent_logs.application_type");
+    // Hold a row share lock through commit: disabling reception waits for already
+    // admitted batches, and every later batch observes the disabled state.
+    let enabled: Option<bool> = sqlx::query_scalar("select api_enabled from applications where id=$1 and scope_id=$2 and application_type='agent_logs' for share")
+        .bind(application_id).bind(scope_id).fetch_optional(&mut *tx).await?;
+    let enabled = enabled.ok_or_else(|| anyhow!("agent_logs.application_type"))?;
+    anyhow::ensure!(enabled, "agent_logs.ingestion_disabled");
     let mut receipt = AgentLogsReceipt {
         accepted_events: 0,
         duplicate_events: 0,

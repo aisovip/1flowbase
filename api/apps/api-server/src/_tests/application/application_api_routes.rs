@@ -1198,3 +1198,6 @@ async fn application_public_api_js_dependency_snapshot_is_returned_on_publish_re
         );
     }
 }
+
+#[path = "application_api_routes/log_reception.rs"]
+mod log_reception;

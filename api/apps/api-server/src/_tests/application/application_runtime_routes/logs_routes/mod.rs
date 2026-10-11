@@ -124,3 +124,12 @@ mod deletion;
 mod deletion_jobs;
 
 mod unified_log_queries;
+
+// Ingestion fixtures opt in through the same durable state writer as the API.
+async fn enable_agent_logs_fixture(store: &MainDurableStore, scope_id: Uuid, application_id: Uuid) {
+    use control_plane_contracts::ports::{ApplicationRepository, ApplicationPublicationRepository, SetApplicationApiEnabledInput};
+    let application = store.get_application(scope_id, application_id).await.unwrap().unwrap();
+    store.set_application_api_enabled(&SetApplicationApiEnabledInput {
+        actor_user_id: application.created_by, application_id, api_enabled: true,
+    }).await.unwrap();
+}

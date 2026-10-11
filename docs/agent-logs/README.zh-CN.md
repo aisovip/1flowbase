@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+新建日志应用默认停用。配置好采集器后，在应用管理或 API 页面启用“日志接收”；API Key 可以提前创建。
+
 采集器分两步安装：先从远程扩展目录**安装到 1flowbase**，再打开“下载采集 CLI”详情，在运行 Codex 的本机执行命令。安装器、原生包、校验文件和文档均从当前 1flowbase 的版本固定 URL 下载；远程仓库不可用时，已安装版本仍可下载。“平台已安装”表示分发包已留存在平台，不表示用户本机已安装或在线。
 
 在 Agent Logs 应用的 **采集 CLI** 页面点击 Codex 页签进入详情；“全部”页签回到目录。可以粘贴当前应用的 API Key，或点击“快速生成 Key”创建并回填一个真实应用 Key。复制 Shell 或 PowerShell 安装命令，在运行 Codex 的用户电脑执行；未填写 Key 时，安装器仍会在本地终端提示输入。官方 Rust 可执行程序不要求安装 Node.js、Rust 工具链或检出源码。
@@ -64,3 +66,7 @@ Console API 使用已登录 workspace session。每个接口独立授权；启�
 启动的 `job_id` 由调用方生成 UUID。同一 ID 与相同 scope 重发只返回原任务，包括已结束的任务；不同 scope 返回 409。同一应用只能有一个活动删除任务；旧 `DELETE /logs` 保持可用，在活动任务期间返回 409。任务 scope 不接受调用方的 `ingested_at_before`，边界由服务端确定。
 
 任务包含 `job_id/application_id/scope/ingested_at_before/status/total_records/deleted_records/stop_requested/error_code/created_at/updated_at`。状态为 `queued/running/succeeded/stopped/failed`；进度只来自 `deleted_records/total_records`，不要在客户端累计响应。启动响应丢失时查询原 `job_id`；必要时使用同一 ID 和原 scope 确认启动，不创建另一个任务。
+
+## 日志接收开关
+
+日志应用不需要发布编排版本。在应用管理或 API 页面，通过“日志接收”开关控制上传。新建应用默认停用；升级前已有日志应用保留接收能力。停用后 `/api/logs/v1/events` 返回 HTTP 403（`agent_logs_ingestion_disabled`），不会写入新事件，已保存日志和 API Key 保留，仍可创建或撤销 Key。重新启用后，采集器会在下次 Hook 或手动 `flush` 时重试待上传内容。

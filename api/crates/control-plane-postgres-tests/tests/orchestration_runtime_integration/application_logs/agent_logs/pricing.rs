@@ -328,6 +328,7 @@ async fn agent_logs_reprice_changes_only_costs_is_idempotent_and_includes_later_
         .await
         .unwrap()
         .id;
+    enable_reception_fixture(&store, scope, foreign).await;
     let foreign_id = store
         .ingest_agent_logs(
             foreign,

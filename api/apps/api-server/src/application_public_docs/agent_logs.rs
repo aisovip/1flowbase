@@ -16,8 +16,8 @@ pub(super) static OPERATIONS: &[PublicOperation] = &[PublicOperation {
     request_body: Some(request_body),
     responses,
     notes: OperationNotes::Text {
-        zh_hans: "使用当前应用 API 密钥作为 Bearer token。事件批次原子持久化后返回 ACK；同一 source_id / event_id 重传不重复记录，不同内容复用同一身份返回 409。无需发布应用，不执行模型或扣减余额。",
-        en_us: "Authenticate with this application's API key as a Bearer token. The batch is persisted atomically before ACK. Replaying the same source_id / event_id does not duplicate records; reusing its identity with different content returns 409. No publication, model execution, or balance debit is required.",
+        zh_hans: "使用当前应用 API 密钥作为 Bearer token。事件批次原子持久化后返回 ACK；同一 source_id / event_id 重传不重复记录，不同内容复用同一身份返回 409。无需发布应用，但必须启用日志接收；停用时返回 403（agent_logs_ingestion_disabled），不写入事件。不执行模型或扣减余额。",
+        en_us: "Authenticate with this application's API key as a Bearer token. The batch is persisted atomically before ACK. Replaying the same source_id / event_id does not duplicate records; reusing its identity with different content returns 409. No publication is required, but log reception must be enabled. Disabled reception returns 403 (agent_logs_ingestion_disabled) without storing events. No model execution or balance debit occurs.",
     },
 }];
 
@@ -125,6 +125,7 @@ fn responses(docs: &DocTextResolver) -> Value {
         },
         "400": {"description": text(docs, "协议版本或事件字段无效。", "Invalid protocol version or event fields.")},
         "401": {"description": text(docs, "缺少或无效的应用 API 密钥。", "Missing or invalid application API key.")},
+        "403": {"description": text(docs, "日志接收已停用（agent_logs_ingestion_disabled），或应用不支持日志采集。", "Log reception is disabled (agent_logs_ingestion_disabled), or the application does not support log ingestion.")},
         "409": {"description": text(docs, "同一来源事件身份已存在不同内容。", "A source event identity already exists with different content.")},
         "422": {"description": text(docs, "请求 JSON 不符合采集协议类型。", "The request JSON does not match the ingestion protocol types.")}
     })

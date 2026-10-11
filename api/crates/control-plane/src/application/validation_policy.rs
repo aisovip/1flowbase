@@ -314,7 +314,12 @@ pub(super) fn product_api_section(
             credential_kind: "application_api_key".into(),
             invoke_routing_mode: "api_key_bound_application".into(),
             invoke_path_template: Some("/api/logs/v1/events".into()),
-            api_capability_status: "enabled".into(),
+            api_capability_status: if agent_flow_api.api_capability_status == "enabled" {
+                "enabled"
+            } else {
+                "disabled"
+            }
+            .into(),
             credentials_status: agent_flow_api.credentials_status,
         },
         (domain::ApplicationType::Workflow, Some(domain::WorkflowTriggerType::Extension)) => {

@@ -78,7 +78,10 @@ export interface ConsoleApplicationSummary {
   tags: ConsoleApplicationTag[];
 }
 
-export type ConsoleApplicationPublicationStatus = 'published' | 'unpublished';
+export type ConsoleApplicationPublicationStatus =
+  | 'published'
+  | 'unpublished'
+  | 'not_applicable';
 
 export interface ConsoleApplicationManagementItem {
   id: string;
@@ -95,6 +98,7 @@ export interface ConsoleApplicationManagementItem {
   updated_at: string;
   tags: ConsoleApplicationTag[];
   publication_status: ConsoleApplicationPublicationStatus;
+  api_enabled: boolean;
 }
 
 export interface ConsoleApplicationManagementPage {
