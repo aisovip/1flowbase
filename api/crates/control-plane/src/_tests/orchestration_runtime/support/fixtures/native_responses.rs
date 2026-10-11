@@ -31,6 +31,26 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         ).await
     }
 
+    pub fn gate_llm_selection_fixture(
+        &self,
+        fail: bool,
+    ) -> (
+        std::sync::Arc<tokio::sync::Notify>,
+        std::sync::Arc<tokio::sync::Notify>,
+    ) {
+        self.repository.gate_llm_selection_append(fail)
+    }
+
+    pub async fn llm_selection_events_fixture(
+        &self,
+        run_id: Uuid,
+    ) -> Vec<domain::RuntimeEventRecord> {
+        self.repository
+            .list_runtime_events(run_id, 0)
+            .await
+            .unwrap()
+    }
+
     pub async fn native_continuation_fixture(
         &self,
         flow_run_id: Uuid,

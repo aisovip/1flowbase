@@ -61,6 +61,7 @@ struct InMemoryOrchestrationRuntimeState {
     status_before_next_flow_update: Option<(Uuid, domain::FlowRunStatus)>,
     stream_terminal_failure_before_next_flow_update: Option<Uuid>,
     fail_next_runtime_event_append: bool,
+    llm_selection_append_gate: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>, bool)>,
     next_runtime_event_append_gate: Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>,
     fail_next_terminal_runtime_event_append: bool,
     fail_next_published_stream_terminal_projection: bool,
@@ -1232,6 +1233,17 @@ impl InMemoryOrchestrationRuntimeRepository {
             .expect("runtime repo mutex poisoned")
             .next_runtime_event_append_gate = Some(gate.clone());
         gate
+    }
+
+    pub(crate) fn gate_llm_selection_append(
+        &self,
+        fail: bool,
+    ) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        self.inner.lock().unwrap().llm_selection_append_gate =
+            Some((entered.clone(), release.clone(), fail));
+        (entered, release)
     }
 
     pub(crate) fn fail_next_runtime_event_append(&self) {

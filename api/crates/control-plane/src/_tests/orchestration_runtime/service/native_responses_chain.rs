@@ -559,3 +559,95 @@ async fn semantic_callback_resume_with_preferred_sidecar_keeps_selected_semantic
         ));
     }
 }
+
+#[tokio::test]
+async fn selected_input_fact_commits_before_provider_output_and_failure_prevents_invocation() {
+    for fail_commit in [false, true] {
+        let stream = std::sync::Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
+        let mut output = text_output(false);
+        output.events.insert(
+            0,
+            ProviderStreamEvent::TextDelta {
+                delta: "selected transport reply".into(),
+            },
+        );
+        let (service, captured) =
+            OrchestrationRuntimeService::for_tests_with_captured_provider_outputs(vec![output]);
+        let service = std::sync::Arc::new(service.with_runtime_event_stream(stream.clone()));
+        let seeded = service
+            .seed_application_with_flow("Selected input commit gate")
+            .await;
+        let started = service
+            .start_flow_debug_run(StartFlowDebugRunCommand {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                input_payload: json!({"node-start":{"query":"canonical notice"}}),
+                document_snapshot: None,
+                debug_session_id: None,
+            })
+            .await
+            .unwrap();
+        let run_id = started.flow_run.id;
+        let (entered, release) = service.gate_llm_selection_fixture(fail_commit);
+        let owner = tokio::spawn({
+            let service = service.clone();
+            async move {
+                service
+                    .continue_native_responses_fixture(
+                        ContinueFlowDebugRunCommand {
+                            application_id: seeded.application_id,
+                            flow_run_id: run_id,
+                            workspace_id: Uuid::nil(),
+                        },
+                        preferred_notice(),
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(3), entered.notified())
+            .await
+            .unwrap();
+        assert!(
+            captured.lock().unwrap().is_empty(),
+            "provider ran before selection commit"
+        );
+        assert!(!owner.is_finished());
+        assert!(service
+            .llm_selection_events_fixture(run_id)
+            .await
+            .iter()
+            .all(|event| event.event_type != crate::ports::LlmInputSelection::EVENT_TYPE));
+        release.notify_one();
+        let detail = owner.await.unwrap().unwrap();
+        let rows = service.llm_selection_events_fixture(run_id).await;
+        let selected = rows
+            .iter()
+            .filter(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+            .collect::<Vec<_>>();
+        if fail_commit {
+            assert!(
+                captured.lock().unwrap().is_empty(),
+                "provider ran after selection commit failed"
+            );
+            assert!(selected.is_empty());
+            assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Failed);
+        } else {
+            assert_eq!(captured.lock().unwrap().len(), 1);
+            assert_eq!(selected.len(), 1);
+            assert_eq!(selected[0].source, domain::RuntimeEventSource::Host);
+            assert_eq!(selected[0].trust_level, domain::RuntimeTrustLevel::HostFact);
+            assert_eq!(selected[0].payload["representation"], "semantic_mapped");
+            let live = stream.events();
+            let selection_index = live
+                .iter()
+                .position(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+                .unwrap();
+            let output_index = live
+                .iter()
+                .position(|event| event.event_type == "text_delta")
+                .unwrap();
+            assert!(selection_index < output_index);
+            assert_eq!(detail.flow_run.status, domain::FlowRunStatus::Succeeded);
+        }
+    }
+}

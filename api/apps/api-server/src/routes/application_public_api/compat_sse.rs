@@ -72,14 +72,17 @@ use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResp
 pub(crate) enum ResponsesProjectionMode {
     TransparentProviderResponses,
     SemanticNativeResponses,
+    AwaitingHostSelection,
 }
 
 impl ResponsesProjectionMode {
-    pub(crate) fn from_native_transport(preserved: bool) -> Self {
-        if preserved {
-            Self::TransparentProviderResponses
-        } else {
-            Self::SemanticNativeResponses
+    pub(crate) fn from_transport(
+        payload: Option<&control_plane::ports::ProviderTransportPayload>,
+    ) -> Self {
+        match payload {
+            None => Self::SemanticNativeResponses,
+            Some(payload) if payload.is_preferred() => Self::AwaitingHostSelection,
+            Some(_) => Self::TransparentProviderResponses,
         }
     }
 }
@@ -1484,3 +1487,6 @@ pub(crate) fn openai_chat_completion_id_from_callback_task(
 const OPENAI_CHAT_SSE_PROJECTION: &str = "openai_chat";
 #[cfg(test)]
 const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";
+
+mod responses_projection;
+pub(crate) use responses_projection::ResponsesProjectionSelector;

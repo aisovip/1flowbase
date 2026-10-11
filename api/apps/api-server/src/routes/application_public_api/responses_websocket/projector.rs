@@ -37,7 +37,7 @@ pub(crate) struct ResponsesWebSocketProjector {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OutputItemKind>,
-    mode: ResponsesProjectionMode,
+    selection: crate::routes::application_public_api::compat_sse::ResponsesProjectionSelector,
     active_output_item_text: String,
     completed_output_items: Vec<Value>,
     output_item_index: usize,
@@ -64,7 +64,10 @@ impl ResponsesWebSocketProjector {
             model,
             previous_response_id,
             active_output_item: None,
-            mode,
+            selection:
+                crate::routes::application_public_api::compat_sse::ResponsesProjectionSelector::new(
+                    mode,
+                ),
             active_output_item_text: String::new(),
             completed_output_items: Vec::new(),
             output_item_index: 0,
@@ -83,6 +86,10 @@ impl ResponsesWebSocketProjector {
             return Ok(Vec::new());
         }
 
+        self.selection.observe(run.id, &envelope);
+        if envelope.event_type == control_plane::ports::LlmInputSelection::EVENT_TYPE {
+            return Ok(Vec::new());
+        }
         let terminal = is_terminal_event(&envelope.event_type);
         let mut events = Vec::new();
         match envelope.event_type.as_str() {
@@ -100,7 +107,7 @@ impl ResponsesWebSocketProjector {
             }
             "flow_started" => {}
             "reasoning_delta"
-                if self.mode == ResponsesProjectionMode::SemanticNativeResponses
+                if self.selection.semantic_event(&envelope)
                     && is_answer_presentation_delta(&envelope) =>
             {
                 self.begin_streaming();
@@ -117,7 +124,7 @@ impl ResponsesWebSocketProjector {
                 }));
             }
             "text_delta"
-                if self.mode == ResponsesProjectionMode::SemanticNativeResponses
+                if self.selection.semantic_event(&envelope)
                     && is_answer_presentation_delta(&envelope) =>
             {
                 self.begin_streaming();
@@ -135,7 +142,7 @@ impl ResponsesWebSocketProjector {
             }
             "text_delta" | "reasoning_delta" => {}
             "provider_responses_output_delta" => {
-                if self.mode != ResponsesProjectionMode::TransparentProviderResponses {
+                if !self.selection.native_event(&envelope) {
                     return Ok(Vec::new());
                 }
                 self.begin_streaming();
@@ -145,7 +152,7 @@ impl ResponsesWebSocketProjector {
                 }
             }
             "provider_output_item_added" | "provider_output_item_done" => {
-                if self.mode != ResponsesProjectionMode::TransparentProviderResponses {
+                if !self.selection.native_event(&envelope) {
                     return Ok(Vec::new());
                 }
                 self.begin_streaming();
@@ -154,7 +161,22 @@ impl ResponsesWebSocketProjector {
             _ if terminal => {
                 self.begin_streaming();
                 self.close_output_item(run, &mut events);
-                events.extend(self.terminal_events(run, envelope));
+                if matches!(
+                    envelope.event_type.as_str(),
+                    "flow_finished" | "flow_incomplete" | "waiting_callback"
+                ) && self.selection.selection_missing()
+                {
+                    events.push(failed_response_event(
+                        run,
+                        &self.model,
+                        self.previous_response_id.as_deref(),
+                        "host input selection is unavailable",
+                        "server_error",
+                        "llm_input_selection_missing",
+                    ));
+                } else {
+                    events.extend(self.terminal_events(run, envelope));
+                }
             }
             _ => self.begin_streaming(),
         }
@@ -348,7 +370,7 @@ impl ResponsesWebSocketProjector {
     }
 
     fn waiting_callback_events(&mut self, run: &NativeRunResult, payload: &Value) -> Vec<Value> {
-        if self.mode == ResponsesProjectionMode::TransparentProviderResponses {
+        if self.selection.has_native_selection() {
             return vec![json!({
                 "type": "response.completed",
                 "response": completed_response_snapshot_with_output(

@@ -13,7 +13,7 @@ pub(crate) struct OpenAiResponseStreamMapper {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
-    mode: ResponsesProjectionMode,
+    selection: ResponsesProjectionSelector,
     active_output_item_text: String,
     completed_output_items: Vec<Value>,
     output_item_index: usize,
@@ -43,7 +43,7 @@ impl OpenAiResponseStreamMapper {
             model,
             previous_response_id,
             active_output_item: None,
-            mode,
+            selection: ResponsesProjectionSelector::new(mode),
             active_output_item_text: String::new(),
             completed_output_items: Vec::new(),
             output_item_index: 0,
@@ -164,6 +164,10 @@ impl OpenAiResponseStreamMapper {
         if self.state == OpenAiResponseStreamState::Terminal {
             return Vec::new();
         }
+        self.selection.observe(initial_run.id, envelope);
+        if envelope.event_type == control_plane::ports::LlmInputSelection::EVENT_TYPE {
+            return Vec::new();
+        }
         if envelope.event_type == "provider_native_event" {
             return Vec::new();
         }
@@ -177,8 +181,28 @@ impl OpenAiResponseStreamMapper {
         }
         let is_terminal = event.terminal().is_some();
         let mut events = Vec::new();
+        if is_terminal
+            && matches!(
+                envelope.event_type.as_str(),
+                "flow_finished" | "flow_incomplete" | "waiting_callback"
+            )
+            && self.selection.selection_missing()
+        {
+            self.close_output_item(initial_run, &mut events);
+            events.push(self.event(
+                "response.failed",
+                json!({
+                    "type": "response.failed",
+                    "response": openai_response_failed_snapshot(initial_run, &self.model,
+                        self.previous_response_id.as_deref(), "host input selection is unavailable",
+                        "server_error", "llm_input_selection_missing")
+                }),
+            ));
+            self.state = OpenAiResponseStreamState::Terminal;
+            return events;
+        }
         if envelope.event_type == "provider_responses_output_delta" {
-            if self.mode != ResponsesProjectionMode::TransparentProviderResponses {
+            if !self.selection.native_event(envelope) {
                 return events;
             }
             if let Some(mut payload) = envelope.payload.get("event").cloned() {
@@ -188,12 +212,10 @@ impl OpenAiResponseStreamMapper {
             }
             return events;
         }
-        if self.mode == ResponsesProjectionMode::TransparentProviderResponses
-            && event.answer_delta().is_some()
-        {
+        if !self.selection.semantic_event(envelope) && event.answer_delta().is_some() {
             return events;
         }
-        if self.mode == ResponsesProjectionMode::TransparentProviderResponses
+        if self.selection.native_event(envelope)
             && self.project_provider_output_item(initial_run, envelope, &mut events)
         {
             return events;

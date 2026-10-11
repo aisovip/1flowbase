@@ -645,6 +645,38 @@ where
             (Some(stream), Some(run_id)) => stream.terminal_writer(run_id).await.ok(),
             _ => None,
         };
+        // This host fact owns downstream protocol projection. Unlike the context
+        // estimate, failure to commit it prevents the provider from producing output.
+        if let (Some(node), Some(run_id)) = (active_node.as_ref(), self.flow_run_id) {
+            let selection = crate::ports::LlmInputSelection {
+                node_id: node.node_id.clone(),
+                node_run_id: node.node_run_id,
+                representation: if selected_native_transport {
+                    crate::ports::LlmInputRepresentation::NativeOpaque
+                } else {
+                    crate::ports::LlmInputRepresentation::SemanticMapped
+                },
+            }
+            .runtime_event();
+            if let Some(stream) = self.runtime_event_stream.as_ref() {
+                runtime_events::forward_required_runtime_event(
+                    &self.repository,
+                    stream.as_ref(),
+                    run_id,
+                    selection,
+                    provider_generation_writer.as_deref(),
+                )
+                .await?;
+            } else {
+                runtime_event_persister::persist_runtime_event_payload_for_generation(
+                    &self.repository,
+                    run_id,
+                    &selection,
+                    None,
+                )
+                .await?;
+            }
+        }
         if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
             active_node.as_ref(),
             self.runtime_event_stream.as_ref(),

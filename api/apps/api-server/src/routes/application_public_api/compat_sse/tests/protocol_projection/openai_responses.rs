@@ -726,3 +726,144 @@ async fn responses_sse_preserves_full_upstream_error_object() {
         assert_eq!(frames[0]["response"]["error"], upstream);
     }
 }
+
+#[tokio::test]
+async fn preferred_responses_sse_uses_ordered_host_selection_for_live_and_cold_output() {
+    use control_plane::ports::{LlmInputRepresentation, LlmInputSelection};
+    for native in [false, true] {
+        for cold in [false, true] {
+            let mut run = native_run();
+            run.status = NativeRunStatus::Succeeded;
+            let node = Uuid::now_v7();
+            let item = json!({"id":"msg_selected","type":"message","role":"assistant","content":[{"type":"output_text","text":"selected marker"}]});
+            let mut mapper = OpenAiResponseStreamMapper::with_mode(
+                "fixture".into(),
+                None,
+                ResponsesProjectionMode::AwaitingHostSelection,
+            );
+            let mut facts = vec![
+                debug_stream_events::flow_started(run.id),
+                LlmInputSelection {
+                    node_id: "llm".into(),
+                    node_run_id: node,
+                    representation: if native {
+                        LlmInputRepresentation::NativeOpaque
+                    } else {
+                        LlmInputRepresentation::SemanticMapped
+                    },
+                }
+                .runtime_event(),
+            ];
+            if native {
+                facts.push(debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node,
+                    json!({"type":"response.output_text.delta","delta":"selected marker"}),
+                ));
+                facts.push(debug_stream_events::provider_output_item_added(
+                    "llm",
+                    node,
+                    0,
+                    item.clone(),
+                ));
+                facts.push(debug_stream_events::provider_output_item_done(
+                    "llm",
+                    node,
+                    0,
+                    item.clone(),
+                ));
+            }
+            facts.push(debug_stream_events::answer_text_delta(
+                "answer",
+                "selected marker".into(),
+                0,
+                Some("llm"),
+                Some(node),
+                Some("text"),
+            ));
+            facts.push(debug_stream_events::flow_finished(run.id, json!({})));
+            let mut events = vec![];
+            for (index, fact) in facts.into_iter().enumerate() {
+                let envelope = if cold {
+                    crate::routes::application_public_api::stream_terminal_fallback::durable_record_to_runtime_event_envelope(domain::RuntimeEventRecord {
+                        id: Uuid::now_v7(), flow_run_id: run.id, node_run_id: fact.payload["node_run_id"].as_str().and_then(|id| Uuid::parse_str(id).ok()),
+                        span_id: None, parent_span_id: None, sequence: index as i64 + 1,
+                        event_type: fact.event_type, layer: domain::RuntimeEventLayer::RuntimeItem,
+                        source: domain::RuntimeEventSource::Host, trust_level: domain::RuntimeTrustLevel::HostFact,
+                        item_id: None, ledger_ref: None, payload: fact.payload,
+                        visibility: domain::RuntimeEventVisibility::Workspace, durability: domain::RuntimeEventDurability::Durable,
+                        created_at: time::OffsetDateTime::now_utc(),
+                    })
+                } else {
+                    RuntimeEventEnvelope::new(run.id, index as i64 + 1, fact)
+                };
+                events.extend(mapper.runtime_event_to_sse(&run, envelope));
+            }
+            let bytes = axum::body::to_bytes(
+                test_projected_events_response(events).into_body(),
+                usize::MAX,
+            )
+            .await
+            .unwrap();
+            let decoded = decode_responses_sse(std::str::from_utf8(&bytes).unwrap());
+            assert_eq!(decoded.text_deltas, vec!["selected marker"]);
+            assert_eq!(decoded.completed_count, 1);
+            assert_eq!(decoded.completed_output.len(), 1);
+            if native {
+                assert_eq!(decoded.completed_output, vec![item]);
+            } else {
+                assert_eq!(
+                    decoded.completed_output[0]["content"][0]["text"],
+                    "selected marker"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn preferred_sse_missing_host_selection_fails_instead_of_completing_empty() {
+    let mut run = native_run();
+    run.status = NativeRunStatus::Succeeded;
+    let node = Uuid::now_v7();
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::AwaitingHostSelection,
+    );
+    let mut events = vec![];
+    for (index, fact) in [
+        debug_stream_events::answer_text_delta(
+            "answer",
+            "unselected".into(),
+            0,
+            Some("llm"),
+            Some(node),
+            Some("text"),
+        ),
+        debug_stream_events::flow_finished(run.id, json!({})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        events.extend(
+            mapper
+                .runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, index as i64, fact)),
+        );
+    }
+    let bytes = axum::body::to_bytes(
+        test_projected_events_response(events).into_body(),
+        usize::MAX,
+    )
+    .await
+    .unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap();
+    let decoded = decode_responses_sse(body);
+    assert_eq!(decoded.completed_count, 0);
+    assert!(decoded.text_deltas.is_empty());
+    assert_eq!(
+        decoded.error_messages,
+        vec!["host input selection is unavailable"]
+    );
+    assert!(body.contains("llm_input_selection_missing"));
+}

@@ -248,7 +248,7 @@ fn issue_2048_low_budget_local_summary_keeps_one_opaque_responses_ingress_plan()
         .expect("Local Summary ingress must carry provider-opaque transport");
     assert_eq!(payload.wire_body(), &wire_body);
     assert_eq!(
-        compat_sse::ResponsesProjectionMode::from_native_transport(true),
+        compat_sse::ResponsesProjectionMode::from_transport(Some(&payload)),
         compat_sse::ResponsesProjectionMode::TransparentProviderResponses
     );
 }
@@ -288,7 +288,7 @@ fn issue_2052_encoded_callback_selects_restored_provider_transport() {
         "encoded correlation must still validate previous_response_id even with provider transport"
     );
     assert_eq!(
-        compat_sse::ResponsesProjectionMode::from_native_transport(true),
+        compat_sse::ResponsesProjectionMode::from_transport(Some(&transport)),
         compat_sse::ResponsesProjectionMode::TransparentProviderResponses,
         "transport representation remains independent from callback correlation"
     );
@@ -1188,4 +1188,74 @@ fn chat_resume_unary_usage_uses_immutable_boundary_for_retries_and_old_callbacks
     assert!(ChatUsageBaseline::from_callback_payload(&baseline)
         .project(Some(&regressed))
         .is_none());
+}
+
+#[test]
+fn preferred_blocking_projection_uses_selection_and_required_transport_stays_strict() {
+    use control_plane::ports::{
+        LlmInputRepresentation, LlmInputSelection, ProviderTransportPayload, RuntimeEventEnvelope,
+    };
+    let required = ProviderTransportPayload::openai_responses(json!({"input":[]})).unwrap();
+    assert_eq!(
+        compat_sse::ResponsesProjectionMode::from_transport(None),
+        compat_sse::ResponsesProjectionMode::SemanticNativeResponses
+    );
+    assert_eq!(
+        compat_sse::ResponsesProjectionMode::from_transport(Some(&required)),
+        compat_sse::ResponsesProjectionMode::TransparentProviderResponses
+    );
+    let preferred = required.preferred();
+    assert_eq!(
+        compat_sse::ResponsesProjectionMode::from_transport(Some(&preferred)),
+        compat_sse::ResponsesProjectionMode::AwaitingHostSelection
+    );
+    for native in [false, true] {
+        let mut run = blocking_run(NativeRunStatus::Succeeded);
+        run.answer = Some("blocking marker".into());
+        let node = Uuid::now_v7();
+        let item = json!({"type":"message","id":"msg_blocking_original","role":"assistant","content":[{"type":"output_text","text":"blocking marker"}]});
+        let mut items = None;
+        let mut selector = compat_sse::ResponsesProjectionSelector::new(
+            compat_sse::ResponsesProjectionMode::from_transport(Some(&preferred)),
+        );
+        let facts = [
+            LlmInputSelection {
+                node_id: "llm".into(),
+                node_run_id: node,
+                representation: if native {
+                    LlmInputRepresentation::NativeOpaque
+                } else {
+                    LlmInputRepresentation::SemanticMapped
+                },
+            }
+            .runtime_event(),
+            control_plane::orchestration_runtime::debug_stream_events::provider_output_item_done(
+                "llm",
+                node,
+                0,
+                item.clone(),
+            ),
+        ];
+        for (index, fact) in facts.into_iter().enumerate() {
+            collect_selected_blocking_response_event(
+                &mut items,
+                &mut selector,
+                run.id,
+                &RuntimeEventEnvelope::new(run.id, index as i64, fact),
+            );
+        }
+        let response = serde_json::to_value(
+            to_openai_responses_response_with_native_items(run, "fixture".into(), None, items)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response["output"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            response["output"][0]["content"][0]["text"],
+            "blocking marker"
+        );
+        if native {
+            assert_eq!(response["output"], json!([item]));
+        }
+    }
 }

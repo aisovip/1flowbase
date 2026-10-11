@@ -758,6 +758,16 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
+        if input.event_type == crate::ports::LlmInputSelection::EVENT_TYPE {
+            let gate = self.inner.lock().unwrap().llm_selection_append_gate.take();
+            if let Some((entered, release, fail)) = gate {
+                entered.notify_one();
+                release.notified().await;
+                if fail {
+                    return Err(anyhow::anyhow!("simulated selection commit failure"));
+                }
+            }
+        }
         let gate = self
             .inner
             .lock()
