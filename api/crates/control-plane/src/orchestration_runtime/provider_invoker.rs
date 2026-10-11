@@ -513,7 +513,12 @@ where
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
         self.ensure_continuation_route(runtime, &resolved_route.runtime_capabilities)?;
-        self.apply_provider_transport(runtime, &mut input)?;
+        self.apply_selected_provider_transport(
+            runtime,
+            &resolved_route.runtime_capabilities,
+            &mut input,
+        )?;
+        let selected_native_transport = input.native_transport.is_some();
         let pin = resolved_route
             .invocation_pin::<RuntimeProviderInvocationPin>()
             .ok_or(ControlPlaneError::InvalidInput("resolved_provider_route"))?
@@ -727,7 +732,7 @@ where
             let repository_for_events = self.repository.clone();
             let generation_writer_for_task = provider_generation_writer.clone();
             let native_output_items_for_task = native_output_items.clone();
-            let capture_native_history = self.provider_transport_payload.is_some();
+            let capture_native_history = selected_native_transport;
             let response_round_id_for_task = self.response_round_id.or(self.flow_run_id);
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
@@ -1105,7 +1110,10 @@ where
         // Validate the provider-owned typed receipt before any host metadata wrapping.
         // Keep the validation result until settlement completes so invalid metadata does
         // not skip accounting for upstream usage that has already occurred.
-        let recovery_receipt = match invocation_output.as_ref() {
+        let recovery_receipt = match invocation_output
+            .as_ref()
+            .filter(|_| selected_native_transport)
+        {
             Some(output) => output.result.recovery_receipt().map_err(anyhow::Error::msg),
             None => Ok(None),
         };
@@ -1113,7 +1121,9 @@ where
             invocation_error.get_or_insert(error);
         }
         if let (Some(transport), Some(flow_run_id), Some(output)) = (
-            &self.provider_transport_payload,
+            self.provider_transport_payload
+                .as_ref()
+                .filter(|_| selected_native_transport),
             self.flow_run_id,
             invocation_output.as_mut(),
         ) {
@@ -1165,17 +1175,19 @@ where
             })
             .filter(|value| value.is_object())
             .cloned();
-        if let Some(error) = invocation_error.take() {
-            let configuration_digest = self
-                .provider_transport_payload
-                .as_ref()
-                .map(|transport| transport.configuration_digest())
-                .transpose()?;
-            invocation_error = Some(seal_native_failure_binding(
-                error,
-                &native_inference_binding,
-                configuration_digest.as_deref(),
-            ));
+        if selected_native_transport {
+            if let Some(error) = invocation_error.take() {
+                let configuration_digest = self
+                    .provider_transport_payload
+                    .as_ref()
+                    .map(|transport| transport.configuration_digest())
+                    .transpose()?;
+                invocation_error = Some(seal_native_failure_binding(
+                    error,
+                    &native_inference_binding,
+                    configuration_digest.as_deref(),
+                ));
+            }
         }
         let billing_result = fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
@@ -1193,7 +1205,10 @@ where
             .await;
         // Preserve provider continuation even on late billing failure, but only successful
         // host completion may carry a complete history proof into the next response round.
-        if let Some(output) = invocation_output.as_ref() {
+        if let Some(output) = invocation_output
+            .as_ref()
+            .filter(|_| selected_native_transport)
+        {
             let history = if billing_result.is_ok() && invocation_error.is_none() {
                 continuation_history
             } else {
@@ -1764,6 +1779,38 @@ where
                 "selected LLM Provider does not support native continuation",
             ))
         }
+    }
+
+    pub(super) fn apply_selected_provider_transport(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        capabilities: &std::collections::BTreeSet<String>,
+        input: &mut ProviderInvocationInput,
+    ) -> Result<()> {
+        if self
+            .provider_transport_payload
+            .as_ref()
+            .is_some_and(|payload| payload.is_preferred())
+            && !(capabilities.contains("responses.native_passthrough")
+                && capabilities.contains("responses.native_output.v1"))
+        {
+            input.native_transport = None;
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough);
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1);
+            return Ok(());
+        }
+        self.apply_provider_transport(runtime, input)?;
+        if self
+            .provider_transport_payload
+            .as_ref()
+            .is_some_and(|payload| payload.is_preferred())
+        {
+            input.required_capabilities.insert(
+                plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1);
+        }
+        Ok(())
     }
 
     pub(super) fn apply_provider_transport(

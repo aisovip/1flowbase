@@ -356,3 +356,125 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
     );
     assert!(validate_protocol_context_envelope(&late_context).is_err());
 }
+
+#[tokio::test]
+async fn preferred_notifications_choose_exact_native_or_semantic_fallback_at_selected_route() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    let (runtime_port, captured_inputs) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
+        native_history: None,
+        repository,
+        runtime: runtime_port,
+        workspace_id: Uuid::nil(),
+        provider_secret_master_key: "test-master-key".to_string(),
+        live_provider_events: None,
+        runtime_event_stream: None,
+        flow_run_id: Some(Uuid::nil()),
+        active_node_id: None,
+        active_node_run_id: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
+        flow_execution_context: None,
+        answer_presentation: None,
+        transport_connection_scope_override: None,
+        observation_context: None,
+        provider_transport_payload: Some(
+            crate::ports::ProviderTransportPayload::openai_responses(json!({
+                "model": "gpt-5.4-mini",
+                "input": [{"type":"function_call_output","output":"notice","namespace":"codex_app"}]
+            }))
+            .unwrap()
+            .preferred(),
+        ),
+        provider_transport_store: None,
+        provider_continuation: None,
+        model_pricing_cache_store: None,
+    };
+    let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
+    let canonical = ProviderInvocationInput {
+        provider_instance_id: provider_instance_id.to_string(),
+        provider_code: "fixture_provider".to_string(), protocol:"openai_compatible".to_string(), model:"gpt-5.4-mini".to_string(),
+        messages: vec![extension_contracts::provider_contract::ProviderExternalContext::from_responses_notification(
+            &json!({"type":"function_call_output","output":"notice","namespace":"codex_app"})
+        ).unwrap().project_message()],
+        ..ProviderInvocationInput::default()
+    };
+    for capabilities in [
+        std::collections::BTreeSet::new(),
+        std::collections::BTreeSet::from(["responses.native_passthrough".to_string()]),
+    ] {
+        let mut fallback = canonical.clone();
+        invoker
+            .apply_selected_provider_transport(&runtime, &capabilities, &mut fallback)
+            .unwrap();
+        assert!(fallback.native_transport.is_none());
+        assert_eq!(fallback.messages, canonical.messages);
+        assert!(!fallback
+            .required_capabilities
+            .contains(&ProviderInvocationCapability::ResponsesNativePassthrough));
+    }
+    let mut native = canonical.clone();
+    invoker
+        .apply_selected_provider_transport(
+            &runtime,
+            &std::collections::BTreeSet::from([
+                "responses.native_passthrough".to_string(),
+                "responses.native_output.v1".to_string(),
+            ]),
+            &mut native,
+        )
+        .unwrap();
+    assert_eq!(
+        &native.native_transport.as_ref().unwrap().wire_body,
+        invoker
+            .provider_transport_payload
+            .as_ref()
+            .unwrap()
+            .wire_body()
+    );
+    assert!(native
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::ResponsesNativeOutputV1));
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        canonical.clone(),
+    )
+    .await
+    .unwrap();
+    let captured = captured_inputs.lock().unwrap();
+    assert_eq!(captured.len(), 1);
+    assert!(captured[0].native_transport.is_none());
+    assert_eq!(captured[0].messages, canonical.messages);
+    let mut metadata = &output.result.provider_metadata;
+    while let Some(upstream) = metadata.get("_1flowbase_upstream_provider_metadata") {
+        metadata = upstream;
+    }
+    assert!(metadata.get("native_response").is_none());
+    drop(captured);
+    invoker.repository.enable_native_responses_fixture().await;
+    let native_output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker, &runtime, canonical,
+    )
+    .await
+    .unwrap();
+    let captured = captured_inputs.lock().unwrap();
+    assert_eq!(captured.len(), 2);
+    assert_eq!(
+        &captured[1].native_transport.as_ref().unwrap().wire_body,
+        invoker
+            .provider_transport_payload
+            .as_ref()
+            .unwrap()
+            .wire_body()
+    );
+    let mut metadata = &native_output.result.provider_metadata;
+    while let Some(upstream) = metadata.get("_1flowbase_upstream_provider_metadata") {
+        metadata = upstream;
+    }
+    assert!(metadata.get("native_response").is_some());
+}

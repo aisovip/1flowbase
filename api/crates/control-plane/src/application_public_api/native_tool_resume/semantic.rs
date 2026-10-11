@@ -150,7 +150,13 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
                 ))
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let ordered_input = if previous.is_none() && input.len() > expected.len() {
+    let ordered_input = if previous.is_none()
+        && input.iter().any(|item| {
+            matches!(
+                item.get("type").and_then(Value::as_str),
+                Some("function_call" | "custom_tool_call")
+            )
+        }) {
         super::super::compat::openai::history::prove_full_context_input(
             &request["input"],
             &evidence.history,

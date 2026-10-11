@@ -321,6 +321,17 @@ fn validate_responses_items(
             has_compaction_trigger = true;
             continue;
         }
+        if super::is_standalone_function_output(item) {
+            external_context_message(item)?;
+            report.record(
+                &item_path,
+                Some("$.history"),
+                TranslationDecisionKind::Normalized,
+                Some("standalone output is attributed external context"),
+                TranslationSafeRepresentation::Redacted,
+            );
+            continue;
+        }
         if matches!(
             item_type,
             Some("function_call") | Some("function_call_output") | Some("reasoning")
@@ -506,6 +517,7 @@ fn validate_responses_items(
         validate_responses_content_parts(content, index, report)?;
     }
     if !has_user_message
+        && !items.iter().any(super::is_standalone_function_output)
         && !reconstructable_tool_continuation
         && !(is_v2_compaction && has_compaction_trigger)
     {
@@ -970,7 +982,10 @@ pub(super) fn responses_input_to_native_run_input(
             .map(|(index, _)| index)
             .next_back()
     };
-    if last_user_index.is_none() && !reconstructable_tool_continuation {
+    if last_user_index.is_none()
+        && !reconstructable_tool_continuation
+        && !items.iter().any(super::is_standalone_function_output)
+    {
         if is_v2_compaction {
             return Ok(ResponsesInputMapping {
                 query: String::new(),
@@ -984,6 +999,7 @@ pub(super) fn responses_input_to_native_run_input(
         ));
     }
 
+    let mut query = String::new();
     let mut history: Vec<Value> = Vec::new();
     let mut system_parts = Vec::new();
     for (index, item) in items.iter().enumerate() {
@@ -1014,6 +1030,10 @@ pub(super) fn responses_input_to_native_run_input(
                 }
                 continue;
             }
+            Some("function_call_output") if super::is_standalone_function_output(item) => {
+                history.push(external_context_message(item)?);
+                continue;
+            }
             Some("function_call_output") => {
                 let content = match item.get("output") {
                     Some(Value::String(output)) => output.clone(),
@@ -1038,19 +1058,11 @@ pub(super) fn responses_input_to_native_run_input(
             _ => {}
         }
         let message = responses_input_message(item)?;
-        if Some(index) == last_user_index {
-            if let Some(content_blocks) = message.content_blocks {
-                history.push(serde_json::json!({
-                    "role": message.role,
-                    "content": message.content.clone(),
-                    "content_blocks": content_blocks,
-                }));
+        if Some(index) == last_user_index && index + 1 == items.len() {
+            query = message.content.clone();
+            if message.content_blocks.is_none() {
+                continue;
             }
-            return Ok(ResponsesInputMapping {
-                query: message.content,
-                history,
-                system_parts,
-            });
         }
 
         if matches!(message.role.as_str(), "system" | "developer") {
@@ -1070,18 +1082,11 @@ pub(super) fn responses_input_to_native_run_input(
         history.push(history_entry);
     }
 
-    if reconstructable_tool_continuation {
-        return Ok(ResponsesInputMapping {
-            query: String::new(),
-            history,
-            system_parts,
-        });
-    }
-
-    Err(OpenAiCompatError::invalid(
-        "input",
-        "user input is required",
-    ))
+    Ok(ResponsesInputMapping {
+        query,
+        history,
+        system_parts,
+    })
 }
 
 pub(super) fn responses_native_input_to_run_input(input: &Value) -> ResponsesInputMapping {
@@ -1149,7 +1154,9 @@ pub(super) fn responses_end_with_reconstructable_tool_output(
     items: &[Value],
 ) -> Result<bool, OpenAiCompatError> {
     if items
-        .last()
+        .iter()
+        .rev()
+        .find(|item| !super::is_standalone_function_output(item))
         .and_then(|item| item.get("type"))
         .and_then(Value::as_str)
         != Some("function_call_output")
@@ -1163,7 +1170,10 @@ pub(super) fn responses_end_with_reconstructable_tool_output(
         .collect::<std::collections::HashSet<_>>();
     let outputs_are_paired = items
         .iter()
-        .filter(|item| item.get("type").and_then(Value::as_str) == Some("function_call_output"))
+        .filter(|item| {
+            item.get("type").and_then(Value::as_str) == Some("function_call_output")
+                && !super::is_standalone_function_output(item)
+        })
         .all(|item| {
             item.get("call_id")
                 .and_then(Value::as_str)
@@ -1375,15 +1385,10 @@ pub(super) fn openai_image_content_block(part: &Value) -> Option<Value> {
 /// Translate a verified callback suffix without extracting a latest user message or
 /// moving system/context entries away from their submitted position.
 pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenAiCompatError> {
-    if items.iter().any(super::is_standalone_function_output) {
-        return Err(OpenAiCompatError::invalid(
-            "input",
-            "this semantic recovery mapper cannot preserve standalone function outputs",
-        ));
-    }
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     validate_responses_items(&Value::Array(items.to_vec()), false, &mut report, true)?;
     items.iter().map(|item| match item.get("type").and_then(Value::as_str) {
+        Some("function_call_output") if super::is_standalone_function_output(item) => external_context_message(item),
         Some("function_call_output") => Ok(json!({"role":"tool", "tool_call_id":item["call_id"],
             "content":match &item["output"] { Value::String(text) => text.clone(), other => other.to_string() }})),
         None | Some("message") => {
@@ -1397,4 +1402,10 @@ pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenA
         }
         _ => Err(OpenAiCompatError::invalid("input", "unsupported semantic continuation item")),
     }).collect()
+}
+
+fn external_context_message(item: &Value) -> Result<Value, OpenAiCompatError> {
+    let context = extension_contracts::provider_contract::ProviderExternalContext::from_responses_notification(item)
+        .map_err(|message| OpenAiCompatError::invalid("input", message))?;
+    Ok(json!({"role":"user", "content":"", "external_context":context}))
 }

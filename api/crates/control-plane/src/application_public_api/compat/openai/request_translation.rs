@@ -331,6 +331,34 @@ fn translate_indexed_response_request(
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
+    if let Some(items) = input.as_array() {
+        for item in items {
+            if item.get("type").and_then(Value::as_str) == Some("function_call_output") {
+                if !super::is_standalone_function_output(item)
+                    && !item
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| !id.trim().is_empty())
+                {
+                    return Err(OpenAiCompatError::invalid(
+                        "input",
+                        "function_call_output call_id must be non-empty text",
+                    )
+                    .with_report(report));
+                }
+                if !item
+                    .as_object()
+                    .is_some_and(|object| object.contains_key("output"))
+                {
+                    return Err(OpenAiCompatError::invalid(
+                        "input",
+                        "function_call_output output is required",
+                    )
+                    .with_report(report));
+                }
+            }
+        }
+    }
     let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
     // Operation and representation are independent decisions. Codex local-summary
@@ -472,10 +500,21 @@ fn translate_indexed_response_request(
         },
         &mut report,
     )?;
-    if uses_native_transport || matches!(operation, domain::AiNativeOperation::Compact(_)) {
+    let prefers_native_notifications = !uses_native_transport
+        && input
+            .as_array()
+            .is_some_and(|items| items.iter().any(super::is_standalone_function_output));
+    if uses_native_transport
+        || prefers_native_notifications
+        || matches!(operation, domain::AiNativeOperation::Compact(_))
+    {
         let payload = ProviderTransportPayload::openai_responses(request)
             .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
-        metadata.set_provider_transport_payload(payload);
+        metadata.set_provider_transport_payload(if prefers_native_notifications {
+            payload.preferred()
+        } else {
+            payload
+        });
     }
     let request = NativeRunRequest {
         query,

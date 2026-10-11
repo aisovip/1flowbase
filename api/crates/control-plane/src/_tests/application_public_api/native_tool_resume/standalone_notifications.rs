@@ -42,13 +42,18 @@ async fn standalone_notifications_preserve_native_wire_without_claiming_a_callba
             );
             let mut translated = translate_response_request(body.clone()).unwrap();
             assert!(translated.request.query.is_empty());
-            assert!(translated.request.history.is_empty());
+            assert_eq!(translated.request.history.len(), 1);
+            assert_eq!(
+                translated.request.history[0]["external_context"]["output"],
+                notice["output"]
+            );
+            assert!(translated.request.history[0].get("tool_call_id").is_none());
             assert_eq!(
                 translated
                     .request
                     .metadata
                     .take_provider_transport_payload()
-                    .expect("even anonymous notifications require native transport")
+                    .expect("notifications retain preferred native transport")
                     .wire_body(),
                 &body
             );
@@ -225,4 +230,62 @@ async fn malformed_receipt_ids_are_not_standalone_notifications() {
             .to_string()
             .contains("native_tool_output_call_id")
     );
+}
+
+#[test]
+fn notifications_keep_entire_ordered_input_and_reject_malformed_ids() {
+    let body = json!({"model":"fixture","input":[
+        {"role":"user","content":"before"}, notification(),
+        {"role":"user","content":"last user"}, notification(),
+        {"role":"assistant","content":"trailing assistant"}, notification()
+    ]});
+    let mut translated = translate_response_request(body.clone()).unwrap();
+    assert!(translated.request.query.is_empty());
+    assert_eq!(translated.request.history.len(), 6);
+    assert_eq!(translated.request.history[2]["content"], "last user");
+    assert_eq!(
+        translated.request.history[4]["content"],
+        "trailing assistant"
+    );
+    for index in [1, 3, 5] {
+        assert_eq!(
+            translated.request.history[index]["external_context"]["output"],
+            notification()["output"]
+        );
+    }
+    let mapping = crate::application_public_api::mapping::ApplicationApiMappingConfig {
+        input: crate::application_public_api::mapping::ApplicationApiMappingInput {
+            query_target: "start.query".into(),
+            model_target: Some("start.model".into()),
+            inputs_target: Some("start".into()),
+            history_target: Some("start.history".into()),
+            attachments_target: None,
+        },
+        output: Default::default(),
+        extension: None,
+    };
+    let mapped = crate::application_public_api::native::NativeInputMapper::map(
+        &translated.request,
+        &mapping,
+    )
+    .unwrap();
+    assert_eq!(
+        mapped.node_input_payload["start"]["history"],
+        json!(translated.request.history)
+    );
+    assert_eq!(
+        mapped.node_input_payload["__native_model_prompt_context"]["messages"],
+        json!(translated.request.history)
+    );
+    let transport = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .unwrap();
+    assert!(transport.is_preferred());
+    assert_eq!(transport.wire_body(), &body);
+    for id in [json!(""), json!(" "), json!(7), json!(false)] {
+        let malformed = json!({"model":"fixture","input":[{"role":"user","content":"work"},{"type":"function_call_output","call_id":id,"output":"notice"}]});
+        assert!(translate_response_request(malformed).is_err());
+    }
 }

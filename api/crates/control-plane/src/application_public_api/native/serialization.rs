@@ -39,6 +39,8 @@ pub(super) struct NativeHistoryEntry {
     role: String,
     content: String,
     #[serde(default)]
+    external_context: Option<extension_contracts::provider_contract::ProviderExternalContext>,
+    #[serde(default)]
     name: Option<String>,
     #[serde(default)]
     tool_call_id: Option<String>,
@@ -71,7 +73,22 @@ where
                     "Native tool history requires tool_call_id",
                 ));
             }
+            if entry.external_context.is_some()
+                && (entry.role != "user"
+                    || entry.tool_call_id.is_some()
+                    || entry.tool_calls.is_some())
+            {
+                return Err(de::Error::custom(
+                    "external context must be untrusted user context",
+                ));
+            }
             let mut message = Map::new();
+            if let Some(context) = entry.external_context {
+                message.insert(
+                    "external_context".to_string(),
+                    serde_json::to_value(context).map_err(de::Error::custom)?,
+                );
+            }
             message.insert("role".to_string(), Value::String(entry.role));
             message.insert("content".to_string(), Value::String(entry.content));
             if let Some(name) = entry.name {

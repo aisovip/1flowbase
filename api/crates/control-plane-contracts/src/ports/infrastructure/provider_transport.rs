@@ -512,8 +512,15 @@ pub trait ProviderProtocolCapsuleStore: Send + Sync {
     async fn clear_expired(&self) -> anyhow::Result<usize>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderTransportPolicy {
+    Required,
+    Preferred,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProviderTransportPayload {
+    policy: ProviderTransportPolicy,
     protocol: ProviderTransportProtocol,
     wire_body: Arc<Value>,
     digest: String,
@@ -530,6 +537,7 @@ impl ProviderTransportPayload {
         );
         let (digest, size_bytes) = canonical_digest_and_size(&wire_body)?;
         Ok(Self {
+            policy: ProviderTransportPolicy::Required,
             protocol: ProviderTransportProtocol::OpenAiResponses,
             wire_body: Arc::new(wire_body),
             digest,
@@ -539,7 +547,19 @@ impl ProviderTransportPayload {
         })
     }
 
+    pub fn preferred(mut self) -> Self {
+        if self.affinity.is_none() {
+            self.policy = ProviderTransportPolicy::Preferred;
+        }
+        self
+    }
+
+    pub fn is_preferred(&self) -> bool {
+        self.policy == ProviderTransportPolicy::Preferred
+    }
+
     pub fn with_affinity(mut self, affinity: ProviderTransportAffinity) -> Self {
+        self.policy = ProviderTransportPolicy::Required;
         self.affinity = Some(affinity);
         self
     }
@@ -559,6 +579,7 @@ impl ProviderTransportPayload {
             "previous_response_id".to_string(),
             Value::String(continuation.response_id),
         );
+        self.policy = ProviderTransportPolicy::Required;
         self.affinity = Some(continuation.affinity);
         self.native_history = continuation.native_history;
         let (digest, size_bytes) = canonical_digest_and_size(&self.wire_body)?;

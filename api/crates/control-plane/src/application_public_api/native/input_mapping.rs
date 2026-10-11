@@ -163,6 +163,9 @@ pub(super) fn split_system_context_from_history(
             .get("role")
             .and_then(Value::as_str)
             .ok_or(NativeInputMappingError::InvalidPromptContext)?;
+        if message.get("external_context").is_some() && role != "user" {
+            return Err(NativeInputMappingError::InvalidPromptContext);
+        }
         let content_value = message
             .get("content")
             .ok_or(NativeInputMappingError::InvalidPromptContext)?;
@@ -185,6 +188,7 @@ pub(super) fn split_system_context_from_history(
             "is_error",
             "tool_calls",
             "content_blocks",
+            "external_context",
         ] {
             if let Some(value) = message.get(field) {
                 normalized.insert(field.to_string(), value.clone());
