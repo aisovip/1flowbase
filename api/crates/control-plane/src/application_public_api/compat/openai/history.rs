@@ -12,8 +12,10 @@ use std::{
 mod canonical;
 #[path = "history/legacy.rs"]
 mod legacy;
+#[path = "history/legacy_v2.rs"]
+mod legacy_v2;
 
-const CURRENT_VERSION: u32 = 2;
+const CURRENT_VERSION: u32 = 3;
 
 fn normalize_item(item: &Value) -> Result<Value> {
     canonical::normalize_item(item)
@@ -48,7 +50,7 @@ impl History {
             "native_history_evidence_invalid"
         );
         ensure!(
-            matches!(history.version, 1 | CURRENT_VERSION),
+            matches!(history.version, 1 | 2 | CURRENT_VERSION),
             "native_history_version_unsupported"
         );
         Ok(history)
@@ -57,6 +59,7 @@ impl History {
     fn append(&mut self, item: &Value) -> Result<()> {
         let item = match self.version {
             1 => legacy::normalize_item(item)?,
+            2 => legacy_v2::normalize_item(item)?,
             CURRENT_VERSION => normalize_item(item)?,
             _ => anyhow::bail!("native_history_version_unsupported"),
         };
@@ -152,10 +155,10 @@ pub(crate) fn prove_full_context_input<'a>(
     owned_call_ids: &[String],
 ) -> Result<FullContextInput<'a>> {
     let expected = History::parse(trusted_history)?;
-    // A v1 hash cannot attest the v2 client equivalence contract. Preserve old
-    // continuation proofs as v1, but require a fresh trusted round for recovery.
+    // V1 cannot attest full-context recovery. V2 remains valid under its frozen
+    // contract; a stored hash is never upgraded to the v3 equivalence contract.
     ensure!(
-        expected.version == CURRENT_VERSION,
+        matches!(expected.version, 2 | CURRENT_VERSION),
         "native_history_version_unsupported"
     );
     let items = input
@@ -166,7 +169,7 @@ pub(crate) fn prove_full_context_input<'a>(
         .checked_add(owned_call_ids.len())
         .filter(|end| expected.item_count > 0 && *end <= items.len())
         .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
-    let mut actual = History::empty(CURRENT_VERSION);
+    let mut actual = History::empty(expected.version);
     for item in &items[..expected.item_count] {
         actual.append(item)?;
     }

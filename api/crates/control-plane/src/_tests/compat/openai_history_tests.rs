@@ -53,7 +53,10 @@ fn standalone_notifications_remain_ordered_history_evidence() {
 fn completed_history_v2_digest_matches_frozen_nested_wire_vector() {
     let body = json!({"input": [{"role": "user", "content": "line\n\"雪\""}]});
     let output = [json!({"type": "future_item", "opaque": {"z": 1, "a": "x"}})];
-    let proof = completed_history(&body, None, &output).unwrap().unwrap();
+    let mut proof = History::empty(2);
+    proof.append(&body["input"][0]).unwrap();
+    proof.append(&output[0]).unwrap();
+    let proof = serde_json::to_value(proof).unwrap();
     assert_eq!(proof["item_count"], 2);
     assert_eq!(
         proof["digest"],
@@ -290,7 +293,7 @@ fn proof_versions_are_domain_separated_and_legacy_is_not_upgraded() {
     let current = completed_history(&json!({"input":[input]}), None, &[])
         .unwrap()
         .unwrap();
-    assert_eq!(current["version"], 2);
+    assert_eq!(current["version"], 3);
     assert_ne!(current["digest"], legacy["digest"]);
     let continued = completed_history(
         &json!({"previous_response_id":"resp_old","input":[]}),
@@ -493,4 +496,103 @@ fn omitted_default_user_role_preserves_full_and_delta_history_equivalence() {
         completed_history(&delta, Some(&history), &[]).unwrap(),
         completed_history(&full, None, &[]).unwrap()
     );
+}
+
+#[test]
+fn v3_function_call_delivery_id_is_optional_but_semantic_history_is_bound() {
+    let input = json!([
+        {"role":"developer","content":"instructions"},
+        {"role":"user","content":"work"}
+    ]);
+    let call = json!({"type":"function_call","id":"fc_native","status":"completed",
+        "call_id":"call_1","name":"exec","arguments":"{ \"x\": 1 }",
+        "encrypted_function_args":["opaque"],"extension":{"opaque":"keep"}});
+    let history = completed_history(&json!({"input":input}), None, &[call.clone()])
+        .unwrap()
+        .unwrap();
+    assert_eq!(history["version"], 3);
+    let mut replay = call.clone();
+    replay.as_object_mut().unwrap().remove("id");
+    replay.as_object_mut().unwrap().remove("status");
+    let mut full = input.as_array().unwrap().clone();
+    full.push(replay);
+    full.push(json!({"type":"function_call_output","call_id":"call_1","output":"result"}));
+    validate_full_retry_input(&json!(full), &history, &["call_1".into()]).unwrap();
+    for field in [
+        "call_id",
+        "name",
+        "arguments",
+        "encrypted_function_args",
+        "extension",
+    ] {
+        let mut changed = full.clone();
+        changed[2][field] = json!("tampered");
+        assert!(
+            validate_full_retry_input(&json!(changed), &history, &["call_1".into()]).is_err(),
+            "{field}"
+        );
+    }
+    // This packet does not broaden arguments to JSON reserialization equivalence.
+    let mut changed = full.clone();
+    changed[2]["arguments"] = json!("{\"x\":1}");
+    assert!(validate_full_retry_input(&json!(changed), &history, &["call_1".into()]).is_err());
+    let mut reordered = full.clone();
+    reordered.swap(0, 1);
+    assert!(validate_full_retry_input(&json!(reordered), &history, &["call_1".into()]).is_err());
+    let mut foreign = full.clone();
+    foreign[3]["call_id"] = json!("call_other");
+    assert!(validate_full_retry_input(&json!(foreign), &history, &["call_1".into()]).is_err());
+    let malformed = json!({"type":"function_call","id":42,"call_id":"call_1","arguments":"{}"});
+    assert_eq!(normalize_item(&malformed).unwrap(), malformed);
+    for kind in ["reasoning", "custom_tool_call", "future_item"] {
+        let item = json!({"type":kind,"id":"opaque_native","opaque":"keep"});
+        assert_eq!(normalize_item(&item).unwrap(), item);
+    }
+}
+
+#[test]
+fn frozen_v2_proofs_validate_and_continue_without_v3_reinterpretation() {
+    let input = json!({"role":"user","content":"old work"});
+    let call = json!({"type":"function_call","id":"fc_old","call_id":"call_old","name":"exec","arguments":"{}"});
+    let mut history = History::empty(2);
+    history.append(&input).unwrap();
+    history.append(&call).unwrap();
+    let history = serde_json::to_value(history).unwrap();
+    let output = json!({"type":"function_call_output","call_id":"call_old","output":"result"});
+    validate_full_retry_input(
+        &json!([input, call, output]),
+        &history,
+        &["call_old".into()],
+    )
+    .unwrap();
+    let mut without_id = call.clone();
+    without_id.as_object_mut().unwrap().remove("id");
+    assert!(validate_full_retry_input(
+        &json!([input, without_id, output]),
+        &history,
+        &["call_old".into()]
+    )
+    .is_err());
+    let continued = completed_history(
+        &json!({"previous_response_id":"resp_old","input":[output]}),
+        Some(&history),
+        &[],
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(continued["version"], 2);
+    let appended = append_items(&history, &[output.clone()]).unwrap();
+    assert_eq!(continued, appended);
+    let current = completed_history(&json!({"input":[input]}), None, &[call])
+        .unwrap()
+        .unwrap();
+    assert_ne!(current["digest"], history["digest"]);
+    let mut relabeled = history.clone();
+    relabeled["version"] = json!(3);
+    assert!(validate_full_retry_input(
+        &json!([input, without_id, output]),
+        &relabeled,
+        &["call_old".into()]
+    )
+    .is_err());
 }
