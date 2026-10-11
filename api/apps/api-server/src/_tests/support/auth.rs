@@ -140,6 +140,10 @@ async fn test_state_with_runtime_profile_state(
         .join("dropins")
         .display()
         .to_string();
+    config.mcp_template_library_root = std::env::temp_dir()
+        .join(format!("api-mcp-templates-{}", Uuid::now_v7()))
+        .display()
+        .to_string();
     config.system_backup_repository_root = std::env::temp_dir()
         .join(format!("api-system-backups-{}", Uuid::now_v7()))
         .display()
