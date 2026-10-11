@@ -125,7 +125,7 @@ test('real Git deletions route staged and branch foundation changes while ignori
   const baseRef = git('rev-parse', 'HEAD');
   git('rm', '--quiet', source, artifact);
   const staged = readChangedFiles({ repoRoot, mode: 'staged', baseRef, env: {} });
-  assert.deepEqual(staged, [source, artifact]);
+  assert.deepEqual(staged, [source]);
   git('commit', '--quiet', '-m', 'delete sources');
   const branch = readChangedFiles({ repoRoot, mode: 'branch', baseRef, env: {} });
   assert.deepEqual(branch, staged);
