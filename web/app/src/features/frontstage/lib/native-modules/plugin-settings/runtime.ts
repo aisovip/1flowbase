@@ -1,5 +1,7 @@
 import {
   requestManagedService,
+  openManagedServiceStream,
+  type ManagedServiceStreamOptions,
   type ManagedServiceRequest
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -7,4 +9,8 @@ import { useAuthStore } from '../../../../../state/auth-store';
 /** Read the current session at call time; never freeze credentials into compiled TSX. */
 export function request<T>(options: ManagedServiceRequest): Promise<T> {
   return requestManagedService<T>(options, useAuthStore.getState().csrfToken);
+}
+
+export function openStream(options: ManagedServiceStreamOptions) {
+  return openManagedServiceStream(options, useAuthStore.getState().csrfToken);
 }

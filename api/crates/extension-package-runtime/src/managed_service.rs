@@ -34,6 +34,13 @@ pub struct ManagedServiceMcpDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct ManagedServiceStream {
+    pub input_schema: Value,
+    pub event_schema: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManagedServiceOperation {
     pub interface_id: String,
     pub contribution_id: String,
@@ -43,6 +50,10 @@ pub struct ManagedServiceOperation {
     pub description: String,
     pub input_schema: Value,
     pub output_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<ManagedServiceStream>,
+    #[serde(default)]
+    pub invalidates_streams: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<ManagedServiceMcpDeclaration>,
 }
@@ -245,6 +256,21 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 "managed service operation requires authorized multiplex capability binding",
             ));
         }
+        if operation.stream.is_some()
+            && (operation.method != "POST"
+                || !binding
+                    .runtime
+                    .capabilities
+                    .iter()
+                    .any(|value| value == "runtime_duplex/v1"))
+        {
+            return Err(invalid(
+                "managed stream requires POST and runtime_duplex/v1 multiplex capability",
+            ));
+        }
+        if operation.stream.is_some() && operation.mcp.is_some() {
+            return Err(invalid("managed stream is a socket transport operation"));
+        }
         if service.worker_lifetime == ManagedServiceWorkerLifetime::ActorScope {
             if let Some(runtime) = shared_runtime {
                 if runtime != &binding.runtime {
@@ -256,7 +282,11 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 shared_runtime = Some(&binding.runtime);
             }
         }
-        for schema in [&operation.input_schema, &operation.output_schema] {
+        let mut schemas = vec![&operation.input_schema, &operation.output_schema];
+        if let Some(stream) = &operation.stream {
+            schemas.extend([&stream.input_schema, &stream.event_schema]);
+        }
+        for schema in schemas {
             fn references(value: &Value) -> bool {
                 match value {
                     Value::Object(fields) => {

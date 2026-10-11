@@ -192,3 +192,19 @@ fn actor_scope_worker_lifetime_is_explicit_and_bounded_by_idle_policy() {
         "shared operations cannot select separate executables"
     );
 }
+
+#[test]
+fn duplex_operations_require_authorized_multiplex_marker_and_self_contained_schemas() {
+    let mut value = fixture();
+    value["managed_service"]["operations"][0]["method"] = json!("POST");
+    value["managed_service"]["operations"][0]["stream"] = json!({"input_schema":{"type":"object"},"event_schema":{"type":"object"}});
+    assert!(parse(&value).is_err());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] = json!(["runtime_duplex/v1"]);
+    let parsed = parse(&value).unwrap();
+    assert!(!parsed.managed_service.unwrap().operations[0].invalidates_streams);
+    value["managed_service"]["operations"][0]["stream"]["event_schema"] = json!({"$ref":"https://attacker.invalid/schema"});
+    assert!(parse(&value).is_err());
+    value["managed_service"]["operations"][0]["stream"]["event_schema"] = json!({"type":"object"});
+    value["managed_service"]["operations"][0]["method"] = json!("GET");
+    assert!(parse(&value).is_err());
+}

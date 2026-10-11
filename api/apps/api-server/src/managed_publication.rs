@@ -26,6 +26,7 @@ use crate::{
 
 pub(crate) struct PreparedGeneration {
     router: Router,
+    stream_generation: String,
     pub(crate) permission_catalog: control_plane_contracts::CompiledConsolePolicyCatalog,
 }
 
@@ -77,6 +78,9 @@ impl ManagedGenerationPublisher {
             .filter(|definition| !managed_interfaces.contains(definition.interface_id().as_str()))
             .map(|definition| definition.interface_id().as_str().to_owned())
             .collect();
+        crate::managed_services::stream::publish_generation(
+            crate::managed_services::stream_ticket::generation(state).map_err(|error| error.0)?,
+        );
         Ok(Arc::new(Self {
             native_interfaces,
             current: RwLock::new(initial_router),
@@ -205,6 +209,8 @@ impl ManagedGenerationPublisher {
                 state.console_operation_registry.inventory(),
             )?;
         Ok(PreparedGeneration {
+            stream_generation: crate::managed_services::stream_ticket::generation(&state)
+                .map_err(|error| error.0)?,
             permission_catalog,
             router: router
                 .layer(crate::cors_layer(&self.config))
@@ -213,6 +219,7 @@ impl ManagedGenerationPublisher {
     }
 
     pub(crate) fn publish(&self, prepared: PreparedGeneration) {
+        crate::managed_services::stream::publish_generation(prepared.stream_generation);
         let previous = {
             let mut current = self
                 .current

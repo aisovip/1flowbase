@@ -148,8 +148,32 @@ impl InterfaceContributionCollector {
             operation_id: operation.operation_id.clone(),
             disposition: crate::console_operation_compilation::ConsoleMigrationDisposition::DefaultDisabled { evidence: "New managed service operation requires explicit role policy; no legacy grants".into() },
         }));
+        let managed_stream_controls = self
+            .contributions
+            .iter()
+            .filter(|contribution| contribution.contribution_id.starts_with("managed-service."))
+            .flat_map(|contribution| {
+                contribution
+                    .registry
+                    .bindings()
+                    .filter_map(|binding| {
+                        let definition = contribution
+                            .registry
+                            .definition(binding.interface_identity().interface_id())?;
+                        let route = binding.projection().http_route()?;
+                        (definition.execution_mode()
+                            == interface_runtime::InterfaceExecutionMode::ServerStream
+                            && route.method() == "POST")
+                            .then(|| access_control::ConsoleRouteBinding {
+                                method: "GET".into(),
+                                path: route.path().into(),
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let snapshot = compile_console_operation_snapshot(
-            policy_contributions_from_inventory(console_inventory),
+            policy_contributions_from_inventory(console_inventory, &managed_stream_controls),
             binding_contributions,
             migrations,
             known_binding_owners,
