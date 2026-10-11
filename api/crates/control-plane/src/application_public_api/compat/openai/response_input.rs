@@ -1375,6 +1375,12 @@ pub(super) fn openai_image_content_block(part: &Value) -> Option<Value> {
 /// Translate a verified callback suffix without extracting a latest user message or
 /// moving system/context entries away from their submitted position.
 pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenAiCompatError> {
+    if items.iter().any(super::is_standalone_function_output) {
+        return Err(OpenAiCompatError::invalid(
+            "input",
+            "this semantic recovery mapper cannot preserve standalone function outputs",
+        ));
+    }
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     validate_responses_items(&Value::Array(items.to_vec()), false, &mut report, true)?;
     items.iter().map(|item| match item.get("type").and_then(Value::as_str) {
