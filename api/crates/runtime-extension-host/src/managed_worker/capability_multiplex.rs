@@ -47,6 +47,20 @@ pub(super) async fn exchange(
         lease: lease.clone(),
         finished: false,
     };
+    let result = exchange_shared(&worker, binding, request, lease, Box::new(()), host_calls).await;
+    owner.control.terminate().await;
+    owner.finished = true;
+    result
+}
+
+pub(super) async fn exchange_shared(
+    worker: &MultiplexProviderWorker,
+    binding: &LoadedManagedBinding,
+    request: &CapabilityStdioRequest,
+    lease: Arc<PluginScopeLease>,
+    activity: Box<dyn Send + Sync>,
+    host_calls: Option<ProviderHostCallContext>,
+) -> FrameworkResult<Value> {
     let context = StreamingCallContext {
         required_live_events: None,
         diagnostic_live_events: None,
@@ -60,11 +74,9 @@ pub(super) async fn exchange(
                 .map_err(|_| invalid("managed operation request encoding failed"))?,
             &binding.limits,
             Some(context),
-            Some(Box::new(lease)),
+            Some(Box::new((lease, activity))),
         )
         .await;
-    owner.control.terminate().await;
-    owner.finished = true;
     let (response, _) = result?;
     let response: CapabilityStdioResponse = serde_json::from_value(response)
         .map_err(|_| invalid("managed operation response is malformed"))?;

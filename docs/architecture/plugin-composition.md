@@ -25,6 +25,7 @@
 - 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。
 - 物理 schema 归属与版本字段投影分开：宿主持久化每个版本实际声明的对象集合，安装新版不会撤销旧版字段，也不会把新字段开放给旧版。成员集合在同版本内不可变；回退复用原集合。移除字段仅保留物理数据，不授予新版访问权。没有默认值契约时，增加必填列或从仍可写的集合移除必填列会破坏共存写入，因此拒绝该 schema 变更。卸载停用整个家族的数据入口并保留表和版本映射；运行调用仍受当前贡献授权约束。
 - `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
+- `managed_service.worker_lifetime` 默认 `per_call`。显式 `actor_scope` 保留 `process_per_call` 的单调用预算与 `stdio_json_multiplex_v1` 协议，但由宿主复用 carrier：安装、作用域、冻结制品及可执行文件一致的贡献按可信 actor 隔离进程，同 actor 的操作共享进程内业务会话。所有操作必须声明同一 runtime entry 与 limits；每次调用仍独立注入贡献权限、凭据与 deadline。`worker_idle_timeout_ms` 为正整数，默认 1,800,000；仅无在途调用的 worker 可回收。取消仅针对相关调用，卸载、重载与 shutdown 先 fence 已准入未执行调用，再实际终止并回收子进程后完成 dispose。短 HTTP pull 可复用此契约，worker 生命周期不等于业务会话的闲置策略。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
 
 实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。

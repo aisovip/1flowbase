@@ -47,10 +47,31 @@ pub struct ManagedServiceOperation {
     pub mcp: Option<ManagedServiceMcpDeclaration>,
 }
 
+/// Carrier lifetime only: every operation retains its own deadline and authority.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedServiceWorkerLifetime {
+    #[default]
+    PerCall,
+    ActorScope,
+}
+impl ManagedServiceWorkerLifetime {
+    fn is_per_call(&self) -> bool {
+        *self == Self::PerCall
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceManifest {
     pub scope: ManagedServiceScope,
+    #[serde(
+        default,
+        skip_serializing_if = "ManagedServiceWorkerLifetime::is_per_call"
+    )]
+    pub worker_lifetime: ManagedServiceWorkerLifetime,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_idle_timeout_ms: Option<u64>,
     pub feature: ManagedServiceFeature,
     pub operations: Vec<ManagedServiceOperation>,
 }
@@ -70,6 +91,14 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
         }
         return Ok(());
     };
+    if service.worker_idle_timeout_ms == Some(0)
+        || (service.worker_lifetime == ManagedServiceWorkerLifetime::PerCall
+            && service.worker_idle_timeout_ms.is_some())
+    {
+        return Err(invalid(
+            "managed service idle timeout requires actor_scope and must be positive",
+        ));
+    }
     let owner = manifest.plugin_code()?;
     let managed = manifest
         .managed
@@ -136,6 +165,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
     let mut routes = BTreeSet::new();
     let mut contributions = BTreeSet::new();
     let mut mcp_names = BTreeSet::new();
+    let mut shared_runtime = None;
     for operation in &service.operations {
         if let Some(mcp) = &operation.mcp {
             let mut parameter_names = BTreeSet::new();
@@ -214,6 +244,17 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
             return Err(invalid(
                 "managed service operation requires authorized multiplex capability binding",
             ));
+        }
+        if service.worker_lifetime == ManagedServiceWorkerLifetime::ActorScope {
+            if let Some(runtime) = shared_runtime {
+                if runtime != &binding.runtime {
+                    return Err(invalid(
+                        "actor_scope operations must share one runtime entry and limits",
+                    ));
+                }
+            } else {
+                shared_runtime = Some(&binding.runtime);
+            }
         }
         for schema in [&operation.input_schema, &operation.output_schema] {
             fn references(value: &Value) -> bool {

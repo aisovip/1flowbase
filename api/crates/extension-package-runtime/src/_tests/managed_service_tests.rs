@@ -138,3 +138,57 @@ fn managed_mcp_rejects_ambiguous_flat_parameters_and_unsafe_route_identity() {
         assert!(parse(&invalid).is_err(), "{pointer}");
     }
 }
+
+#[test]
+fn actor_scope_worker_lifetime_is_explicit_and_bounded_by_idle_policy() {
+    let service = parse(&fixture()).unwrap().managed_service.unwrap();
+    assert_eq!(
+        service.worker_lifetime,
+        crate::ManagedServiceWorkerLifetime::PerCall
+    );
+    let mut value = fixture();
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    assert_eq!(
+        parse(&value)
+            .unwrap()
+            .managed_service
+            .unwrap()
+            .worker_lifetime,
+        crate::ManagedServiceWorkerLifetime::ActorScope
+    );
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(1800000);
+    assert!(parse(&value).is_ok());
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(0);
+    assert!(parse(&value).is_err());
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(1000);
+    value["managed_service"]["worker_lifetime"] = json!("per_call");
+    assert!(parse(&value).is_err());
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    let mut op = value["managed_service"]["operations"][0].clone();
+    op["interface_id"] = json!("managed_fixture.other");
+    op["contribution_id"] = json!("managed_fixture.other");
+    op["path"] = json!("/api/console/managed-services/managed_fixture/other");
+    value["managed_service"]["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(op);
+    let mut contribution = value["managed"]["module"]["contributions"][0].clone();
+    contribution["contribution_id"] = json!("managed_fixture.other");
+    value["managed"]["module"]["contributions"]
+        .as_array_mut()
+        .unwrap()
+        .push(contribution);
+    let mut binding = value["managed"]["execution_bindings"][0].clone();
+    binding["contribution_id"] = json!("managed_fixture.other");
+    binding["handler"] = json!("other");
+    value["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(binding);
+    assert!(parse(&value).is_ok());
+    value["managed"]["execution_bindings"][1]["runtime"]["entry"] = json!("bin/other");
+    assert!(
+        parse(&value).is_err(),
+        "shared operations cannot select separate executables"
+    );
+}

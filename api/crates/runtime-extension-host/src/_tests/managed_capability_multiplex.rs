@@ -79,6 +79,7 @@ sys.stdin.read()
                     ..Default::default()
                 },
                 handler: "list".into(),
+                worker_idle_timeout_ms: None,
                 interface_protocol: None,
                 contribution: ContributionDescriptor {
                     contribution_id: identity.contribution_id().clone(),
@@ -125,4 +126,328 @@ sys.stdin.read()
     assert!(workers
         .execute_with_services(request("system-scope"), port, None)
         .is_err());
+}
+
+#[cfg(unix)]
+fn service_fixture() -> (Fixture, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!(
+        "actor-service-{}-{}",
+        std::process::id(),
+        time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let executable = root.join("worker.py");
+    std::fs::write(&executable, r#"#!/usr/bin/env python3
+import json, os, sys
+value = None
+for line in sys.stdin:
+    frame = json.loads(line)
+    if frame['kind'] == 'cancel':
+        print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'cancelled','call_id':frame['call_id']}),flush=True)
+        continue
+    body = frame['request']['input']['input_payload']
+    if body.get('wait_file'):
+        open(body['wait_file'],'w').close()
+        continue
+    if 'set' in body: value = body['set']
+    print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'value':value}}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    (Fixture(root), executable)
+}
+#[cfg(unix)]
+fn mount_service(
+    workers: &mut ManagedWorkers,
+    executable: &std::path::Path,
+    contribution: &str,
+    idle: Option<u64>,
+) -> ManagedExecutionHandle {
+    let identity = ManagedExecutionIdentity::new(
+        ManagedInstallationId::new("installation").unwrap(),
+        ManagedWorkspaceId::new("system-scope").unwrap(),
+        ContributionId::new(contribution).unwrap(),
+        ManagedArtifactFingerprint::from_bytes(b"manifest"),
+        ManagedBindingFingerprint::from_bytes(contribution.as_bytes()),
+    );
+    workers
+        .mount(
+            identity.clone(),
+            LoadedManagedBinding {
+                plugin_id: "fixture.service@1.0.0".into(),
+                publisher_namespace: "fixture".into(),
+                plugin_code: "fixture.service".into(),
+                plugin_version: "1.0.0".into(),
+                protocol: STDIO_JSON_MULTIPLEX_V1.into(),
+                runtime_executable: executable.into(),
+                executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
+                    &std::fs::read(executable).unwrap(),
+                ),
+                execution_mode: PluginExecutionMode::ProcessPerCall,
+                limits: PluginRuntimeLimits {
+                    timeout_ms: Some(5000),
+                    ..Default::default()
+                },
+                handler: contribution.into(),
+                worker_idle_timeout_ms: idle,
+                interface_protocol: None,
+                contribution: ContributionDescriptor {
+                    contribution_id: identity.contribution_id().clone(),
+                    contributor_module_id: ModuleId::new("fixture.service").unwrap(),
+                    point_id: ExtensionPointId::new("1flowbase.managed-service.operation").unwrap(),
+                    contract_version: ContractVersion::new("1").unwrap(),
+                    required_permissions: Default::default(),
+                    mode: ContributionMode::Append,
+                    ordering: Default::default(),
+                },
+            },
+        )
+        .unwrap()
+}
+#[cfg(unix)]
+fn service_request(
+    handle: &ManagedExecutionHandle,
+    actor: Option<&str>,
+    body: serde_json::Value,
+) -> RuntimeManagedCapabilityRequest {
+    RuntimeManagedCapabilityRequest {
+        handle: handle.clone(),
+        principal: RuntimeExecutionPrincipal {
+            workspace_id: "system-scope".into(),
+            actor_id: actor.map(str::to_owned),
+            deadline_unix_ms: (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
+                as i64
+                + 5000,
+        },
+        config_payload: serde_json::json!({}),
+        input_payload: body,
+    }
+}
+#[cfg(unix)]
+async fn reap_service(workers: &mut ManagedWorkers, handle: &ManagedExecutionHandle) {
+    let scope = workers.unmount(handle).unwrap();
+    if let Some(pool) = workers.service_pool_for_handle(handle).unwrap() {
+        pool.retire_all().await.unwrap();
+    }
+    scope.dispose().await.unwrap();
+    workers.finish_unmount(handle);
+}
+#[cfg(unix)]
+fn process_exists(pid: i64) -> bool {
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn actor_scope_reuses_across_contributions_and_isolates_actors_then_reaps() {
+    let (_fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let open = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+    let pull = mount_service(&mut workers, &executable, "service.pull", Some(1800000));
+    assert!(workers
+        .execute(service_request(&open, None, serde_json::json!({})))
+        .is_err());
+    let first = workers
+        .execute(service_request(
+            &open,
+            Some("alice"),
+            serde_json::json!({"set":"shell"}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    let next = workers
+        .execute(service_request(&pull, Some("alice"), serde_json::json!({})))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        first, next,
+        "different authorized contributions use one actor worker"
+    );
+    let other = workers
+        .execute(service_request(&pull, Some("bob"), serde_json::json!({})))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_ne!(other["pid"], first["pid"]);
+    assert!(
+        other["value"].is_null(),
+        "a session identifier cannot cross actor process ownership"
+    );
+    let admitted = workers
+        .execute(service_request(&pull, Some("alice"), serde_json::json!({})))
+        .unwrap();
+    // Unmount one shared contribution fences unpolled calls and reaps all owner processes.
+    let scope = workers.unmount(&open).unwrap();
+    workers
+        .service_pool_for_handle(&open)
+        .unwrap()
+        .unwrap()
+        .retire_all()
+        .await
+        .unwrap();
+    assert!(admitted.await.is_err());
+    scope.dispose().await.unwrap();
+    workers.finish_unmount(&open);
+    assert!(!process_exists(first["pid"].as_i64().unwrap()));
+    assert!(!process_exists(other["pid"].as_i64().unwrap()));
+    assert!(workers
+        .execute(service_request(&open, Some("alice"), serde_json::json!({})))
+        .is_err());
+    let remounted = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+    let fresh = workers
+        .execute(service_request(
+            &remounted,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(
+        fresh["value"].is_null(),
+        "remount must not resurrect the disposed process state"
+    );
+    reap_service(&mut workers, &remounted).await;
+    reap_service(&mut workers, &pull).await;
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn actor_scope_cancellation_does_not_kill_other_calls_or_idle_active_worker() {
+    let (fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service(&mut workers, &executable, "service.open", Some(80));
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"set":"shell"}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    let ready = fixture.0.join("waiting");
+    let waiting = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"wait_file":ready}),
+        ))
+        .unwrap();
+    let task = tokio::spawn(waiting);
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while !ready.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(160)).await;
+    let concurrent = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(first, concurrent, "idle timer cannot retire an active call");
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    let after = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(first, after, "Cancel applies only to its multiplex call");
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while process_exists(first["pid"].as_i64().unwrap()) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    reap_service(&mut workers, &handle).await;
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn omitted_lifetime_keeps_per_call_processes_and_state_isolation() {
+    let (_fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service(&mut workers, &executable, "service.open", None);
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"set":"shell"}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(!process_exists(first["pid"].as_i64().unwrap()));
+    let second = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(second["value"].is_null());
+    assert_ne!(first["pid"], second["pid"]);
+    reap_service(&mut workers, &handle).await;
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn actor_scope_unmount_reaps_an_active_worker_before_scope_disposal() {
+    let (fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    let ready = fixture.0.join("waiting-unmount");
+    let task = tokio::spawn(
+        workers
+            .execute(service_request(
+                &handle,
+                Some("alice"),
+                serde_json::json!({"wait_file":ready}),
+            ))
+            .unwrap(),
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while !ready.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        reap_service(&mut workers, &handle),
+    )
+    .await
+    .unwrap();
+    assert!(
+        !process_exists(first["pid"].as_i64().unwrap()),
+        "dispose cannot acknowledge an unreaped process"
+    );
+    assert!(task.await.unwrap().is_err());
 }

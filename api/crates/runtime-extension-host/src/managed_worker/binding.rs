@@ -15,6 +15,7 @@ pub(crate) struct LoadedManagedBinding {
     pub execution_mode: PluginExecutionMode,
     pub limits: PluginRuntimeLimits,
     pub handler: String,
+    pub worker_idle_timeout_ms: Option<u64>,
     pub interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
     pub contribution: extension_contracts::extension_bus::ContributionDescriptor,
 }

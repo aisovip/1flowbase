@@ -298,7 +298,11 @@ impl RuntimeExtensionHost {
             RuntimeBackendError::InvalidRequest("managed executable hash gate unavailable".into())
         })?;
         let managed_scopes = self.managed_workers.read().await.scopes();
+        let service_pools = self.managed_workers.read().await.service_pools();
         tokio::time::timeout(budget, async {
+            for pool in &service_pools {
+                pool.retire_all().await?;
+            }
             for scope in &managed_scopes {
                 scope.dispose().await?;
             }
@@ -935,6 +939,14 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             .await
             .unmount(handle)
             .map_err(RuntimeBackendError::from)?;
+        let pool = self
+            .managed_workers
+            .read()
+            .await
+            .service_pool_for_handle(handle)?;
+        if let Some(pool) = pool {
+            pool.retire_all().await?;
+        }
         scope.dispose().await.map_err(RuntimeBackendError::from)?;
         self.managed_workers.write().await.finish_unmount(handle);
         Ok(())

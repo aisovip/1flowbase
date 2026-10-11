@@ -6,6 +6,7 @@ mod event_stdio;
 mod hook;
 mod hook_stdio;
 mod process;
+mod service_workers;
 pub(crate) use binding::LoadedManagedBinding;
 
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -25,6 +26,7 @@ struct MountedContribution {
     handle: ManagedExecutionHandle,
     binding: LoadedManagedBinding,
     scope: Arc<PluginScope>,
+    service_workers: Option<Arc<service_workers::ServiceWorkers>>,
 }
 
 #[derive(Debug)]
@@ -101,11 +103,28 @@ impl ManagedWorkers {
             .ok_or_else(|| invalid("managed worker generation exhausted"))?;
         self.next_generation = generation.get();
         let handle = ManagedExecutionHandle::new(identity.clone(), generation);
+        let service_workers = binding.worker_idle_timeout_ms.map(|idle_ms| {
+            self.mounted
+                .iter()
+                .find_map(|(existing, mounted)| {
+                    (existing.installation_id() == identity.installation_id()
+                        && existing.workspace_id() == identity.workspace_id()
+                        && existing.artifact_fingerprint() == identity.artifact_fingerprint()
+                        && mounted.binding.executable_fingerprint == binding.executable_fingerprint
+                        && mounted.binding.runtime_executable == binding.runtime_executable)
+                        .then(|| mounted.service_workers.clone())
+                        .flatten()
+                })
+                .unwrap_or_else(|| {
+                    service_workers::ServiceWorkers::new(idle_ms, self.budget.clone())
+                })
+        });
         self.mounted.insert(
             identity,
             MountedContribution {
                 handle: handle.clone(),
                 binding,
+                service_workers,
                 scope: PluginScope::managed(generation.get(), self.budget.clone()),
             },
         );
@@ -119,6 +138,25 @@ impl ManagedWorkers {
         let mounted = self.exact_mount(handle)?;
         mounted.scope.close_admission()?;
         Ok(mounted.scope.clone())
+    }
+
+    pub(crate) fn service_pools(&self) -> Vec<Arc<service_workers::ServiceWorkers>> {
+        let mut pools = Vec::new();
+        for mounted in self.mounted.values() {
+            if let Some(pool) = &mounted.service_workers {
+                if !pools.iter().any(|old| Arc::ptr_eq(old, pool)) {
+                    pools.push(pool.clone());
+                }
+            }
+        }
+        pools
+    }
+
+    pub(crate) fn service_pool_for_handle(
+        &self,
+        handle: &ManagedExecutionHandle,
+    ) -> FrameworkResult<Option<Arc<service_workers::ServiceWorkers>>> {
+        Ok(self.exact_mount(handle)?.service_workers.clone())
     }
 
     pub(crate) fn finish_unmount(&mut self, handle: &ManagedExecutionHandle) {
@@ -152,6 +190,8 @@ impl ManagedWorkers {
         self.mounted.len()
     }
 
+    #[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn execute(
         &self,
         request: RuntimeManagedCapabilityRequest,
@@ -281,6 +321,18 @@ impl ManagedWorkers {
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;
+        let shared = if let Some(pool) = &mounted.service_workers {
+            let actor = request
+                .principal
+                .actor_id
+                .as_ref()
+                .filter(|actor| !actor.is_empty())
+                .ok_or_else(|| invalid("actor_scope service requires a trusted actor"))?
+                .clone();
+            Some((pool.clone(), pool.epoch()?, actor))
+        } else {
+            None
+        };
         let mut binding = mounted.binding.clone();
         binding.limits.timeout_ms = Some(
             binding
@@ -320,7 +372,16 @@ impl ManagedWorkers {
                 ),
                 async {
                     if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-                        capability_multiplex::exchange(&binding, &request, lease, host_calls).await
+                        if let Some((pool, epoch, actor)) = shared {
+                            let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
+                            capability_multiplex::exchange_shared(
+                                &worker, &binding, &request, lease, activity, host_calls,
+                            )
+                            .await
+                        } else {
+                            capability_multiplex::exchange(&binding, &request, lease, host_calls)
+                                .await
+                        }
                     } else {
                         capability::exchange(&binding, &request, lease).await
                     }
