@@ -356,7 +356,7 @@ impl ResponsesWebSocketProjector {
                     "cancelled"
                 )
             })],
-            "waiting_callback" => self.waiting_callback_events(run, &envelope.payload),
+            "waiting_callback" => self.waiting_callback_events(run, &envelope),
             "waiting_human" => vec![failed_response_event(
                 run,
                 &self.model,
@@ -369,8 +369,12 @@ impl ResponsesWebSocketProjector {
         }
     }
 
-    fn waiting_callback_events(&mut self, run: &NativeRunResult, payload: &Value) -> Vec<Value> {
-        if self.selection.has_native_selection() {
+    fn waiting_callback_events(
+        &mut self,
+        run: &NativeRunResult,
+        envelope: &RuntimeEventEnvelope,
+    ) -> Vec<Value> {
+        if self.selection.native_event(envelope) {
             return vec![json!({
                 "type": "response.completed",
                 "response": completed_response_snapshot_with_output(
@@ -381,7 +385,7 @@ impl ResponsesWebSocketProjector {
                 )
             })];
         }
-        let Some(output) = function_call_output_items(payload) else {
+        let Some(output) = function_call_output_items(&envelope.payload) else {
             return vec![failed_response_event(
                 run,
                 &self.model,

@@ -1456,3 +1456,6 @@ fn preferred_websocket_missing_selection_cannot_complete_empty() {
         "llm_input_selection_missing"
     );
 }
+
+#[path = "_tests/selection_transitions.rs"]
+mod selection_transitions;

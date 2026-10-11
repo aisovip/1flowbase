@@ -9,7 +9,6 @@ use super::ResponsesProjectionMode;
 pub(crate) struct ResponsesProjectionSelector {
     mode: ResponsesProjectionMode,
     run_id: Option<Uuid>,
-    native_selected: bool,
     unresolved_output: bool,
     selections: BTreeMap<Uuid, LlmInputSelection>,
 }
@@ -19,7 +18,6 @@ impl ResponsesProjectionSelector {
         Self {
             mode,
             run_id: None,
-            native_selected: false,
             unresolved_output: false,
             selections: BTreeMap::new(),
         }
@@ -29,8 +27,6 @@ impl ResponsesProjectionSelector {
         self.run_id.get_or_insert(run_id);
         if self.run_id == Some(run_id) && event.run_id == run_id {
             if let Some(selection) = LlmInputSelection::from_host_event(event) {
-                self.native_selected |=
-                    selection.representation == LlmInputRepresentation::NativeOpaque;
                 self.selections.insert(selection.node_run_id, selection);
             } else if self.mode == ResponsesProjectionMode::AwaitingHostSelection {
                 let source = if matches!(
@@ -67,7 +63,10 @@ impl ResponsesProjectionSelector {
 
     pub(crate) fn has_native_selection(&self) -> bool {
         self.mode == ResponsesProjectionMode::TransparentProviderResponses
-            || (self.mode == ResponsesProjectionMode::AwaitingHostSelection && self.native_selected)
+            || (self.mode == ResponsesProjectionMode::AwaitingHostSelection
+                && self.selections.values().any(|selection| {
+                    selection.representation == LlmInputRepresentation::NativeOpaque
+                }))
     }
 
     pub(crate) fn native_event(&self, event: &RuntimeEventEnvelope) -> bool {
