@@ -184,7 +184,7 @@ impl ManagedExtensionComposition {
                 let candidate = self
                     .prepare_snapshot(
                         workspace_id,
-                        &packages,
+                        packages,
                         &owned_handles,
                         &mut expected,
                         &mut new_handles,
