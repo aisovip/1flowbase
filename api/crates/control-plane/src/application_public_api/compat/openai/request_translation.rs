@@ -328,6 +328,7 @@ fn translate_indexed_response_request(
             ),
         );
     }
+    let verbosity_hint = super::responses_verbosity_hint(object, &mut report)?;
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
@@ -432,12 +433,27 @@ fn translate_indexed_response_request(
             );
         }
     };
+    let semantic_verbosity_hint = if !uses_native_transport {
+        if verbosity_hint.is_some() {
+            report.record(
+                "$.text.verbosity",
+                Some("$.system"),
+                TranslationDecisionKind::Normalized,
+                Some("adapted to a request-owned response style prompt; model adherence is best effort"),
+                TranslationSafeRepresentation::Present,
+            );
+        }
+        verbosity_hint
+    } else {
+        None
+    };
     let system = (!uses_opaque_local_summary)
         .then(|| {
             system_from_parts(
                 instructions
                     .into_iter()
                     .chain(input_mapping.system_parts)
+                    .chain(semantic_verbosity_hint.map(str::to_string))
                     .collect(),
             )
         })
@@ -500,17 +516,18 @@ fn translate_indexed_response_request(
         },
         &mut report,
     )?;
-    let prefers_native_notifications = !uses_native_transport
-        && input
-            .as_array()
-            .is_some_and(|items| items.iter().any(super::is_standalone_function_output));
+    let prefers_native_transport = !uses_native_transport
+        && (object.contains_key("text")
+            || input
+                .as_array()
+                .is_some_and(|items| items.iter().any(super::is_standalone_function_output)));
     if uses_native_transport
-        || prefers_native_notifications
+        || prefers_native_transport
         || matches!(operation, domain::AiNativeOperation::Compact(_))
     {
         let payload = ProviderTransportPayload::openai_responses(request)
             .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
-        metadata.set_provider_transport_payload(if prefers_native_notifications {
+        metadata.set_provider_transport_payload(if prefers_native_transport {
             payload.preferred()
         } else {
             payload

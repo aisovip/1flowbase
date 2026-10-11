@@ -1,0 +1,21 @@
+# Responses 跨协议兼容
+
+网关按“映射协议 → AI Native → 供应商”分工。兼容以保留可表达的语义为目标，不承诺所有供应商具备 Responses 的全部能力。
+
+## 通知与工具回执
+
+`function_call_output` 的 `call_id` 缺失或为 `null` 时，它是独立外部上下文。映射层保留完整 JSON、`name`、`namespace` 和扩展字段；AI Native 使用 typed external context 保存，统一投影为标明来源的 user 级数据消息。它不会成为 system/developer 指令，也不会伪造工具调用 ID。消息中的来源和内容仍是外部数据，不应被模型当成可信指令。
+
+非空 `call_id` 才参与工具回执关联；空字符串及错误类型被拒绝。完整历史和 `previous_response_id` 增量续接都保留通知与回执顺序，并继续检查调用所属 scope、完整回执集合、重复回执和历史证明。通知不完成或重开工具任务。
+
+## 传输选择与表达提示
+
+通知及仅包含 `text.verbosity` 的请求同时保留语义表示和原始 Responses body。选定供应商同时具备 `responses.native_passthrough` 与 `responses.native_output.v1` 时优先使用原始请求，否则走语义表示。必须使用原生协议的字段以及已有供应商 continuation affinity 不允许降级。恢复、输出及历史元数据依据实际选定的传输模式。
+
+`text.verbosity` 的 `low`、`medium`、`high` 在语义路径转换为本次请求的表达长度提示，并在 translation report 中记录 Normalized。提示的遵循程度取决于模型，不等价于供应商的原生参数。未知 `text` 扩展或 `text.format` 仍要求原生能力，非法 verbosity 值被拒绝。
+
+## 供应商边界
+
+DeepSeek 插件只负责 Native 工具选择到 Chat Completions 的转换：`auto`、`none`、`required` 转为字符串，指定工具转为 `function` 对象。通知投影、子进程通信及恢复状态机由底座负责，插件无需实现 Responses 仿真。
+
+普通文本、标准函数工具及上述通知可以通过这条兼容路径工作。这不代表完整 Codex 功能兼容：自定义 grammar 工具、严格工具 schema、原生托管能力和无法跨供应商表达的私有推理仍遵循已有能力检查，不能靠字段丢弃模拟成功。

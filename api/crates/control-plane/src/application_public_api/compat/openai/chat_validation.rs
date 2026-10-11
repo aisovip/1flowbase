@@ -491,7 +491,7 @@ pub(super) fn responses_transport_requirement(
     let has_known_native_only_top_level_field = object.keys().any(|field| {
         matches!(
             field.as_str(),
-            "response_format" | "text" | "background" | "max_tool_calls" | "truncation"
+            "response_format" | "background" | "max_tool_calls" | "truncation"
         )
     });
     let may_omit_unsupported_optional_tools = responses_may_omit_unsupported_optional_tools(object);
@@ -525,6 +525,9 @@ pub(super) fn responses_transport_requirement(
             });
 
     if has_known_native_only_top_level_field
+        || object
+            .get("text")
+            .is_some_and(responses_text_requires_native)
         || has_native_only_tools
         || has_native_only_tool_choice
         || has_native_only_input
@@ -534,6 +537,50 @@ pub(super) fn responses_transport_requirement(
     } else {
         ResponsesTransportRequirement::SemanticCompatible
     }
+}
+
+// Only the standard verbosity preference has a semantic owner. Structured
+// formats and extensions remain provider-native contracts.
+fn responses_text_requires_native(text: &Value) -> bool {
+    !text.is_null()
+        && text
+            .as_object()
+            .is_none_or(|text| text.keys().any(|field| field != "verbosity"))
+}
+
+pub(super) fn responses_verbosity_hint(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> Result<Option<&'static str>, OpenAiCompatError> {
+    let Some(text) = object.get("text").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let Some(text) = text.as_object() else {
+        report.record(
+            "$.text",
+            None,
+            TranslationDecisionKind::Rejected,
+            Some("text must be an object"),
+            TranslationSafeRepresentation::Present,
+        );
+        return Err(OpenAiCompatError::invalid("text", "text must be an object")
+            .with_report(report.clone()));
+    };
+    let Some(verbosity) = text.get("verbosity").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let hint = match verbosity.as_str() {
+        Some("low") => "Response verbosity preference: low. Keep the answer concise while retaining information needed to fulfill the request.",
+        Some("medium") => "Response verbosity preference: medium. Use a balanced level of detail appropriate to the request.",
+        Some("high") => "Response verbosity preference: high. Provide a detailed explanation appropriate to the request.",
+        _ => {
+            report.record("$.text.verbosity", None, TranslationDecisionKind::Rejected,
+                Some("verbosity must be low, medium, or high"), TranslationSafeRepresentation::Present);
+            return Err(OpenAiCompatError::invalid("text.verbosity", "verbosity must be low, medium, or high")
+                .with_report(report.clone()));
+        }
+    };
+    Ok(Some(hint))
 }
 
 pub(super) fn responses_may_omit_unsupported_optional_tools(object: &Map<String, Value>) -> bool {
