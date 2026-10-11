@@ -3,7 +3,7 @@ use super::*;
 
 const SESSION: &str = "t.application_id=a.application_id and t.scope_id=a.scope_id and t.source_kind=a.source_kind and ((a.source_kind='native' and a.log_conversation_id is not null and t.log_conversation_id=a.log_conversation_id) or (a.source_kind<>'native' and a.source_id is not null and a.source_client is not null and nullif(a.source_session_id,'') is not null and t.source_id=a.source_id and t.source_client=a.source_client and t.source_session_id=a.source_session_id) or t.id=a.id)";
 
-pub(super) async fn page(
+pub(in crate::orchestration_runtime_repository) async fn page(
     store: &PgControlPlaneStore,
     application_id: Uuid,
     record_id: Uuid,
@@ -16,7 +16,9 @@ pub(super) async fn page(
     }
     let cursor = before.or(after).unwrap_or(record_id);
     // Validate membership before using cursor time. A foreign cursor never alters the scope.
-    let sql = format!("select t.id from application_run_log_tasks a join application_run_log_tasks t on {SESSION} where a.application_id=$1 and a.id=$2 and t.id=$3");
+    let sql = format!(
+        "select t.id from application_run_log_tasks a join application_run_log_tasks t on {SESSION} where a.application_id=$1 and a.id=$2 and t.id=$3"
+    );
     let valid: Option<Uuid> = sqlx::query_scalar(&sql)
         .bind(application_id)
         .bind(record_id)
@@ -39,7 +41,9 @@ pub(super) async fn page(
         "<="
     };
     let direction = if after.is_some() { "asc" } else { "desc" };
-    let sql = format!("select t.id from application_run_log_tasks a join application_run_log_tasks t on {SESSION} join application_run_log_tasks c on c.id=$3 where a.application_id=$1 and a.id=$2 and (t.started_at,t.id) {comparison} (c.started_at,c.id) order by t.started_at {direction},t.id {direction} limit $4");
+    let sql = format!(
+        "select t.id from application_run_log_tasks a join application_run_log_tasks t on {SESSION} join application_run_log_tasks c on c.id=$3 where a.application_id=$1 and a.id=$2 and (t.started_at,t.id) {comparison} (c.started_at,c.id) order by t.started_at {direction},t.id {direction} limit $4"
+    );
     let mut ids: Vec<Uuid> = sqlx::query_scalar(&sql)
         .bind(application_id)
         .bind(record_id)
@@ -52,7 +56,9 @@ pub(super) async fn page(
     }
     let first = ids.first().copied().unwrap_or(cursor);
     let last = ids.last().copied().unwrap_or(cursor);
-    let sql = format!("select exists(select 1 from application_run_log_tasks t where {SESSION} and (t.started_at,t.id)<(f.started_at,f.id)) as has_before, exists(select 1 from application_run_log_tasks t where {SESSION} and (t.started_at,t.id)>(l.started_at,l.id)) as has_after from application_run_log_tasks a join application_run_log_tasks f on f.id=$3 join application_run_log_tasks l on l.id=$4 where a.application_id=$1 and a.id=$2");
+    let sql = format!(
+        "select exists(select 1 from application_run_log_tasks t where {SESSION} and (t.started_at,t.id)<(f.started_at,f.id)) as has_before, exists(select 1 from application_run_log_tasks t where {SESSION} and (t.started_at,t.id)>(l.started_at,l.id)) as has_after from application_run_log_tasks a join application_run_log_tasks f on f.id=$3 join application_run_log_tasks l on l.id=$4 where a.application_id=$1 and a.id=$2"
+    );
     let row = sqlx::query(&sql)
         .bind(application_id)
         .bind(record_id)

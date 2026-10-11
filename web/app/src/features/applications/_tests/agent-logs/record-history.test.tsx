@@ -99,7 +99,7 @@ function mount(onOpenMessageLog = vi.fn()) {
   );
 }
 beforeEach(async () => {
-  vi.resetAllMocks();
+  api.fetchApplicationLogRecordConversationMessages.mockReset();
   await appI18n.changeLanguage('zh_Hans');
 });
 test('five backend business turns prepend older history and each answer opens its own record', async () => {
