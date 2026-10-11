@@ -25,6 +25,7 @@ pub(crate) struct PluginScope {
     generation: u64,
     admission: Mutex<PluginScopeAdmission>,
     drained: Notify,
+    duplex_cancel: tokio::sync::watch::Sender<u64>,
     managed_budget: Option<Arc<tokio::sync::Semaphore>>,
 }
 
@@ -70,6 +71,7 @@ impl PluginScope {
                 drains: 0,
             }),
             drained: Notify::new(),
+            duplex_cancel: tokio::sync::watch::channel(0).0,
             managed_budget: None,
         })
     }
@@ -83,6 +85,7 @@ impl PluginScope {
                 drains: 0,
             }),
             drained: Notify::new(),
+            duplex_cancel: tokio::sync::watch::channel(0).0,
             managed_budget: Some(budget),
         })
     }
@@ -141,6 +144,10 @@ impl PluginScope {
         self.admit_budgeted()
     }
 
+    pub(crate) fn duplex_cancellation(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.duplex_cancel.subscribe()
+    }
+
     pub(crate) fn begin_drain(self: &Arc<Self>) -> FrameworkResult<PluginScopeDrain> {
         let mut admission = self.lock_admission()?;
         if admission.state != PluginScopeState::Mounted {
@@ -151,6 +158,8 @@ impl PluginScope {
         admission.drains = admission.drains.checked_add(1).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package("managed drain count exhausted")
         })?;
+        self.duplex_cancel
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
         Ok(PluginScopeDrain {
             scope: self.clone(),
         })
@@ -161,6 +170,8 @@ impl PluginScope {
         if admission.state == PluginScopeState::Mounted {
             admission.state = PluginScopeState::Disposing;
         }
+        self.duplex_cancel
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
         Ok(())
     }
 

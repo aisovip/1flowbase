@@ -70,7 +70,9 @@ A Host call and worker terminal response look like:
 {"protocol":"stdio_json_multiplex_v1","kind":"response","call_id":"42","response":{"output":{}}}
 ```
 
-`cancel` aborts and awaits the call task before emitting `cancelled`. If a
+`cancel` closes per-call input, invalidates emitters and closes output credit.
+The handler may finish awaited cleanup; after a one-second transport grace the runner
+aborts it. `cancelled` follows observed task termination. If a
 response already won the race, a late cancel for any dispatched ID is a no-op.
 Unknown future controls and duplicate calls fail closed. The canonical
 `MULTIPLEX_MAX_FRAME_BYTES` limit is 32 MiB, leaving room around the API's
@@ -93,3 +95,28 @@ bridge buffers are allocated once per worker process, not once per session.
 
 `serve` bridges stdin through a detached reader thread so an open Host pipe
 cannot trap Tokio's blocking pool during runner shutdown.
+
+## Managed duplex calls
+
+`serve_duplex` accepts `Fn(Value, MultiplexEmitter, MultiplexInput) -> Fut`;
+`serve_duplex_io` provides the same contract for injectable I/O. Existing `serve`
+and `serve_io` remain available. `MultiplexInput::recv().await` returns `None`
+when Host cancellation closes the call, allowing the plugin to await its own
+connection cleanup. During cancellation `emitter.event` fails with `Correlation`.
+
+`emitter.event(value).await` reserves sliding byte credit, queues an Event and
+returns without waiting for a network roundtrip. Events contain `await_ack: true`
+and a monotonically increasing `event_id`. Host `event_ack` releases that event's
+credit after downstream consumption. Multiple events can be in flight;
+`MULTIPLEX_CALL_EVENT_BUDGET_BYTES` bounds their aggregate encoded bytes. A terminal
+Response waits for all event credit to return. Input consumption and output
+production must run concurrently in the handler. `try_event` retains its original
+wire shape and fail-fast behavior. Host channels, process ownership, identity,
+authority and lifecycle remain outside the plugin.
+
+受管双向调用通过 `serve_duplex` / `serve_duplex_io` 注入每次调用的输入。
+取消使 `MultiplexInput::recv` 返回 `None`，使 `event` 返回 `Correlation`；
+插件据此等待自身连接清理，SDK 在观察任务结束后发送 `Cancelled`。
+输出使用按字节滑动窗口，`event` 排队后即返回，多条输出可同时在途；
+宿主确认下游消费后，按 `event_id` 归还 credit。终态等待输出全部消费，
+输入处理不等待每条输出的网络确认。宿主独占身份、鉴权和进程生命周期。

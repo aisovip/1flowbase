@@ -318,6 +318,11 @@ impl ManagedWorkers {
             .ok()
             .filter(|value| *value > 0)
             .ok_or_else(|| invalid("managed execution deadline has expired"))?;
+        // Subscribe before admission so a drain racing with this call cannot be missed.
+        let scope_cancel = request
+            .duplex
+            .as_ref()
+            .map(|_| mounted.scope.duplex_cancellation());
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;
@@ -347,7 +352,32 @@ impl ManagedWorkers {
                 )
                 .min(remaining_ms),
         );
+        if request.duplex.is_some()
+            && binding.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
+        {
+            return Err(invalid("duplex requires multiplex transport").into());
+        }
         Ok(async move {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let cancel_task = scope_cancel.map(|mut scope| {
+                tokio::spawn(async move {
+                    if !scope.has_changed().unwrap_or(true) {
+                        let _ = scope.changed().await;
+                    }
+                    cancel_tx.send_replace(true);
+                })
+            });
+            struct CancelTask(Option<tokio::task::JoinHandle<()>>);
+            impl Drop for CancelTask {
+                fn drop(&mut self) {
+                    if let Some(task) = &self.0 {
+                        task.abort();
+                    }
+                }
+            }
+            let _cancel_task = CancelTask(cancel_task);
+            let duplex = request.duplex;
+            let cancel = duplex.as_ref().map(|_| cancel_rx);
             let lease = Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining_ms =
@@ -375,12 +405,15 @@ impl ManagedWorkers {
                         if let Some((pool, epoch, actor)) = shared {
                             let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
                             capability_multiplex::exchange_shared(
-                                &worker, &binding, &request, lease, activity, host_calls,
+                                &worker, &binding, &request, lease, activity, host_calls, duplex,
+                                cancel,
                             )
                             .await
                         } else {
-                            capability_multiplex::exchange(&binding, &request, lease, host_calls)
-                                .await
+                            capability_multiplex::exchange(
+                                &binding, &request, lease, host_calls, duplex, cancel,
+                            )
+                            .await
                         }
                     } else {
                         capability::exchange(&binding, &request, lease).await

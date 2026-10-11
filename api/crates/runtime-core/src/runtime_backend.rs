@@ -340,6 +340,21 @@ pub struct RuntimeManagedCapabilityRequest {
     pub principal: RuntimeExecutionPrincipal,
     pub config_payload: Value,
     pub input_payload: Value,
+    pub duplex: Option<RuntimeManagedDuplex>,
+}
+
+/// Host-owned channels attached to one admitted call; no browser or worker identity is accepted.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedDuplex {
+    pub input: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Value>>>,
+    pub events: tokio::sync::mpsc::Sender<RuntimeManagedDuplexEvent>,
+}
+
+/// Transport byte credit follows consumption; this is not a business commit or Kernel ACK.
+#[derive(Debug)]
+pub struct RuntimeManagedDuplexEvent {
+    pub event: Value,
+    pub consumed: tokio::sync::oneshot::Sender<()>,
 }
 
 #[derive(Debug, Clone)]

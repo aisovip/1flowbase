@@ -212,7 +212,8 @@ async fn root_2007_ac_003_004_hook_transport_scope_generation_phase_and_deadline
             handle: handle.clone(),
             principal: request(handle.clone(), before("model")).principal,
             config_payload: serde_json::json!({}),
-            input_payload: serde_json::json!({})
+            input_payload: serde_json::json!({}),
+            duplex: None,
         })
         .is_err());
     workers.unmount(&handle).unwrap().dispose().await.unwrap();
@@ -571,6 +572,7 @@ async fn root_2007_ac_010_lane_budgets_capability_output_and_reap() {
                 principal: request(handle.clone(), before("model")).principal,
                 config_payload: serde_json::json!({}),
                 input_payload: serde_json::json!({}),
+                duplex: None,
             })
             .unwrap();
         let operation = tokio::spawn(operation);

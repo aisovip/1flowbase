@@ -39,6 +39,14 @@ pub enum MultiplexHostMessage {
         call_id: String,
         request: Value,
     },
+    Input {
+        call_id: String,
+        input: Value,
+    },
+    EventAck {
+        call_id: String,
+        event_id: String,
+    },
     Cancel {
         call_id: String,
     },
@@ -62,6 +70,10 @@ pub enum MultiplexWorkerMessage {
     Event {
         call_id: String,
         event: Value,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        await_ack: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        event_id: Option<String>,
     },
     Response {
         call_id: String,
