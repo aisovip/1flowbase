@@ -562,10 +562,6 @@ function readQualityGateArtifactReports({ repoRoot, artifactRoot }) {
   const reports = listFilesBySuffix(
     absoluteArtifactRoot, 'quality-gate-report.json', new Set(['test-governance-artifacts'])
   )
-    // Aggregate archives contain past component snapshots, not current component evidence.
-    .filter((reportPath) => (
-      path.relative(absoluteArtifactRoot, reportPath).split(path.sep)[0] !== 'test-governance-artifacts'
-    ))
     .map((reportPath) => {
       const report = readJsonFileIfPresent(reportPath);
 
