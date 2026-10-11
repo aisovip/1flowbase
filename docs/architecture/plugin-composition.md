@@ -24,6 +24,7 @@
 - 扩展操作成功后，前端刷新导航、页面版本、模板列表、权限目录、API 文档和 MCP 接口缓存；已打开的模板编辑器保留其起始版本与未保存草稿。服务端发布代际与前端缓存刷新分别拥有自己的完成边界，页面卸载或请求取消不能推导为业务回滚。
 - 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。
 - 物理 schema 归属与版本字段投影分开：宿主持久化每个版本实际声明的对象集合，安装新版不会撤销旧版字段，也不会把新字段开放给旧版。成员集合在同版本内不可变；回退复用原集合。移除字段仅保留物理数据，不授予新版访问权。没有默认值契约时，增加必填列或从仍可写的集合移除必填列会破坏共存写入，因此拒绝该 schema 变更。卸载停用整个家族的数据入口并保留表和版本映射；运行调用仍受当前贡献授权约束。
+- 物理质量检查以实际访问模型为准：版本对象成员集合使用 `(owner_id, owner_version, ownership_key)` 主键及 ownership catalog 外键；出站凭据使用 `(publisher_namespace, plugin_code, scope_id, credential_id)` 精确查找并保留创建/更新时序。两者不承担普通业务资源的 scope/time/id 分页，门禁仍独立验证复合身份、归属和实际查询索引。
 - `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
 

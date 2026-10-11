@@ -46,14 +46,12 @@ impl ManagedGenerationPublisher {
         host_contributions: Vec<HostExtensionContributionManifest>,
         initial_router: Router,
     ) -> anyhow::Result<Arc<Self>> {
+        let boot = state
+            .extension_boot_snapshot
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("host generation requires a boot snapshot"))?;
         let mut template = state.as_ref().clone();
-        template.extension_boot_snapshot = Some(Arc::new(
-            state
-                .extension_boot_snapshot
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("host generation requires a boot snapshot"))?
-                .fork_generation(BTreeMap::new())?,
-        ));
+        template.extension_boot_snapshot = Some(Arc::new(boot.fork_generation(BTreeMap::new())?));
         let managed_interfaces = state
             .console_surface_registry
             .managed_services()
@@ -66,12 +64,9 @@ impl ManagedGenerationPublisher {
                     .map(|op| op.interface_id.as_str())
             })
             .collect::<std::collections::BTreeSet<_>>();
-        let native_interfaces = state
-            .extension_boot_snapshot
-            .as_ref()
-            .unwrap()
+        let native_interfaces = boot
             .interface_registry()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("host generation requires an interface registry"))?
             .snapshot()
             .definitions()
             .filter(|definition| !managed_interfaces.contains(definition.interface_id().as_str()))

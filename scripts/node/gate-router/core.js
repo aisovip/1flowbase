@@ -165,7 +165,7 @@ function parseCliArgs(argv = []) {
 }
 
 function buildGitDiffArgs({ mode, baseRef }) {
-  const commonArgs = ['diff', '--name-only', '--diff-filter=ACMRTUXB'];
+  const commonArgs = ['diff', '--name-only', '--diff-filter=ACDMRTUXB'];
 
   if (mode === 'staged') {
     return [...commonArgs, '--cached'];

@@ -1318,3 +1318,31 @@ test('AI protocol concurrency separates caller workflows and candidate sources',
   assert.notEqual(render('source-a'), render('source-a', 'quality gate', 'schedule'));
   assert.doesNotMatch(render('source-a'), /\$\{\{/u);
 });
+
+
+test('agent log focused gate independently rejects every empty Cargo selector', () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/agent-logs-regression.yml'), 'utf8');
+  const commands = [...workflow.matchAll(/cargo test[^\n]+> (tmp\/test-governance\/[^ ]+\.log)/gu)];
+  assert.equal(commands.length, 9);
+  for (const command of commands) {
+    const log = command[1];
+    // Validation follows the command in the same fail-fast shell step.
+    const remainder = workflow.slice(command.index + command[0].length).split('\n').slice(0, 2).join('\n');
+    assert.ok(remainder.includes(`node scripts/node/verify/cargo-test-results.js ${log}`), log);
+  }
+});
+
+test('organization gate validates the exact selected batch without treating compile checks as tests', () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/organization-contracts.yml'), 'utf8');
+  const testStep = workflow.slice(workflow.indexOf('- name: Verify organization'), workflow.indexOf('- name: Compile API consumers'));
+  const logs = [...new Set([...testStep.matchAll(/tee tmp\/test-governance\/organization\/([a-z-]+)\.log/gu)].map((match) => match[1]))];
+  const selections = [...testStep.matchAll(/suites="([a-z -]+)"/gu)].map((match) => match[1].split(' '));
+  assert.deepEqual(selections[0], ['integration']);
+  assert.deepEqual(selections[1].sort(), logs.sort());
+  assert.equal(logs.length, 10);
+  assert.match(testStep, /for suite in \$suites; do/u);
+  assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/organization\/\$suite\.log" \|\| verification_status=1/u);
+  const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
+  assert.match(compileStep, /cargo check --locked/u);
+  assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
+});

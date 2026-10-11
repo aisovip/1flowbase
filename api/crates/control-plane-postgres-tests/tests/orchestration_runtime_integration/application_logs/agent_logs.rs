@@ -1204,8 +1204,17 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
 mod unified_queries;
 
 async fn enable_reception_fixture(store: &PgControlPlaneStore, scope: Uuid, application_id: Uuid) {
-    let application = store.get_application(scope, application_id).await.unwrap().unwrap();
-    store.set_application_api_enabled(&SetApplicationApiEnabledInput {
-        actor_user_id: application.created_by, application_id, api_enabled: true,
-    }).await.unwrap();
+    let application = store
+        .get_application(scope, application_id)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_application_api_enabled(&SetApplicationApiEnabledInput {
+            actor_user_id: application.created_by,
+            application_id,
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
 }

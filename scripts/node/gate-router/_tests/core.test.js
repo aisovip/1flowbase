@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   buildAdvisoryMessage,
   main,
+  readChangedFiles,
   routeChangedFiles,
 } = require('../core.js');
 
@@ -99,4 +100,39 @@ test('main reads staged changes from env override and never blocks the commit', 
   assert.match(stdout, /repo-frontend-pr/u);
   assert.match(stdout, /repo-backend-check-apps/u);
   assert.match(stdout, /This hook does not block the commit/u);
+});
+
+
+test('real Git deletions route staged and branch foundation changes while ignoring artifacts', (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { execFileSync } = require('node:child_process');
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-deletions-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
+  git('init', '--quiet');
+  git('config', 'user.name', 'Gate fixture');
+  git('config', 'user.email', 'fixture@example.invalid');
+  const source = 'api/apps/api-server/src/routes/mcp_protocol.rs';
+  const artifact = 'tmp/deleted-fixture.log';
+  for (const file of [source, artifact]) {
+    fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, file), 'fixture\n');
+  }
+  git('add', '.');
+  git('commit', '--quiet', '-m', 'baseline');
+  const baseRef = git('rev-parse', 'HEAD');
+  git('rm', '--quiet', source, artifact);
+  const staged = readChangedFiles({ repoRoot, mode: 'staged', baseRef, env: {} });
+  assert.deepEqual(staged, [source, artifact]);
+  git('commit', '--quiet', '-m', 'delete sources');
+  const branch = readChangedFiles({ repoRoot, mode: 'branch', baseRef, env: {} });
+  assert.deepEqual(branch, staged);
+  for (const files of [staged, branch]) {
+    const scopes = routeChangedFiles(files).map((route) => route.scope);
+    assert.ok(scopes.includes('repo-backend-static'));
+    assert.ok(scopes.includes('foundation-contract-mcp-gateway-fast'));
+  }
+  assert.deepEqual(routeChangedFiles([artifact]), []);
 });

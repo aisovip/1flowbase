@@ -3,8 +3,8 @@ use super::*;
 use control_plane::ports::{
     ApplicationLogRecordsPage, LogQueryField, RecordClientTrajectoryQueryPage,
 };
-pub(super) mod schemas;
 pub(crate) mod current_context;
+pub(super) mod schemas;
 use schemas::{LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema};
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
