@@ -30,6 +30,28 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
             row["encrypted_secret_json"] = encrypt_secret_json(&plain, target)?;
         }
     }
+    if table == "plugin_credentials" {
+        let field = |name| {
+            row.get(name)
+                .and_then(Value::as_str)
+                .context("invalid plugin credential identity")
+        };
+        let aad = crate::plugin_credential_repository::credential_associated_data(
+            field("publisher_namespace")?,
+            field("plugin_code")?,
+            field("scope_id")?,
+            field("credential_id")?,
+        )?;
+        let plain = decrypt_secret_json_with_aad(
+            row.get("encrypted_value")
+                .context("missing plugin credential ciphertext")?,
+            source,
+            &aad,
+        )?;
+        if source != target {
+            row["encrypted_value"] = encrypt_secret_json_with_aad(&plain, target, &aad)?;
+        }
+    }
     if table == "provider_protocol_capsules" {
         let field = |name| {
             row.get(name)

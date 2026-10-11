@@ -1,6 +1,7 @@
 mod fixes;
 mod native_storage;
 mod oauth;
+mod plugin_credentials;
 mod raw_storage;
 
 use super::*;

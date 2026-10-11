@@ -27,18 +27,31 @@ impl PgPluginCredentialRepository {
 fn storage_error(_: impl std::fmt::Display) -> PluginCredentialError {
     PluginCredentialError::new("plugin_credential_storage_unavailable")
 }
+pub(crate) fn credential_associated_data(
+    publisher_namespace: &str,
+    plugin_code: &str,
+    scope_id: &str,
+    credential_id: &str,
+) -> Result<Vec<u8>, serde_json::Error> {
+    // JSON tuple encoding is unambiguous even when user IDs contain separators.
+    serde_json::to_vec(&(
+        "plugin_credential/v1",
+        publisher_namespace,
+        plugin_code,
+        scope_id,
+        credential_id,
+    ))
+}
 fn associated_data(
     binding: &PluginCredentialBinding,
     credential_id: &str,
 ) -> Result<Vec<u8>, PluginCredentialError> {
-    // JSON tuple encoding is unambiguous even when user IDs contain separators.
-    serde_json::to_vec(&(
-        "plugin_credential/v1",
+    credential_associated_data(
         &binding.publisher_namespace,
         &binding.plugin_code,
         &binding.scope_id,
         credential_id,
-    ))
+    )
     .map_err(storage_error)
 }
 #[async_trait]
