@@ -197,7 +197,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
       - uses: actions/download-artifact@v6
         with:
-          pattern: test-governance-*
+          pattern: "test-governance-!(artifacts)"
           path: tmp/test-governance/parallel
           merge-multiple: false
       - name: Require separate collector runtime evidence for manual acceptance

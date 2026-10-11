@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { buildAggregateReport } = require('../core.js');
+const { buildAggregateReport, runQualityGateAggregate } = require('../core.js');
 const repoRoot = path.resolve(__dirname, '../../../..');
 const candidate = 'a'.repeat(40);
 const artifact = (commit) => ({
@@ -58,4 +58,46 @@ test('upstream macro lint policy pins only Clippy while retaining project warnin
   const { buildCommands } = require('../../verify-backend.js');
   const clippy = buildCommands({ cargoJobs: 2, cargoTestThreads: 2, repoRoot, env: {}, target: 'clippy' });
   assert.ok(clippy.every((command) => command.args.slice(-2).join(' ') === '-D warnings'));
+});
+
+test('aggregate archives cannot replace current required component evidence', async (t) => {
+  const cases = [
+    { name: 'old failure cannot block a current pass', current: 'passed', archived: 'failed', expected: 'passed' },
+    { name: 'old pass cannot hide a current failure', current: 'failed', archived: 'passed', expected: 'failed' },
+    { name: 'old pass cannot satisfy a missing component', current: null, archived: 'passed', expected: 'failed' },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const temporaryRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'quality-aggregate-archive-'));
+      try {
+        const artifactRoot = path.join(temporaryRoot, 'receipts');
+        const writeReceipt = (directory, scope, status) => {
+          fs.mkdirSync(directory, { recursive: true });
+          fs.writeFileSync(path.join(directory, 'quality-gate-report.json'), JSON.stringify({
+            scope, commit: candidate, status, exitCode: status === 'passed' ? 0 : 1,
+          }));
+          fs.writeFileSync(path.join(directory, 'quality-gate.latest.log'), `${scope} ${status}\n`);
+        };
+        const archive = path.join(artifactRoot, 'test-governance-artifacts');
+        writeReceipt(archive, 'ci', scenario.archived);
+        writeReceipt(path.join(archive, 'parallel', 'test-governance-repo-tooling'), 'repo-tooling', scenario.archived);
+        if (scenario.current) {
+          // Real component artifacts may contain receipts below their own artifact root.
+          writeReceipt(path.join(artifactRoot, 'test-governance-repo-tooling', 'receipt'), 'repo-tooling', scenario.current);
+        }
+        const result = await runQualityGateAggregate({
+          repoRoot: temporaryRoot, artifactRoot, expectedScopes: ['repo-tooling'],
+          reportType: 'ci', env: { GITHUB_SHA: candidate },
+        });
+        assert.equal(result.status, scenario.expected);
+        const output = JSON.parse(fs.readFileSync(path.join(temporaryRoot, 'tmp/test-governance/quality-gate-report.json'), 'utf8'));
+        assert.equal(output.components.length, 1);
+        assert.equal(output.components[0].scope, 'repo-tooling');
+        assert.equal(output.components[0].status, scenario.expected);
+        assert.notEqual(output.components[0].artifactName, 'test-governance-artifacts');
+      } finally {
+        fs.rmSync(temporaryRoot, { recursive: true, force: true });
+      }
+    });
+  }
 });

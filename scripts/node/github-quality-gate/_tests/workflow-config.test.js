@@ -1346,3 +1346,23 @@ test('organization gate validates the exact selected batch without treating comp
   assert.match(compileStep, /cargo check --locked/u);
   assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
 });
+
+test('aggregate downloads current component artifacts without its own archived reports', () => {
+  const { DEFAULT_AGGREGATE_SCOPES } = require('../core.js');
+  const componentNames = [
+    ...DEFAULT_AGGREGATE_SCOPES.map((scope) => `test-governance-${scope}`),
+    `test-governance-foundation-contracts-${'a'.repeat(40)}`,
+    `test-governance-ai-gateway-protocol-conformance-${'a'.repeat(40)}`,
+    'test-governance-provider-conformance',
+    'test-governance-collector-runtime-main-official',
+  ];
+  for (const workflow of [readQualityGateWorkflow(), readVerifyWorkflow()]) {
+    const pattern = workflow.match(/pattern: ["']?(test-governance-[^\s"']+)["']?/u)?.[1];
+    assert.ok(pattern, 'aggregate must declare its artifact filter');
+    for (const name of componentNames) {
+      assert.ok(path.matchesGlob(name, pattern), `required component excluded: ${name}`);
+    }
+    assert.equal(path.matchesGlob('test-governance-artifacts', pattern), false);
+    assert.equal(path.matchesGlob('coverage-shadow-api-server-profraw-1', pattern), false);
+  }
+});
