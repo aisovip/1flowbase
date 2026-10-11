@@ -407,18 +407,19 @@ async fn preferred_selected_mode_controls_real_executor_output_recovery_and_meta
             "{:?}",
             detail.flow_run.error_payload
         );
-        let inputs = captured.lock().unwrap();
-        assert_eq!(inputs.len(), 1);
-        assert_eq!(inputs[0].native_transport.is_some(), native_target);
-        let directive: ProviderRecoveryDirective = serde_json::from_value(
-            inputs[0].run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
-        )
-        .unwrap();
-        assert_eq!(
-            matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. }),
-            native_target
-        );
-        drop(inputs);
+        {
+            let inputs = captured.lock().unwrap();
+            assert_eq!(inputs.len(), 1);
+            assert_eq!(inputs[0].native_transport.is_some(), native_target);
+            let directive: ProviderRecoveryDirective = serde_json::from_value(
+                inputs[0].run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+            )
+            .unwrap();
+            assert_eq!(
+                matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. }),
+                native_target
+            );
+        }
         if !native_target {
             assert!(service
                 .optional_native_continuation_fixture(started.flow_run.id)

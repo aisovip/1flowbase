@@ -33,9 +33,13 @@ fn standalone_notifications_remain_ordered_history_evidence() {
 
     let next_call =
         json!({"type":"function_call","call_id":"call_next","name":"exec","arguments":"{}"});
-    let next_history = completed_history(&json!({"input":full}), None, &[next_call.clone()])
-        .unwrap()
-        .unwrap();
+    let next_history = completed_history(
+        &json!({"input":full}),
+        None,
+        std::slice::from_ref(&next_call),
+    )
+    .unwrap()
+    .unwrap();
     full.push(next_call);
     full.push(json!({"type":"function_call_output","call_id":"call_next","output":"done"}));
     validate_full_retry_input(&json!(full), &next_history, &["call_next".into()]).unwrap();
@@ -507,7 +511,7 @@ fn v3_function_call_delivery_id_is_optional_but_semantic_history_is_bound() {
     let call = json!({"type":"function_call","id":"fc_native","status":"completed",
         "call_id":"call_1","name":"exec","arguments":"{ \"x\": 1 }",
         "encrypted_function_args":["opaque"],"extension":{"opaque":"keep"}});
-    let history = completed_history(&json!({"input":input}), None, &[call.clone()])
+    let history = completed_history(&json!({"input":input}), None, std::slice::from_ref(&call))
         .unwrap()
         .unwrap();
     assert_eq!(history["version"], 3);
@@ -581,7 +585,7 @@ fn frozen_v2_proofs_validate_and_continue_without_v3_reinterpretation() {
     .unwrap()
     .unwrap();
     assert_eq!(continued["version"], 2);
-    let appended = append_items(&history, &[output.clone()]).unwrap();
+    let appended = append_items(&history, std::slice::from_ref(&output)).unwrap();
     assert_eq!(continued, appended);
     let current = completed_history(&json!({"input":[input]}), None, &[call])
         .unwrap()

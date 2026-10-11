@@ -446,16 +446,17 @@ async fn preferred_notifications_choose_exact_native_or_semantic_fallback_at_sel
     )
     .await
     .unwrap();
-    let captured = captured_inputs.lock().unwrap();
-    assert_eq!(captured.len(), 1);
-    assert!(captured[0].native_transport.is_none());
-    assert_eq!(captured[0].messages, canonical.messages);
+    {
+        let captured = captured_inputs.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert!(captured[0].native_transport.is_none());
+        assert_eq!(captured[0].messages, canonical.messages);
+    }
     let mut metadata = &output.result.provider_metadata;
     while let Some(upstream) = metadata.get("_1flowbase_upstream_provider_metadata") {
         metadata = upstream;
     }
     assert!(metadata.get("native_response").is_none());
-    drop(captured);
     invoker.repository.enable_native_responses_fixture().await;
     let native_output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
         &invoker, &runtime, canonical,
