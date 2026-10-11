@@ -441,6 +441,11 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/applications/logs/current-context",
+                "applications.view",
+            ),
+            (
+                "GET",
                 "/api/console/applications/logs/query-fields",
                 "applications.view",
             ),
