@@ -641,7 +641,7 @@
       "expansionReadinessExemption": {
         "kind": "bounded_projection",
         "reason": "bounded plugin package catalog projection is one row per plugin installation and does not introduce unbounded expansion history",
-        "boundedBy": ["plugin_installations"]
+        "boundedBy": ["extension_installations"]
       },
       "recommendedIndexes": [
         {
@@ -658,7 +658,7 @@
       "recommendation": "Projection is bounded by plugin installations; no high-growth migration is needed unless projection history is introduced."
     },
     {
-      "name": "plugin_artifact_instances",
+      "name": "extension_artifact_instances",
       "growthType": "plugin_artifact_projection",
       "requiredRoutingColumns": ["installation_id", "node_id"],
       "ownerColumns": ["installation_id", "node_id"],
@@ -667,7 +667,7 @@
       "expansionReadinessExemption": {
         "kind": "bounded_projection",
         "reason": "bounded plugin artifact projection is keyed by plugin installation and node without unbounded history",
-        "boundedBy": ["plugin_installations"]
+        "boundedBy": ["extension_installations"]
       },
       "recommendedIndexes": [
         {
