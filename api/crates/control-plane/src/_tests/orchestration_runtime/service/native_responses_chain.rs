@@ -434,6 +434,8 @@ async fn preferred_selected_mode_controls_real_executor_output_recovery_and_meta
             assert!(detail
                 .flow_run
                 .error_payload
+                .as_ref()
+                .expect("native failure payload")
                 .to_string()
                 .contains("missing or duplicate formal output item"));
         }
