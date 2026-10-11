@@ -157,6 +157,6 @@ test('older-page failure stays visible without losing already loaded conversatio
   mount();
   expect(await screen.findByText('answer 7')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'older turns' }));
-  await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.getByText('answer 7')).toBeInTheDocument();
 });

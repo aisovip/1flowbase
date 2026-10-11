@@ -435,18 +435,19 @@ function RunConversation({
         : false,
     refetchOnWindowFocus: false
   });
+  const recordConversationData = recordQuery.data;
   const recordConversationItems = useMemo(() => {
     // The backend orders each page by business turn. Prepend older pages and
     // deduplicate overlaps by canonical record identity, never by source text.
     const records = new Map<
       string,
-      NonNullable<typeof recordQuery.data>['pages'][number]['items'][number]
+      NonNullable<typeof recordConversationData>['pages'][number]['items'][number]
     >();
-    for (const page of [...(recordQuery.data?.pages ?? [])].reverse()) {
+    for (const page of [...(recordConversationData?.pages ?? [])].reverse()) {
       for (const record of page.items) records.set(record.record_id, record);
     }
     return [...records.values()];
-  }, [recordQuery.data]);
+  }, [recordConversationData]);
   const overviewQuery = useQuery({
     queryKey: applicationRunOverviewQueryKey(applicationId, runId),
     enabled: !recordId,
