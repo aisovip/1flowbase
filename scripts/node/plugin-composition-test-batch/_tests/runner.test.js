@@ -91,6 +91,13 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
   assert.equal(inventory.definitions.length, 455);
   assert.equal(inventory.bindings.length, 477);
   assert.ok(inventory.approvedAddedDefinitions.includes('ui_management.plugin_settings_page.view'));
+  for (const [definition, binding] of [
+    ['applications.runtime.current-context.get', 'http.console.applications.runtime.current-context.get.v1'],
+    ['ui_management.plugin_settings_module_asset.view', 'http.console.ui-management.plugin-settings-module-asset.get.v1'],
+  ]) {
+    assert.ok(inventory.approvedAddedDefinitions.includes(definition));
+    assert.ok(inventory.approvedAddedBindings.includes(binding));
+  }
   assert.deepEqual(inventory.approvedRemovedDefinitions, ['ui_management.templates.archive']);
   assert.deepEqual(inventory.approvedRemovedBindings, ['http.console.ui-management.templates.archive.put.v1']);
   assert.equal(new Set(inventory.approvedAddedDefinitions).size, inventory.approvedAddedDefinitions.length);
