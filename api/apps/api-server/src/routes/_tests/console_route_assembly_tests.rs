@@ -446,11 +446,6 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
-                "/api/console/applications/:id/logs/records/:record_id/conversation/messages",
-                "applications.view",
-            ),
-            (
-                "GET",
                 "/api/console/applications/logs/query-fields",
                 "applications.view",
             ),
@@ -493,6 +488,11 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "DELETE",
                 "/api/console/applications/:id/logs",
                 "applications.logs.delete",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/records/:record_id/conversation/messages",
+                "applications.view",
             ),
             (
                 "GET",
