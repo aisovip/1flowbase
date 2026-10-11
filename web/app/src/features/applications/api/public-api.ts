@@ -12,6 +12,7 @@ import {
   replaceConsoleWorkflowScheduleTrigger,
   revokeConsoleApplicationApiKey,
   unpublishConsoleApplicationApiVersion,
+  updateConsoleApplicationApiStatus,
   type ConsoleApplicationApiKey,
   type ConsoleApplicationApiMapping,
   type ConsoleApplicationApiPublication,
@@ -187,6 +188,19 @@ export function publishApplicationApiVersion(
   return publishConsoleApplicationApiVersion(
     applicationId,
     { mapping, api_enabled: true },
+    csrfToken,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function updateApplicationApiStatus(
+  applicationId: string,
+  api_enabled: boolean,
+  csrfToken: string
+) {
+  return updateConsoleApplicationApiStatus(
+    applicationId,
+    { api_enabled },
     csrfToken,
     getApplicationsApiBaseUrl()
   );

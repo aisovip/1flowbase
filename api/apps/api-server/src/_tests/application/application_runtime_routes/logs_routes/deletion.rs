@@ -145,6 +145,7 @@ async fn agent_logs_delete_console_route_requires_auth_csrf_scope_and_rejects_na
         .unwrap();
     let store = MainDurableStore::new(pool.clone());
     let event:control_plane_contracts::ports::AgentLogEvent=serde_json::from_value(json!({"event_id":"delete-route-event","source_session_id":"session","source_task_id":"turn","sequence":0,"occurred_at":"2026-10-07T00:00:00Z","kind":"user","content":"fixture","raw":{}})).unwrap();
+    enable_agent_logs_fixture(&store, scope, application_id).await;
     control_plane::agent_logs::AgentLogsService::new(store.clone())
         .ingest(
             application_id,

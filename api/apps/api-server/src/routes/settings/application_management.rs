@@ -56,6 +56,7 @@ pub struct ApplicationManagementItemResponse {
     pub updated_at: String,
     pub tags: Vec<ApplicationManagementTagResponse>,
     pub publication_status: String,
+    pub api_enabled: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -135,7 +136,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
         Some(mp::object_schema(&[
             (
                 "items",
-                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("api_enabled",serde_json::json!({"type":"boolean"}))])}),
             ),
             ("total", serde_json::json!({"type":"integer"})),
             ("page", serde_json::json!({"type":"integer"})),
@@ -244,6 +245,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                             .collect::<Option<Vec<_>>>()?,
                                     )
                                 }),
+                                ("api_enabled", serde_json::json!(item.api_enabled)),
                                 (
                                     "publication_status",
                                     mp::object_value(&[(
@@ -433,6 +435,7 @@ impl TryFrom<ApplicationManagementRecord> for ApplicationManagementItemResponse 
                 })
                 .collect(),
             publication_status: record.publication_status.as_str().to_string(),
+            api_enabled: record.api_enabled,
         })
     }
 }

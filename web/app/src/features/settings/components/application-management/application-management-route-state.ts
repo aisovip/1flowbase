@@ -3,7 +3,7 @@ import type { ConsoleApplicationType } from '@1flowbase/api-client';
 export interface ApplicationManagementRouteState {
   page: number;
   application_type?: ConsoleApplicationType;
-  publication_status?: 'published' | 'unpublished';
+  publication_status?: 'published' | 'unpublished' | 'not_applicable';
   created_by?: string;
   tag_id?: string;
   keyword?: string;
@@ -32,7 +32,9 @@ export function readApplicationManagementRouteState(): ApplicationManagementRout
         ? applicationType
         : undefined,
     publication_status:
-      publicationStatus === 'published' || publicationStatus === 'unpublished'
+      publicationStatus === 'published' ||
+      publicationStatus === 'unpublished' ||
+      publicationStatus === 'not_applicable'
         ? publicationStatus
         : undefined,
     created_by: optionalSearchValue(search, 'created_by'),

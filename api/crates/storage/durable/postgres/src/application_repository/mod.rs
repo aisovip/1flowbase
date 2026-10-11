@@ -1011,6 +1011,7 @@ impl ApplicationManagementRepository for PgControlPlaneStore {
                     where publication.application_id = a.id
                       and publication.active = true
                 ) as published,
+                a.api_enabled,
                 coalesce(tags.tags, '[]'::jsonb) as tags
             from applications a
             left join users creator on creator.id = a.created_by
@@ -1065,7 +1066,10 @@ impl ApplicationManagementRepository for PgControlPlaneStore {
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                     tags: serde_json::from_value(row.get::<Value, _>("tags"))?,
-                    publication_status: if published {
+                    api_enabled: row.get("api_enabled"),
+                    publication_status: if application_type == domain::ApplicationType::AgentLogs {
+                        domain::ApplicationPublicationStatus::NotApplicable
+                    } else if published {
                         domain::ApplicationPublicationStatus::Published
                     } else {
                         domain::ApplicationPublicationStatus::Unpublished
@@ -1142,7 +1146,7 @@ fn append_application_management_filter_expr(
                     "application_type" => "a.application_type",
                     "workflow_trigger_type" => "coalesce(a.workflow_trigger_type, '')",
                     "publication_status" => {
-                        "case when exists (select 1 from application_publication_versions publication where publication.application_id = a.id and publication.active = true) then 'published' else 'unpublished' end"
+                        "case when a.application_type = 'agent_logs' then 'not_applicable' when exists (select 1 from application_publication_versions publication where publication.application_id = a.id and publication.active = true) then 'published' else 'unpublished' end"
                     }
                     "created_by" => "a.created_by::text",
                     _ => anyhow::bail!(ControlPlaneError::InvalidInput("filter")),

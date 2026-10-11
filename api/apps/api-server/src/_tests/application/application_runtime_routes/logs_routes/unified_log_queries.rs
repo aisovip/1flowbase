@@ -172,6 +172,7 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         .unwrap();
     let store = MainDurableStore::new(pool);
     let event=serde_json::from_value(json!({"event_id":"route-final","source_session_id":"session","source_task_id":"turn","sequence":1,"occurred_at":"2026-10-08T00:00:00Z","kind":"assistant","phase":"final_answer","content":"route needle","model_id":"gpt-route","reasoning_effort":"high","raw":{}})).unwrap();
+    enable_agent_logs_fixture(&store, scope, application_id).await;
     let record = control_plane::agent_logs::AgentLogsService::new(store.clone())
         .ingest(
             application_id,
@@ -198,6 +199,7 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
     let other_id = second["data"]["id"].as_str().unwrap();
     let other_application = Uuid::parse_str(other_id).unwrap();
     let other_event=serde_json::from_value(json!({"event_id":"other-final","source_session_id":"session","source_task_id":"turn","sequence":1,"occurred_at":"2026-10-08T00:00:00Z","kind":"assistant","phase":"final_answer","content":"other application secret","raw":{}})).unwrap();
+    enable_agent_logs_fixture(&store, scope, other_application).await;
     let other_record = control_plane::agent_logs::AgentLogsService::new(store.clone())
         .ingest(
             other_application,
@@ -350,6 +352,7 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
             .await
             .unwrap();
         let event=serde_json::from_value(json!({"event_id":name,"source_session_id":"acl-session","source_task_id":"acl-turn","sequence":1,"occurred_at":"2026-10-08T00:00:00Z","kind":"assistant","phase":"final_answer","content":format!("{name} secret"),"raw":{}})).unwrap();
+        enable_agent_logs_fixture(&store, scope, application.id).await;
         let record = control_plane::agent_logs::AgentLogsService::new(store.clone())
             .ingest(
                 application.id,

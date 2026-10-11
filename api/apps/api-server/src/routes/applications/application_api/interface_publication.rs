@@ -516,6 +516,14 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                         application_id,
                         body,
                     } => {
+                        let application = ApplicationService::new(actor_store.clone())
+                            .load_application_for_non_crud_console_operation_for_actor(
+                                actor, application_id,
+                                control_plane::application::ApplicationNonCrudConsoleOperation::ApiSetEnabled,
+                            ).await?;
+                        let public_url = if application.application_type == domain::ApplicationType::AgentLogs {
+                            "/api/logs/v1/events"
+                        } else { PUBLIC_RUNS_PATH };
                         ApplicationPublicationService::new(actor_store)
                             .set_api_enabled(SetApplicationApiEnabledCommand {
                                 actor_user_id: actor.user_id,
@@ -526,7 +534,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                         ApplicationPublicationOutput::Status(ApplicationApiStatusResponse {
                             application_id,
                             api_enabled: body.api_enabled,
-                            public_url: PUBLIC_RUNS_PATH.to_string(),
+                            public_url: public_url.to_string(),
                         })
                     }
                 };

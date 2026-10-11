@@ -89,6 +89,7 @@ const applicationsPublicApi = vi.hoisted(() => ({
     'schedule-trigger'
   ]),
   unpublishApplicationApiVersion: vi.fn(),
+  updateApplicationApiStatus: vi.fn(),
   fetchApplicationApiMapping: vi.fn(),
   fetchWorkflowScheduleTrigger: vi.fn(),
   saveWorkflowScheduleTrigger: vi.fn()
@@ -714,6 +715,62 @@ describe('ApplicationManagementPanel', () => {
     expect(screen.queryByLabelText('导入')).not.toBeInTheDocument();
   });
 
+  test('log reception uses API status, preserves publication and updates from server state', async () => {
+    window.history.replaceState({}, '', '/settings/applications');
+    const row = {
+      id: 'logs',
+      application_type: 'agent_logs',
+      name: 'Reception logs',
+      created_by: 'root-user',
+      created_by_display_name: 'Root',
+      tags: [],
+      created_at: '2026-10-11T00:00:00Z',
+      updated_at: '2026-10-11T00:00:00Z',
+      publication_status: 'not_applicable',
+      api_enabled: false
+    };
+    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+      { items: [row], total: 1, page: 1, page_size: 20 }
+    );
+    applicationsPublicApi.updateApplicationApiStatus.mockImplementation(
+      async () => {
+        row.api_enabled = true;
+        return {
+          application_id: 'logs',
+          api_enabled: true,
+          public_url: '/api/logs/v1/events'
+        };
+      }
+    );
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    const toggle = await screen.findByRole('switch', { name: '日志接收' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('已停用')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(
+        applicationsPublicApi.updateApplicationApiStatus
+      ).toHaveBeenCalledWith('logs', true, 'csrf-123')
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: '日志接收' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    );
+    expect(screen.getByText('接收中')).toBeInTheDocument();
+    expect(
+      applicationsPublicApi.fetchApplicationApiMapping
+    ).not.toHaveBeenCalled();
+    expect(
+      applicationsPublicApi.unpublishApplicationApiVersion
+    ).not.toHaveBeenCalled();
+  });
+
   test('restores agent_logs URL filters and renders backend type labels', async () => {
     applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
       {
@@ -1251,7 +1308,7 @@ describe('ApplicationManagementPanel', () => {
 
     const headers = screen.getAllByRole('columnheader');
     const publicationControlIndex = headers.findIndex(
-      (header) => header.textContent === '发布控制'
+      (header) => header.textContent === '发布／接收控制'
     );
     const actionsIndex = headers.findIndex(
       (header) => header.textContent === '操作'
@@ -1335,7 +1392,7 @@ describe('ApplicationManagementPanel', () => {
     );
 
     expect(
-      await screen.findByRole('columnheader', { name: '发布控制' })
+      await screen.findByRole('columnheader', { name: '发布／接收控制' })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('columnheader', { name: '应用类型' })

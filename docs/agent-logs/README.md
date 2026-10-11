@@ -2,6 +2,8 @@
 
 [中文](README.zh-CN.md)
 
+New log applications start with reception disabled. After configuring the collector, enable **Log reception** in application management or the API page. You can create an API key beforehand.
+
 The collector has two installation stages. First, install the signed distribution package from the remote extension catalog **in 1flowbase**. Then open its **Download collector CLI** detail and run the command on your computer. The installer, native archive, checksums and documentation are served by your own 1flowbase at version-pinned URLs. They remain available if the remote repository is offline. “Installed in platform” describes the retained distribution package; it does not indicate that a client process is online.
 
 On an Agent Logs application's **Collector CLI** page, select the Codex tab to open its details; **All** returns to the directory. Paste an API key for this application, or select **Generate key** to create a real application key and fill the field. Copy the Shell or PowerShell command and run it on the computer running Codex. If the field is empty, the installer still prompts for the key locally. The official Rust executable does not require Node.js, a Rust toolchain or a repository checkout.
@@ -92,3 +94,7 @@ Console APIs require a signed-in workspace session. Each endpoint has its own op
 Generate a UUID `job_id` before starting. Repeating the same ID with the same scope returns the original task, including completed tasks; a different scope returns 409. An application can have one active deletion task. The existing `DELETE /logs` remains available and returns 409 while a task is active. Job scopes reject caller-provided `ingested_at_before`; the server establishes that boundary.
 
 A task contains `job_id`, `application_id`, `scope`, `ingested_at_before`, `status`, `total_records`, `deleted_records`, `stop_requested`, `error_code`, `created_at` and `updated_at`. Status is `queued`, `running`, `succeeded`, `stopped` or `failed`. Display the server's absolute `deleted_records/total_records` instead of adding response counts locally. If a start response is lost, query the original ID. If needed, confirm start with that same ID and scope; do not generate another task identity.
+
+## Log reception
+
+Log applications do not publish orchestration versions. Use **Log reception** in application management or the API page to enable or disable uploads. New applications start disabled; existing log applications keep receiving after the upgrade. While disabled, `/api/logs/v1/events` returns HTTP 403 (`agent_logs_ingestion_disabled`) without storing new events. Saved logs and API keys remain available, and keys can still be created or revoked. After enabling reception again, the collector retries pending data on the next Hook or an explicit `flush`.

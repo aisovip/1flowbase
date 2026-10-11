@@ -12,6 +12,8 @@ export function ApplicationApiStatusBar({
   apiStatus,
   loading,
   onTogglePublished,
+  onToggleApiEnabled,
+  apiToggleDisabled,
   toolbar,
   children
 }: {
@@ -19,6 +21,8 @@ export function ApplicationApiStatusBar({
   apiStatus?: ApplicationDetail['sections']['api'];
   loading?: boolean;
   onTogglePublished?: (published: boolean) => void;
+  onToggleApiEnabled?: (api_enabled: boolean) => void;
+  apiToggleDisabled?: boolean;
   toolbar?: ReactNode;
   children?: ReactNode;
 }) {
@@ -32,13 +36,27 @@ export function ApplicationApiStatusBar({
     >
       <div className="application-api-status__header">
         <Space className="application-api-status__summary" align="center" wrap>
-          <Typography.Text strong>{t('auto.public_api')}</Typography.Text>
+          <Typography.Text strong>
+            {apiStatus ? t('agent_logs.reception') : t('auto.public_api')}
+          </Typography.Text>
           {apiStatus ? (
-            <Tag>
-              {apiStatus.api_capability_status === 'enabled'
-                ? t('agent_logs.api_enabled')
-                : t('agent_logs.api_disabled')}
-            </Tag>
+            <>
+              <Switch
+                aria-label={t('agent_logs.reception')}
+                checked={apiStatus.api_capability_status === 'enabled'}
+                disabled={apiToggleDisabled}
+                loading={loading}
+                onChange={onToggleApiEnabled}
+              />
+              <Tag>
+                {apiStatus.api_capability_status === 'enabled'
+                  ? t('agent_logs.reception_enabled')
+                  : t('agent_logs.reception_disabled')}
+              </Tag>
+              <Typography.Text type="secondary">
+                {t('agent_logs.reception_help')}
+              </Typography.Text>
+            </>
           ) : (
             <Switch
               checked={published}

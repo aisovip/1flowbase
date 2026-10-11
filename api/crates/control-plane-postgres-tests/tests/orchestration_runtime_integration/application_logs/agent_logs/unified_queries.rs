@@ -147,6 +147,7 @@ async fn agent_logs_unified_query_mixed_sources_typed_filters_and_null_last_curs
         })
         .await
         .unwrap();
+    enable_reception_fixture(&store, mixed_scope, imported_app.id).await;
     let imported = service
         .ingest(imported_app.id, mixed_scope, Uuid::now_v7(), batch(vec![e]))
         .await

@@ -47,7 +47,8 @@ import {
 import {
   fetchApplicationApiMapping,
   publishApplicationApiVersion,
-  unpublishApplicationApiVersion
+  unpublishApplicationApiVersion,
+  updateApplicationApiStatus
 } from '../../../applications/api/public-api';
 import { ApplicationFormModal } from '../../../applications/components/ApplicationFormModal';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
@@ -326,6 +327,20 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('applications', 'auto.revert_to_draft_failed'))
   });
+  const receptionMutation = useMutation({
+    mutationFn: ({ id, api_enabled }: { id: string; api_enabled: boolean }) =>
+      updateApplicationApiStatus(id, api_enabled, csrfToken),
+    onSuccess: async () => {
+      await invalidateApplications();
+      messageApi.success(
+        i18nText('applications', 'agent_logs.reception_updated')
+      );
+    },
+    onError: () =>
+      messageApi.error(
+        i18nText('applications', 'agent_logs.reception_update_failed')
+      )
+  });
   const publishMutation = useMutation({
     mutationFn: async (applicationId: string) => {
       const mapping = await fetchApplicationApiMapping(applicationId);
@@ -338,6 +353,10 @@ export function ApplicationManagementPanel() {
     onError: () =>
       messageApi.error(i18nText('agentFlow', 'auto.publishing_failed'))
   });
+  const setReception = receptionMutation.mutate;
+  const updatingReceptionId = receptionMutation.isPending
+    ? receptionMutation.variables?.id
+    : null;
   const copyApplication = copyMutation.mutate;
   const exportApplications = exportMutation.mutate;
   const deleteApplicationById = deleteMutation.mutateAsync;
@@ -484,22 +503,29 @@ export function ApplicationManagementPanel() {
         key: 'publication_status',
         title: i18nText(
           'settingsApplicationManagement',
-          'auto.application_management_publication_status'
+          'auto.application_management_availability_status'
         ),
         width: 120,
-        render: (_, application) => (
-          <Tag
-            color={
-              application.publication_status === 'published'
-                ? 'success'
-                : 'default'
-            }
-          >
-            {application.publication_status === 'published'
-              ? i18nText('settings', 'auto.published')
-              : i18nText('settings', 'auto.unpublished')}
-          </Tag>
-        )
+        render: (_, application) =>
+          application.application_type === 'agent_logs' ? (
+            <Tag color={application.api_enabled ? 'success' : 'default'}>
+              {application.api_enabled
+                ? i18nText('applications', 'agent_logs.reception_enabled')
+                : i18nText('applications', 'agent_logs.reception_disabled')}
+            </Tag>
+          ) : (
+            <Tag
+              color={
+                application.publication_status === 'published'
+                  ? 'success'
+                  : 'default'
+              }
+            >
+              {application.publication_status === 'published'
+                ? i18nText('settings', 'auto.published')
+                : i18nText('settings', 'auto.unpublished')}
+            </Tag>
+          )
       },
       {
         key: 'created_by_display_name',
@@ -551,6 +577,24 @@ export function ApplicationManagementPanel() {
         width: 100,
         render: (_, application) => {
           const editAllowed = canEdit(application);
+          if (application.application_type === 'agent_logs') {
+            return (
+              <Tooltip
+                title={i18nText('applications', 'agent_logs.reception_help')}
+              >
+                <Switch
+                  aria-label={i18nText('applications', 'agent_logs.reception')}
+                  checked={application.api_enabled}
+                  disabled={!editAllowed}
+                  loading={updatingReceptionId === application.id}
+                  onClick={(_, event) => event.stopPropagation()}
+                  onChange={(api_enabled) =>
+                    setReception({ id: application.id, api_enabled })
+                  }
+                />
+              </Tooltip>
+            );
+          }
           return (
             <Tooltip
               title={i18nText(
@@ -675,6 +719,8 @@ export function ApplicationManagementPanel() {
       exportApplications,
       exportMutation.isPending,
       publishApplication,
+      setReception,
+      updatingReceptionId,
       publishingApplicationId,
       revertingApplicationId
     ]
@@ -716,6 +762,13 @@ export function ApplicationManagementPanel() {
             {
               value: 'unpublished',
               label: i18nText('settings', 'auto.unpublished')
+            },
+            {
+              value: 'not_applicable',
+              label: i18nText(
+                'applications',
+                'agent_logs.publication_not_applicable'
+              )
             }
           ]}
           onChange={(publication_status) =>

@@ -14,7 +14,8 @@ import {
   fetchApplicationApiMapping,
   fetchApplicationApiPublication,
   publishApplicationApiVersion,
-  unpublishApplicationApiVersion
+  unpublishApplicationApiVersion,
+  updateApplicationApiStatus
 } from '../api/public-api';
 import { ApplicationApiDocsPanel } from '../components/api/ApplicationApiDocsPanel';
 import { ApplicationApiKeysPanel } from '../components/api/ApplicationApiKeysPanel';
@@ -26,7 +27,14 @@ export function ApplicationApiPage({
 }: {
   application: ApplicationDetail;
 }) {
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
+  const actor = useAuthStore((state) => state.actor);
+  const permissions = useAuthStore((state) => state.me?.permissions) ?? [];
+  const canSetApiStatus =
+    actor?.effective_display_role === 'root' ||
+    permissions.includes('application.edit.all') ||
+    (permissions.includes('application.edit.own') &&
+      application.created_by === actor?.id);
   const isLogCollection = application.application_type === 'agent_logs';
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
@@ -64,6 +72,21 @@ export function ApplicationApiPage({
     onSuccess: invalidatePublication
   });
 
+  const receptionMutation = useMutation({
+    mutationFn: (api_enabled: boolean) =>
+      updateApplicationApiStatus(application.id, api_enabled, csrfToken),
+    onSuccess: () => {
+      invalidatePublication();
+      void queryClient.invalidateQueries({
+        queryKey: ['settings', 'applications']
+      });
+    },
+    onError: () =>
+      message.error(
+        i18nText('applications', 'agent_logs.reception_update_failed')
+      )
+  });
+
   const confirmRevertToDraft = () => {
     modal.confirm({
       title: i18nText('applications', 'auto.revert_to_draft'),
@@ -83,7 +106,15 @@ export function ApplicationApiPage({
       <ApplicationApiStatusBar
         publication={publication}
         apiStatus={isLogCollection ? application.sections.api : undefined}
-        loading={publishMutation.isPending || revertToDraftMutation.isPending}
+        loading={
+          publishMutation.isPending ||
+          revertToDraftMutation.isPending ||
+          receptionMutation.isPending
+        }
+        apiToggleDisabled={!canSetApiStatus}
+        onToggleApiEnabled={(api_enabled) =>
+          receptionMutation.mutate(api_enabled)
+        }
         onTogglePublished={(published) => {
           if (published) {
             publishMutation.mutate();

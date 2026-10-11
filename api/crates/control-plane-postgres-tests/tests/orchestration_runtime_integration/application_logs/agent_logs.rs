@@ -63,6 +63,14 @@ async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
         })
         .await
         .unwrap();
+    store
+        .set_application_api_enabled(&SetApplicationApiEnabledInput {
+            actor_user_id: owner,
+            application_id: app.id,
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
     (store, scope, app.id)
 }
 async fn owned_log_counts(
@@ -115,6 +123,14 @@ async fn agent_logs_application_delete_cascades_owned_facts_and_preserves_foreig
             icon: None,
             icon_type: None,
             icon_background: None,
+        })
+        .await
+        .unwrap();
+    store
+        .set_application_api_enabled(&SetApplicationApiEnabledInput {
+            actor_user_id: owner,
+            application_id: foreign_app.id,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -1076,6 +1092,7 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
         })
         .await
         .unwrap();
+    enable_reception_fixture(&store, seeded.workspace_id, imported_app.id).await;
     let receipt = AgentLogsService::new(store.clone())
         .ingest(
             imported_app.id,
@@ -1185,3 +1202,10 @@ async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
 
 #[path = "agent_logs/unified_queries.rs"]
 mod unified_queries;
+
+async fn enable_reception_fixture(store: &PgControlPlaneStore, scope: Uuid, application_id: Uuid) {
+    let application = store.get_application(scope, application_id).await.unwrap().unwrap();
+    store.set_application_api_enabled(&SetApplicationApiEnabledInput {
+        actor_user_id: application.created_by, application_id, api_enabled: true,
+    }).await.unwrap();
+}

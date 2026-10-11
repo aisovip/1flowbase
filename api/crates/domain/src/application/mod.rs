@@ -46,6 +46,7 @@ impl WorkflowTriggerType {
 pub enum ApplicationPublicationStatus {
     Published,
     Unpublished,
+    NotApplicable,
 }
 
 impl ApplicationPublicationStatus {
@@ -53,6 +54,7 @@ impl ApplicationPublicationStatus {
         match self {
             Self::Published => "published",
             Self::Unpublished => "unpublished",
+            Self::NotApplicable => "not_applicable",
         }
     }
 }
