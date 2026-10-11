@@ -3,7 +3,7 @@ import type { ConversationLogTraceLoader } from '../../../agent-flow/components/
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Alert, App, Button, Empty, Spin, Tooltip, theme } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -26,7 +26,7 @@ import {
   type ApplicationRunConversationMessagesPage,
   type ApplicationRunConversationOutputState
 } from '../../api/runtime';
-import { fetchApplicationLogRecord } from '../../api/trajectory';
+import { fetchApplicationLogRecordConversationMessages } from '../../api/trajectory';
 import { isActiveRunStatus } from '../../lib/run-status';
 import './application-run-detail-panel.css';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -414,12 +414,39 @@ function RunConversation({
   const loadingPreviousConversationRef = useRef(false);
   const conversationScopeGeneration = useRef(0);
   const observedNewestCursorRef = useRef<string | null>(null);
-  const recordQuery = useQuery({
-    queryKey: ['application-log-record', applicationId, recordId],
+  const recordQuery = useInfiniteQuery({
+    queryKey: ['application-log-record-conversation', applicationId, recordId],
     enabled: Boolean(recordId),
-    queryFn: () => fetchApplicationLogRecord(applicationId, recordId!),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchApplicationLogRecordConversationMessages(applicationId, recordId!, {
+        before: pageParam,
+        limit: RUN_CONVERSATION_PAGE_LIMIT
+      }),
+    getNextPageParam: (page) =>
+      page.page.has_before ? (page.page.before_cursor ?? undefined) : undefined,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((record) =>
+          isConversationRefreshableStatus(record.status)
+        )
+      )
+        ? ACTIVE_CONVERSATION_REFETCH_INTERVAL_MS
+        : false,
     refetchOnWindowFocus: false
   });
+  const recordConversationItems = useMemo(() => {
+    // The backend orders each page by business turn. Prepend older pages and
+    // deduplicate overlaps by canonical record identity, never by source text.
+    const records = new Map<
+      string,
+      NonNullable<typeof recordQuery.data>['pages'][number]['items'][number]
+    >();
+    for (const page of [...(recordQuery.data?.pages ?? [])].reverse()) {
+      for (const record of page.items) records.set(record.record_id, record);
+    }
+    return [...records.values()];
+  }, [recordQuery.data]);
   const overviewQuery = useQuery({
     queryKey: applicationRunOverviewQueryKey(applicationId, runId),
     enabled: !recordId,
@@ -472,20 +499,26 @@ function RunConversation({
   const messages = useMemo(
     (): AgentFlowDebugMessage[] =>
       recordId
-        ? (recordQuery.data?.messages ?? []).map((item) => ({
-            id: `record-${recordId}-${item.sequence}`,
-            role: item.role as AgentFlowDebugMessage['role'],
-            content: item.content,
-            status: 'completed',
-            runId: recordQuery.data!.native_run_id,
-            detailRunId: recordId,
-            canOpenDetail:
-              recordQuery.data!.available_views.includes('client_trajectory'),
-            rawOutput: null,
-            traceSummary: []
-          }))
+        ? recordConversationItems.flatMap((record) =>
+            record.messages.map((item) => ({
+              id: `record-${record.record_id}-${item.sequence}`,
+              role: item.role as AgentFlowDebugMessage['role'],
+              content: item.content,
+              status:
+                item.role === 'assistant'
+                  ? mapRunStatusToMessageStatus(record.status)
+                  : 'completed',
+              runId: record.native_run_id,
+              detailRunId: record.record_id,
+              canOpenDetail:
+                item.role === 'assistant' &&
+                record.available_views.includes('client_trajectory'),
+              rawOutput: null,
+              traceSummary: []
+            }))
+          )
         : buildConversationMessages(conversationItems, outputState),
-    [conversationItems, outputState, recordId, recordQuery.data]
+    [conversationItems, outputState, recordId, recordConversationItems]
   );
   const refreshable =
     !recordId && conversationRefreshable(conversationItems, outputState);
@@ -716,7 +749,9 @@ function RunConversation({
         showComposer={false}
         status={
           recordId
-            ? 'completed'
+            ? mapRunStatusToSessionStatus(
+                recordConversationItems.at(-1)?.status ?? 'running'
+              )
             : conversationSessionStatus(conversationItems, outputState)
         }
         stopping={false}
@@ -730,7 +765,11 @@ function RunConversation({
         }}
         onOpenResumeTimeline={recordId ? undefined : onOpenResumeTimeline}
         onReachConversationTop={() => {
-          if (!recordId) void loadPreviousConversationPage();
+          if (recordId) {
+            if (recordQuery.hasNextPage && !recordQuery.isFetchingNextPage) {
+              void recordQuery.fetchNextPage();
+            }
+          } else void loadPreviousConversationPage();
         }}
         onStopRun={() => {}}
         onSubmitPrompt={() => {}}

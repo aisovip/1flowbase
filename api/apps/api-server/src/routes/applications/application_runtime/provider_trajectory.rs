@@ -206,6 +206,42 @@ pub async fn get_client_trajectory_section(
     Ok(Json(ApiSuccess::new(section)))
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct RecordConversationQuery {
+    pub before: Option<Uuid>,
+    pub after: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+/// List source-neutral business turns around a selected log record.
+/// Returns projected system, user and final messages with opaque record cursors isolated to the application and source session. The initial page includes the selected turn and four older turns.
+#[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/conversation/messages",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("before"=Option<Uuid>,Query),("after"=Option<Uuid>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=super::log_query::schemas::RecordConversationPageSchema)))]
+pub async fn list_record_conversation_messages(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, record_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<RecordConversationQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogRecordConversationPage>>, ApiError>
+{
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.record.conversation.messages.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::RecordConversationPage {
+            application_id,
+            record_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RecordConversationPage(page) =
+        output
+    else {
+        unreachable!("record conversation binding output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
+}
+
 /// Get a source-neutral log record.
 /// Returns projected system prompt, current question and persisted final answer and explicit provisional output state for the authorized application.
 #[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}",params(("id"=Uuid,Path),("record_id"=Uuid,Path)),responses((status=200,body=super::log_query::schemas::RecordOverviewSchema)))]

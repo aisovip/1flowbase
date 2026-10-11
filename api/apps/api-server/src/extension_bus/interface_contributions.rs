@@ -668,6 +668,7 @@ pub(crate) fn production_interface_contributions(
                 "applications.runtime.records.query",
                 "applications.runtime.record.client-trajectory.query",
                 "applications.runtime.record.get",
+                "applications.runtime.record.conversation.messages.list",
                 "applications.runtime.record.client-trajectory.list",
                 "applications.runtime.record.client-trajectory.section.get",
                 "applications.runtime.workflow-trajectory.list",

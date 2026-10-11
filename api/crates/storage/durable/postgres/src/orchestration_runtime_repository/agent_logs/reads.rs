@@ -4,7 +4,7 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
     application_id: Uuid,
     record_id: Uuid,
 ) -> Result<Option<ApplicationLogRecordOverview>> {
-    let row=sqlx::query("select id,status,source_id,source_kind,source_client,source_session_id,source_task_id,case when source_kind='native' then id else native_run_id end as native_run_id,title,outcome,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,total_cost::text as total_cost,member_run_ids from application_run_log_tasks where application_id=$1 and id=$2")
+    let row=sqlx::query("select started_at,finished_at,requested_model_id,reasoning_effort,id,status,source_id,source_kind,source_client,source_session_id,source_task_id,case when source_kind='native' then id else native_run_id end as native_run_id,title,outcome,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,total_cost::text as total_cost,member_run_ids from application_run_log_tasks where application_id=$1 and id=$2")
         .bind(application_id).bind(record_id).fetch_optional(store.pool()).await?;
     let Some(row) = row else { return Ok(None) };
     let native: Option<Uuid> = row.get("native_run_id");
@@ -41,6 +41,15 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
     };
     Ok(Some(ApplicationLogRecordOverview {
         record_id,
+        started_at: row
+            .get::<time::OffsetDateTime, _>("started_at")
+            .format(&time::format_description::well_known::Rfc3339)?,
+        finished_at: row
+            .get::<Option<time::OffsetDateTime>, _>("finished_at")
+            .map(|v| v.format(&time::format_description::well_known::Rfc3339))
+            .transpose()?,
+        requested_model_id: row.get("requested_model_id"),
+        reasoning_effort: row.get("reasoning_effort"),
         status: row.get("status"),
         output_state,
         projection_output,

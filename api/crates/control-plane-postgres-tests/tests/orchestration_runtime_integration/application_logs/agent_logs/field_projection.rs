@@ -126,3 +126,53 @@ async fn agent_logs_project_source_model_effort_and_one_compressed_turn() {
         .unwrap();
     assert_eq!(raw.items[0].value["content"], "progress only");
 }
+
+#[tokio::test]
+async fn agent_logs_duplicate_only_replay_preserves_repaired_task_and_message_identity() {
+    let (store, scope, app) = setup().await;
+    let service = AgentLogsService::new(store.clone());
+    let mut final_answer = event(
+        "duplicate-final",
+        2,
+        AgentLogEventKind::Assistant,
+        Some("original final"),
+    );
+    final_answer.phase = Some("final_answer".into());
+    let input = batch(vec![
+        event(
+            "duplicate-user",
+            1,
+            AgentLogEventKind::User,
+            Some("original question"),
+        ),
+        final_answer,
+    ]);
+    let key = Uuid::now_v7();
+    let first = service
+        .ingest(app, scope, key, input.clone())
+        .await
+        .unwrap();
+    let id = first.record_ids[0];
+    // The maintenance owner has corrected a terminated historical snapshot.
+    // An unchanged source receipt must not derive it again from old declarations.
+    sqlx::query("update application_run_log_tasks set requested_model_id='repaired-model',reasoning_effort='high',title='repaired title',updated_at='2026-10-09T00:00:00Z' where id=$1").bind(id).execute(store.pool()).await.unwrap();
+    let snapshot_sql="select jsonb_build_object('task',to_jsonb(t),'messages',(select jsonb_agg(to_jsonb(m) order by m.id) from application_run_conversation_message_items m where m.application_id=t.application_id and m.record_id=t.id)) from application_run_log_tasks t where t.id=$1";
+    let before: Value = sqlx::query_scalar(snapshot_sql)
+        .bind(id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let replay = service.ingest(app, scope, key, input).await.unwrap();
+    assert_eq!(replay.accepted_events, 0);
+    assert_eq!(replay.duplicate_events, 2);
+    assert_eq!(replay.record_ids, first.record_ids);
+    let after: Value = sqlx::query_scalar(snapshot_sql)
+        .bind(id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "pure replay must preserve repaired fields, updated_at and projected message UUIDs"
+    );
+}

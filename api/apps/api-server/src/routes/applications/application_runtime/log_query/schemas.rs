@@ -78,12 +78,18 @@ fn record_overview_schema() -> Value {
     object(json!({
         "record_id":uuid(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
         "source_session_id":nullable(text()),"source_task_id":nullable(text()),"native_run_id":nullable(uuid()),
+        "started_at":timestamp(),"finished_at":nullable(timestamp()),"requested_model_id":nullable(text()),"reasoning_effort":nullable(text()),
         "status":text(),"title":text(),"outcome":text(),"projection_output":nullable(text()),
         "output_state":nullable(object(json!({"flow_run_id":uuid(),"status":text(),"call_kind":text(),"request_kind":nullable(text()),"output_source":text(),"output_item_count":integer()}))),
         "messages":{"type":"array","items":object(json!({"role":text(),"content":text(),"sequence":integer()}))},
         "total_tokens":nullable(integer()),"input_tokens":nullable(integer()),"output_tokens":nullable(integer()),
         "input_cache_hit_tokens":nullable(integer()),"cost_breakdown":cost_schema(),"available_views":strings()
     }))
+}
+fn record_conversation_page_schema() -> Value {
+    object(
+        json!({"items":{"type":"array","items":record_overview_schema()},"page":object(json!({"has_before":{"type":"boolean"},"has_after":{"type":"boolean"},"before_cursor":nullable(uuid()),"after_cursor":nullable(uuid()),"newest_cursor":nullable(uuid())}))}),
+    )
 }
 fn record_trajectory_page_schema() -> Value {
     object(
@@ -111,5 +117,9 @@ projection!(TrajectoryQueryPageSchema, trajectory_query_page_schema);
 projection!(QueryFieldsSchema, query_fields_schema);
 
 projection!(RecordOverviewSchema, record_overview_schema);
+projection!(
+    RecordConversationPageSchema,
+    record_conversation_page_schema
+);
 projection!(RecordTrajectoryPageSchema, record_trajectory_page_schema);
 projection!(TrajectorySectionSchema, trajectory_section_schema);

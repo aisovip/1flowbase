@@ -115,7 +115,25 @@ pub enum ApplicationLogView {
     ClientTrajectory,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordConversationPage {
+    pub items: Vec<ApplicationLogRecordOverview>,
+    pub page: ApplicationLogRecordConversationPageInfo,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordConversationPageInfo {
+    pub has_before: bool,
+    pub has_after: bool,
+    pub before_cursor: Option<Uuid>,
+    pub after_cursor: Option<Uuid>,
+    /// Latest turn returned on this page, for lossless forward catch-up.
+    pub newest_cursor: Option<Uuid>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationLogRecordOverview {
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub requested_model_id: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub status: String,
     pub projection_output: Option<String>,
     pub output_state: Option<domain::ApplicationRunConversationOutputState>,

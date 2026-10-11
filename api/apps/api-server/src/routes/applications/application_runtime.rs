@@ -42,7 +42,8 @@ use provider_trajectory::workflow::{get_workflow_trajectory_body, list_workflow_
 use provider_trajectory::{
     get_client_trajectory_section, get_log_record, get_provider_trajectory_body,
     get_record_client_trajectory_section, get_run_payload, list_client_trajectory,
-    list_provider_trajectory, list_record_client_trajectory, list_run_trajectory,
+    list_provider_trajectory, list_record_client_trajectory, list_record_conversation_messages,
+    list_run_trajectory,
 };
 mod application_log_cache;
 mod application_logs;
@@ -105,6 +106,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route("/applications/:id/logs/deletion-jobs/latest", console_get(logs_delete::jobs::latest, ConsoleOperation("applications.logs.delete.jobs.latest".to_string())))
         .route("/applications/:id/logs/deletion-jobs/:job_id/stop", console_post(logs_delete::jobs::stop, ConsoleOperation("applications.logs.delete.jobs.stop".to_string())))
         .route("/applications/:id/logs", console_delete(logs_delete::delete_logs, ConsoleOperation(APPLICATIONS_LOGS_DELETE_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/records/:record_id/conversation/messages", console_get(list_record_conversation_messages, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id", console_get(get_log_record, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory", console_get(list_record_client_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory/:step_id", console_get(get_record_client_trajectory_section, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))

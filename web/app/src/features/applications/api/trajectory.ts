@@ -1,5 +1,7 @@
 import {
   type RecordClientTrajectoryCursor,
+  type ApplicationLogRecordConversationQuery,
+  getConsoleApplicationLogRecordConversationMessages,
   getConsoleApplicationLogRecord,
   getConsoleApplicationLogRecordClientTrajectory,
   getConsoleApplicationLogRecordClientTrajectorySection,
@@ -116,6 +118,18 @@ export function fetchApplicationLogRecord(
   return getConsoleApplicationLogRecord(
     applicationId,
     recordId,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchApplicationLogRecordConversationMessages(
+  applicationId: string,
+  recordId: string,
+  input: ApplicationLogRecordConversationQuery = {}
+) {
+  return getConsoleApplicationLogRecordConversationMessages(
+    applicationId,
+    recordId,
+    input,
     getApplicationsApiBaseUrl()
   );
 }
