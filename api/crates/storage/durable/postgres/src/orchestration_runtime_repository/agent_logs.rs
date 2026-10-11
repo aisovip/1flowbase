@@ -183,8 +183,7 @@ async fn refresh_task(
     let mut messages = vec![];
     let mut user = None;
     let mut final_output = None;
-    let mut ended = false;
-    let mut cancelled = false;
+    let mut terminal = None;
     let mut parent = None;
     let mut model_id = None;
     let mut reasoning_effort = None;
@@ -219,14 +218,13 @@ async fn refresh_task(
                 AgentLogEventKind::Assistant | AgentLogEventKind::TaskEnd
                     if e.phase.as_deref() == Some("final_answer") && !content.trim().is_empty() =>
                 {
-                    final_output = Some((content.clone(), e.sequence));
+                    final_output = Some((content.clone(), e.sequence, e.occurred_at.clone()));
                 }
                 _ => {}
             }
         }
         if e.kind == AgentLogEventKind::TaskEnd {
-            ended = true;
-            cancelled = e.phase.as_deref() == Some("cancelled");
+            terminal = Some((e.phase.as_deref(), e.occurred_at.as_str()));
         }
         if let Some(u) = &e.usage {
             if e.inherited {
@@ -263,7 +261,7 @@ async fn refresh_task(
             });
         }
     }
-    if let Some((content, sequence)) = &final_output {
+    if let Some((content, sequence, _)) = &final_output {
         messages.push(AgentLogMessage {
             role: "assistant".into(),
             content: content.clone(),
@@ -317,26 +315,16 @@ async fn refresh_task(
             totals[index] = None;
         }
     }
-    let last = events
-        .last()
-        .ok_or_else(|| anyhow!("agent_logs.empty_record"))?;
-    let status = if cancelled {
-        "cancelled"
-    } else if ended || final_output.is_some() {
-        "succeeded"
-    } else {
-        "running"
-    };
-    let outcome = if final_output.is_some() {
-        "final_answer_observed"
-    } else if ended {
-        "no_final_answer"
-    } else {
-        "in_progress"
-    };
-    let final_text = final_output.as_ref().map(|(s, _)| s);
-    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=case when $5 in ('succeeded','cancelled') then $12::timestamptz end,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2),requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
-        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(total_cost).bind(&last.0.occurred_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
+    anyhow::ensure!(!events.is_empty(), "agent_logs.empty_record");
+    let (status, outcome, finished_at) = observed_task_settlement(
+        terminal,
+        final_output
+            .as_ref()
+            .map(|(_, _, timestamp)| timestamp.as_str()),
+    );
+    let final_text = final_output.as_ref().map(|(text, _, _)| text);
+    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),title),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=$12::timestamptz,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2),requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
+        .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(total_cost).bind(finished_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
     sqlx::query("delete from application_run_conversation_message_items where application_id=$1 and record_id=$2").bind(application_id).bind(record_id).execute(&mut **tx).await?;
     for m in messages {
         sqlx::query("insert into application_run_conversation_message_items(id,scope_id,application_id,record_id,display_sequence,source_kind,role,content,can_open_detail,is_current,status,started_at) select $1,scope_id,application_id,id,$3,'current_run',$4,$5,false,true,status,started_at from application_run_log_tasks where id=$2")
@@ -347,3 +335,39 @@ async fn refresh_task(
 
 pub(super) mod reads;
 pub(super) use reads::{overview, page, section};
+
+/// Project only source-declared terminals; later usage/context does not move
+/// the finish time. Outcome records observed answer presence independently of
+/// the driver's status, matching the existing Native task projection contract.
+fn observed_task_settlement<'a>(
+    terminal: Option<(Option<&str>, &'a str)>,
+    final_at: Option<&'a str>,
+) -> (&'static str, &'static str, Option<&'a str>) {
+    let status = match terminal.map(|(phase, _)| phase) {
+        Some(Some("error" | "failed")) => "failed",
+        Some(Some("cancelled" | "aborted")) => "cancelled",
+        Some(
+            None
+            | Some(
+                "completed" | "final_answer" | "end_turn" | "stop_sequence" | "turn_duration"
+                | "stop",
+            ),
+        ) => "succeeded",
+        Some(Some(_)) => "incomplete",
+        None if final_at.is_some() => "succeeded",
+        None => "running",
+    };
+    let outcome = if final_at.is_some() {
+        "final_answer_observed"
+    } else if terminal.is_some() {
+        "no_final_answer"
+    } else {
+        "in_progress"
+    };
+    let finished_at = terminal.map(|(_, timestamp)| timestamp).or(final_at);
+    (status, outcome, finished_at)
+}
+
+#[cfg(test)]
+#[path = "_tests/agent_log_terminal_projection.rs"]
+mod terminal_projection_tests;
