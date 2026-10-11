@@ -1,6 +1,6 @@
 [package]
 name = "runtime-extension-host"
-version.workspace = true
+version = "0.5.5"
 edition.workspace = true
 license.workspace = true
 
