@@ -363,7 +363,7 @@
     "command_copied": "Installation command copied",
     "command_copy_failed": "Could not copy the command. Try again, or clear the key and copy the command text manually; the local installer will prompt for it.",
     "start_collecting": "Start collecting",
-    "start_collecting_description": "Complete the local configuration prompts. The installer starts background collection; open the logs page to view uploaded conversations.",
+    "start_collecting_description": "Follow the installer prompts to complete local setup and authorization. Continue chatting and view automatically uploaded conversations on the logs page.",
     "collector_benefits": "Collector information",
     "automatic_collection": "Automatic collection",
     "automatic_collection_description": "Upload new Codex session events in the background after local setup.",
