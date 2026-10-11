@@ -41,6 +41,25 @@ Codex `response_item` user/assistant 提供对话事实；明确标记 `phase: "
 旧仓库 Node 采集器保留为开发 fixture oracle，不是用户安装入口。原生来源与恢复测试在官方插件仓库执行 `cargo test --locked --manifest-path sdk/agent-logs-collector/Cargo.toml` 和 `cargo test --locked --manifest-path runtime-extensions/@taichuy/codex-logs-collector/Cargo.toml`；安装 fixture 使用合成日志和本地 mock HTTP 端点。
 
 
+## 通过 MCP 获取当前轮次身份
+
+将 `get_current_run_context` 接口绑定为只读 MCP Tool。原生接口为 `GET /api/console/applications/logs/current-context`，无须传参。接口从当前 MCP `tools/call.params._meta` 读取客户端标识，包括 Codex 的 `threadId`、`sessionId` 和 `x-codex-turn-metadata.turn_id`；AI 不需要事先知道这些 ID。
+
+响应包含 `thread_id`、`turn_id`、`session_id`、`application_id`、`record_id`、`native_run_id`、`log_conversation_id` 和 `status`。`record_id` 是当前轮次的日志记录 ID；存在原生运行时，`native_run_id` 是对应运行详情的锚点 ID。客户端对话、进程会话、日志对话和运行记录分别具有独立身份。
+
+后端只查询当前工作区内、调用者对 `get_current_run_context` 操作有读取权限的应用。原生日志按客户端对话和轮次匹配；Codex 采集日志按来源对话和任务匹配。不通过最近日志、API Key 或 MCP 传输会话猜测当前运行。
+
+| 状态 | 含义 |
+| --- | --- |
+| `resolved` | 唯一匹配到可读记录，返回记录定位字段 |
+| `missing_identity` | 客户端未同时声明对话与轮次，或 HTTP 请求不在 MCP 调用内 |
+| `invalid_identity` | 身份元数据格式不合法 |
+| `conflicting_identity` | 多处身份声明不一致 |
+| `not_found` | 尚无可读记录匹配；采集可能还未持久化当前轮次 |
+| `ambiguous` | 多个可读记录匹配，不返回记录定位字段 |
+
+接口仍要求认证与操作权限。客户端声明的 ID 仅用于关联，不是授权凭证。无法唯一匹配时，记录定位字段为空，不返回猜测的 ID。
+
 ## 采集费用估算
 
 采集费用只按 `model_id` 精确匹配已有价格规则，`provider_code` 保留来源信息，不参与定价筛选。启用、事件时间和本地时窗均需有效；多个命中沿用价格列表的稳定顺序：供应商代码升序、优先级降序、生效时间降序、规则 ID 升序，取第一条。缺价格复用 `zero/any`，真实用量缺失时不补造费用。采集只记录估算，不扣余额；实际模型调用的供应商计费规则保持独立。

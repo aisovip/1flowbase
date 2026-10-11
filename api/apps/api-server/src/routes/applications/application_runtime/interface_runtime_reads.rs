@@ -31,6 +31,9 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    CurrentContext {
+        context: crate::routes::mcp_protocol::client_context::McpClientContext,
+    },
     QueryFields,
     QueryRecords {
         query: log_query::LogRecordsQuery,
@@ -158,6 +161,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
 }
 
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    CurrentContext(log_query::current_context::CurrentRunContextResponse),
     QueryFields(log_query::QueryFields),
     Records(control_plane::ports::ApplicationLogRecordsPage),
     RecordTrajectoryQuery(control_plane::ports::RecordClientTrajectoryQueryPage),
@@ -847,6 +851,11 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::CurrentContext { context } => {
+                Ok(ApplicationRuntimeReadsOutput::CurrentContext(
+                    self.current_run_context(actor, context).await?,
+                ))
+            }
             ApplicationRuntimeReadsInput::QueryFields => Ok(
                 ApplicationRuntimeReadsOutput::QueryFields(log_query::QueryFields::default()),
             ),
@@ -1101,6 +1110,7 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.current-context.get", binding_id:"http.console.applications.runtime.current-context.get.v1", method:"GET", path:"/api/console/applications/logs/current-context", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query-fields", binding_id:"http.console.applications.runtime.records.query-fields.v1", method:"GET", path:"/api/console/applications/logs/query-fields", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query", binding_id:"http.console.applications.runtime.records.query.v1", method:"POST", path:"/api/console/applications/logs/records/query", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.query", binding_id:"http.console.applications.runtime.record.client-trajectory.query.v1", method:"POST", path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory/query", mutating:false },

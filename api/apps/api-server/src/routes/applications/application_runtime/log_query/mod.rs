@@ -4,6 +4,7 @@ use control_plane::ports::{
     ApplicationLogRecordsPage, LogQueryField, RecordClientTrajectoryQueryPage,
 };
 pub(super) mod schemas;
+pub(crate) mod current_context;
 use schemas::{LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema};
 
 #[derive(Debug, Default, Deserialize, ToSchema)]

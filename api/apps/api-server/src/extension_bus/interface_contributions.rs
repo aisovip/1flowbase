@@ -663,6 +663,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-reads",
             &[
+                "applications.runtime.current-context.get",
                 "applications.runtime.records.query-fields",
                 "applications.runtime.records.query",
                 "applications.runtime.record.client-trajectory.query",

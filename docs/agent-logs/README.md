@@ -62,6 +62,25 @@ Send `POST /api/logs/v1/events` with `Authorization: Bearer <application-key>`. 
 
 The canonical HTTP success body is `ApiSuccess<AgentLogsReceipt>`: `{"data":{"accepted_events":1,"duplicate_events":0,"record_ids":["00000000-0000-0000-0000-000000000001"]},"meta":null}`. The collector reads the receipt only from `JSON.data`; unwrapped top-level fields are not accepted. The receipt inside `data` contains `accepted_events`, `duplicate_events`, and string-array `record_ids`. Accepted plus duplicate counts must equal the complete batch size. The server commits the entire batch or rejects it; conflicting payloads under an existing identity are errors. An application API key authorizes ingestion, not model generation.
 
+## Current turn identity through MCP
+
+Bind the `get_current_run_context` interface to a read-only MCP Tool. The interface is `GET /api/console/applications/logs/current-context` and requires no parameters. It reads the calling client's MCP `tools/call.params._meta`, including Codex `threadId`, `sessionId` and `x-codex-turn-metadata.turn_id`; the model does not need to know or supply these IDs beforehand.
+
+The response includes `thread_id`, `turn_id`, `session_id`, `application_id`, `record_id`, `native_run_id`, `log_conversation_id` and `status`. `record_id` identifies the current turn's log record; `native_run_id` identifies its native run-details anchor when available. A client's thread, process session, log conversation and run record are separate identities.
+
+Only applications readable under the caller's `get_current_run_context` operation in the current workspace are searched. Native logs match their client thread and turn; imported Codex logs match their source thread and task. The service never infers identity from the latest log, API key or MCP transport session.
+
+| Status | Meaning |
+| --- | --- |
+| `resolved` | Exactly one readable record matches; record locators are returned |
+| `missing_identity` | The client did not declare both thread and turn, or the HTTP request is outside an MCP invocation |
+| `invalid_identity` | Identity metadata has an invalid format |
+| `conflicting_identity` | Multiple declarations disagree |
+| `not_found` | No readable record matches yet; collection may not have persisted this turn |
+| `ambiguous` | More than one readable record matches; record locators are withheld |
+
+Authentication and operation permissions still apply. Client-declared IDs are correlation metadata, not authorization credentials. Calls without a unique match return null record locators, rather than a guessed ID.
+
 ## Local adapter boundary
 
 The official shared Rust `agent-logs-collector` SDK owns source scanning, stable event identity, HTTP upload, full ACK validation, exclusive checkpoint ownership and durable persistence. Codex implements the SDK's source adapter interface and only converts its private format. It uses canonical Rust DTOs from a pinned main-repository revision, rather than duplicating protocol fields.
