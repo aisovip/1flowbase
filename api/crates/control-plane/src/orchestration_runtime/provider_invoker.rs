@@ -658,23 +658,20 @@ where
                 },
             }
             .runtime_event();
+            // Selection is a durable host fact even when a callback continues
+            // after the waiting presentation stream has closed. Its commit is
+            // required; delivery to that stream is a separate projection.
+            runtime_event_persister::persist_runtime_event_payload_for_generation(
+                &self.repository,
+                run_id,
+                &selection,
+                provider_generation_writer.as_deref(),
+            )
+            .await?;
             if let Some(stream) = self.runtime_event_stream.as_ref() {
-                runtime_events::forward_required_runtime_event(
-                    &self.repository,
-                    stream.as_ref(),
-                    run_id,
-                    selection,
-                    provider_generation_writer.as_deref(),
-                )
-                .await?;
-            } else {
-                runtime_event_persister::persist_runtime_event_payload_for_generation(
-                    &self.repository,
-                    run_id,
-                    &selection,
-                    None,
-                )
-                .await?;
+                let mut live_selection = selection;
+                live_selection.persist_required = false;
+                append_provider_runtime_event(stream, run_id, live_selection).await;
             }
         }
         if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
