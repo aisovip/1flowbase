@@ -25,6 +25,7 @@ use interface_operation::{
     McpToolCallPort, McpToolInvocationContext,
 };
 
+pub(crate) mod client_context;
 mod input_schema;
 mod interface_operation;
 pub(crate) mod result_delivery;
@@ -193,6 +194,10 @@ async fn handle_mcp_request(
                 arguments,
                 context: McpToolInvocationContext {
                     headers: Vec::new(),
+                    client_context: client_context::McpClientContext::from_protocol(
+                        request.params.get("_meta"),
+                        &headers,
+                    ),
                     user: user.clone(),
                     actor: actor.clone(),
                     catalog: catalog.clone(),
@@ -320,19 +325,22 @@ impl McpToolCallPort for McpToolCallAdapter {
                 )
                 .await?,
             );
-            match with_server_delegated_request_context(
-                request_context,
-                virtual_ui::dispatch(
-                    &self.0.runtime_dependencies,
-                    &interface_catalog,
-                    self.0.interface_dispatch.as_ref(),
-                    &headers,
-                    &context.actor,
-                    &context.catalog,
-                    &context.scope,
-                    &name,
-                    arguments.into_value(),
-                    None,
+            match client_context::with_client_context(
+                context.client_context,
+                with_server_delegated_request_context(
+                    request_context,
+                    virtual_ui::dispatch(
+                        &self.0.runtime_dependencies,
+                        &interface_catalog,
+                        self.0.interface_dispatch.as_ref(),
+                        &headers,
+                        &context.actor,
+                        &context.catalog,
+                        &context.scope,
+                        &name,
+                        arguments.into_value(),
+                        None,
+                    ),
                 ),
             )
             .await?

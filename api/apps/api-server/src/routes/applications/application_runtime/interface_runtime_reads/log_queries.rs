@@ -1,6 +1,41 @@
 use super::*;
 
 impl ApplicationRuntimeReadsAdapter {
+    pub(super) async fn current_run_context(
+        &self,
+        actor: &domain::ActorContext,
+        context: crate::routes::mcp_protocol::client_context::McpClientContext,
+    ) -> Result<log_query::current_context::CurrentRunContextResponse, ApiError> {
+        use log_query::current_context::{context_filter, CurrentRunContextResponse};
+        let mut response = CurrentRunContextResponse::from_context(&context);
+        if let Some(filter) = context_filter(&context) {
+            let applications = ApplicationService::new(self.store.for_actor(actor.clone()))
+                .list_readable_applications(actor.user_id, "get_current_run_context")
+                .await?;
+            let application_ids = applications
+                .into_iter()
+                .map(|application| application.id)
+                .collect::<Vec<_>>();
+            let query = control_plane::ports::ApplicationLogRecordsQuery {
+                filter: control_plane::resource_crud::parse_resource_filter_expr(&filter)?,
+                sort_field: "started_at".into(),
+                descending: false,
+                cursor: None,
+                limit: 2,
+            };
+            response.resolve(
+                self.store
+                    .query_application_log_records(
+                        actor.current_workspace_id,
+                        &application_ids,
+                        &query,
+                    )
+                    .await?,
+            );
+        }
+        Ok(response)
+    }
+
     pub(super) async fn query_log_records(
         &self,
         actor: &domain::ActorContext,

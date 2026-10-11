@@ -106,6 +106,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "applications.logs.delete"
                     | "departments.delete"
                     | "get_query_fields"
+                    | "get_current_run_context"
                     | "applications.logs.delete.jobs.latest"
                     | "applications.logs.delete.jobs.get"
                     | "get_log_record"

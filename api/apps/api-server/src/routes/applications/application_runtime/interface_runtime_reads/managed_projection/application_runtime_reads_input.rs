@@ -237,7 +237,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::QueryFields | Self::QueryRecords { .. } | Self::QueryRecordTrajectory { .. } => {
+            Self::CurrentContext { .. } | Self::QueryFields | Self::QueryRecords { .. } | Self::QueryRecordTrajectory { .. } => {
                 mp::object_value(&[("variant", serde_json::json!("LogQuery"))])
             }
             Self::GetRecord { .. }

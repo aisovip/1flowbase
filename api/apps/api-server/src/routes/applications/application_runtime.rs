@@ -95,6 +95,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/logs/current-context", console_get(log_query::current_context::get_current_run_context, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/query-fields", console_get(log_query::get_query_fields, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/records/query", console_post(log_query::query_log_records, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory/query", console_post(log_query::query_record_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))

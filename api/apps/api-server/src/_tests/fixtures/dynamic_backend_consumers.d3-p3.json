@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 401,
+  "projected_interface_count": 402,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -260,6 +260,12 @@
       "GET",
       "/api/console/applications/catalog",
       "Get application catalog"
+    ],
+    [
+      "get_current_run_context",
+      "GET",
+      "/api/console/applications/logs/current-context",
+      "Read the current MCP caller turn and log record identity"
     ],
     [
       "get_query_fields",

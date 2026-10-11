@@ -44,6 +44,7 @@ pub(crate) struct McpForwardHeader {
 
 pub(crate) struct McpToolInvocationContext {
     pub(super) headers: Vec<McpForwardHeader>,
+    pub(super) client_context: super::client_context::McpClientContext,
     pub(super) user: domain::UserRecord,
     pub(super) actor: domain::ActorContext,
     pub(super) catalog: domain::McpCatalogSnapshot,
