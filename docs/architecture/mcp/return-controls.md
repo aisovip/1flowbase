@@ -111,3 +111,13 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 最终 JSON-RPC 256 KiB envelope 只豁免通过验证的 `image.data`、`audio.data`、嵌入 `resource.resource.blob` 和 `resources/read` 的 `contents[].blob`。base64 验证复用固定大小 decode buffer，不额外分配完整 blob。MIME、URI、annotations、资源 text、metadata、未知字段与 JSON 结构仍计入预算；非法 binary 字段不豁免。
 
 业务 `output_schema` 保留原响应契约。`mcp_get.result_schema` 使用声明 metadata 路径对应的真实业务子 schema；无法静态解析时返回未约束 schema，不伪造字段。省略 `mcp.output_mapping` 保持原有纯文本投影。
+
+## 资源重读
+
+服务器在 tools 之外声明 `capabilities.resources = {}`，保留原协议版本 `2025-03-26`。`resources/list` 返回 `{resources:[]}`；工具产出的资源不承诺进入资源目录。
+
+InterfaceWrapper 的 mapping 显式设置 `resource_read:true` 时，嵌入资源与指向相同原 URI 的 resource_link 使用宿主 URI：`1flowbase-resource://read/<BASE64URL_JSON>`。一般外部链接保留原 URI，不自动 fetch。自包含、带版本的引用只携带用户/workspace、所选 instance、tool ID、当前 `des_id`、调用者原业务 arguments 与原 resource URI，不含响应 binary、请求 headers、session 凭证或 hidden/default bindings；不维护 URI registry 或 binary cache。该声明用于输入参数可安全作为 locator 暴露的文件读取操作。
+
+`resources/read` 接收 `{uri}`，返回 `{contents:[{uri,mimeType?,text|blob}]}`。返回 URI 保持请求的宿主 URI，不递归包装。引用只定位资源，不授予权限：每次读取在调用前检查当前用户/workspace、所选且可见的工具/instance、显式 opt-in 与当前 revision。可见性撤销、opt-in 关闭、revision 改变、非法或未知宿主 URI 均在工具调用前拒绝。修改 locator 的 arguments 不扩大访问权限。
+
+RPC 经现有 Invocation Kernel 与 ToolCall port，重新投影当前受管工具，经同一 InterfaceDispatch 与宿主 executable 检查执行原读取工具。只返回成功结果中与原 URI 相同的嵌入资源；失败不返回部分结果。重读会再次执行原业务读取，可能观察到文件变化。编码与解码均服从现有 2 MiB tool arguments 真实传输预算，payload 字段与版本严格校验。

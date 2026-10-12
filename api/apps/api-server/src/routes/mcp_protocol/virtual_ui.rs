@@ -23,7 +23,7 @@ use orchestration_runtime::{
 use serde_json::{json, Value};
 use storage_durable_postgres::MainDurableStore;
 
-use super::{input_schema, result_delivery};
+use super::{input_schema, resources, result_delivery};
 
 #[path = "virtual_ui/description_guard.rs"]
 mod description_guard;
@@ -556,7 +556,7 @@ fn runtime_internal_tool_output(
 }
 
 impl VirtualToolOutcome {
-    fn invalid(message: &'static str) -> Self {
+    pub(super) fn invalid(message: &'static str) -> Self {
         Self::Error {
             code: -32602,
             message,
@@ -814,6 +814,21 @@ pub(crate) async fn dispatch(
             })
             .await
         }
+        (resources::LIST_TOOL, None) => Ok(VirtualToolOutcome::Success(resources::list_result())),
+        (resources::READ_TOOL, None) => {
+            resources::read(McpCallRequest {
+                dependencies,
+                interface_catalog,
+                interface_dispatch,
+                headers,
+                actor,
+                catalog,
+                scope: &effective_scope,
+                arguments: &arguments,
+                assistant_client,
+            })
+            .await
+        }
         (MCP_LIST, None) => {
             list(
                 dependencies,
@@ -978,19 +993,26 @@ async fn result(
     ))
 }
 
-struct McpCallRequest<'a> {
-    dependencies: &'a RuntimeInternalToolInvokerDependencies,
-    interface_catalog: &'a dyn McpInterfaceCatalogPort,
-    interface_dispatch: &'a dyn McpInterfaceDispatchPort,
-    headers: &'a HeaderMap,
-    actor: &'a domain::ActorContext,
-    catalog: &'a domain::McpCatalogSnapshot,
-    scope: &'a VirtualMcpScope,
-    arguments: &'a Value,
-    assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+pub(super) struct McpCallRequest<'a> {
+    pub(super) dependencies: &'a RuntimeInternalToolInvokerDependencies,
+    pub(super) interface_catalog: &'a dyn McpInterfaceCatalogPort,
+    pub(super) interface_dispatch: &'a dyn McpInterfaceDispatchPort,
+    pub(super) headers: &'a HeaderMap,
+    pub(super) actor: &'a domain::ActorContext,
+    pub(super) catalog: &'a domain::McpCatalogSnapshot,
+    pub(super) scope: &'a VirtualMcpScope,
+    pub(super) arguments: &'a Value,
+    pub(super) assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
 }
 
 async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiError> {
+    call_inner(request, None).await
+}
+
+pub(super) async fn call_inner(
+    request: McpCallRequest<'_>,
+    resource_read_uri: Option<&str>,
+) -> Result<VirtualToolOutcome, ApiError> {
     let McpCallRequest {
         dependencies,
         interface_catalog,
@@ -1014,9 +1036,28 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
         return Ok(VirtualToolOutcome::invalid("Tool not visible"));
     };
     let description = description_tool(catalog, scope, tool, allow_assistant_client);
+    // Resource reads still pass the canonical description guard using current discovery.
+    let mut read_arguments;
+    let arguments = if resource_read_uri.is_some()
+        && domain::mcp_management::mcp_des_id_required(&tool.input_mapping)
+    {
+        let Some(description) = description else {
+            return Ok(VirtualToolOutcome::invalid("Description tool not visible"));
+        };
+        read_arguments = arguments.clone();
+        read_arguments["des_id"] = json!(description.des_id);
+        &read_arguments
+    } else {
+        arguments
+    };
     if let Err(message) = validate_tool_call_controls(arguments, tool, description) {
         return Ok(VirtualToolOutcome::invalid(message));
     }
+    // A public locator retains only caller arguments, never hidden/default bindings.
+    let replay_arguments = arguments
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
     let resolved_arguments = domain::mcp_management::input_defaults::resolve_call_defaults(
         arguments,
         &tool.input_mapping,
@@ -1112,10 +1153,23 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                 Ok(value) => {
                     let (detail, media_content) = match media_mapping {
                         Some(mapping) => match result_delivery::media::project(&mapping, &value) {
-                            Ok(result) => (
-                                result.structured_content.expect("media metadata"),
-                                result.content,
-                            ),
+                            Ok(mut result) => {
+                                if mapping.resource_read && resource_read_uri.is_none() {
+                                    if let Err(reason) = resources::wrap_content(
+                                        &mut result.content,
+                                        actor,
+                                        instance,
+                                        tool,
+                                        &replay_arguments,
+                                    ) {
+                                        return Ok(media_mapping_error(reason));
+                                    }
+                                }
+                                (
+                                    result.structured_content.expect("media metadata"),
+                                    result.content,
+                                )
+                            }
                             Err(reason) => return Ok(media_mapping_error(reason)),
                         },
                         None => (value, json!([])),
@@ -1329,7 +1383,7 @@ fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
     arguments.get(field).and_then(Value::as_str)
 }
 
-fn visible_tool<'a>(
+pub(super) fn visible_tool<'a>(
     catalog: &'a domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     tool_id: &str,

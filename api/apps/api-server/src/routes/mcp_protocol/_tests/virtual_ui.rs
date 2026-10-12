@@ -738,3 +738,207 @@ fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_co
     }
     assert_eq!(service.declaration.operations[0].input_schema, input_schema);
 }
+
+fn readable_resource_catalog() -> domain::McpCatalogSnapshot {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].output_mapping = json!({"structured_content_path":"/metadata","resource_read":true,"mcp_content":[
+        {"type":"resource_link","uri_path":"/uri","name_path":"/name","mime_type_path":"/mime"},
+        {"type":"resource","uri_path":"/uri","blob_path":"/blob","mime_type_path":"/mime"}
+    ]});
+    catalog
+}
+
+#[tokio::test]
+async fn resource_read_dispatch_reexecutes_once_and_retains_requested_uri_and_complete_blob() {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD.encode(vec![91; 300_000]);
+    let catalog = readable_resource_catalog();
+    let dispatch_port = MediaFixtureDispatch {
+        value: json!({"uri":"file:///tmp/file.bin","name":"file.bin","mime":"application/octet-stream","blob":data,"metadata":{"size":300000}}),
+        calls: Default::default(),
+    };
+    let dependencies = media_fixture_dependencies();
+    let interfaces = media_fixture_interfaces();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let first = dispatch(
+        &dependencies,
+        &interfaces,
+        &dispatch_port,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        MCP_CALL,
+        json!({"tool_id":"lookup","arguments":{"query":"file"}}),
+        None,
+    )
+    .await
+    .unwrap();
+    let VirtualToolOutcome::Success(first) = first else {
+        panic!("resource tool call failed")
+    };
+    let resource = first["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type"] == "resource")
+        .unwrap();
+    let uri = resource["resource"]["uri"].as_str().unwrap();
+    assert!(uri.starts_with("1flowbase-resource://read/"));
+    assert_eq!(resource["resource"]["blob"], data);
+    let link = first["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type"] == "resource_link")
+        .unwrap();
+    assert_eq!(link["uri"], uri);
+    assert_eq!(
+        dispatch_port
+            .calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    let before = dispatch_port
+        .calls
+        .load(std::sync::atomic::Ordering::SeqCst);
+    let second = dispatch(
+        &dependencies,
+        &interfaces,
+        &dispatch_port,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        resources::READ_TOOL,
+        json!({"uri":uri}),
+        None,
+    )
+    .await
+    .unwrap();
+    let VirtualToolOutcome::Success(second) = second else {
+        panic!("resource read failed")
+    };
+    assert_eq!(
+        second,
+        json!({"contents":[{"uri":uri,"mimeType":"application/octet-stream","blob":data}]})
+    );
+    assert_eq!(
+        dispatch_port
+            .calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        before + 1
+    );
+    let listed = dispatch(
+        &dependencies,
+        &interfaces,
+        &dispatch_port,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        resources::LIST_TOOL,
+        json!({}),
+        None,
+    )
+    .await
+    .unwrap();
+    let VirtualToolOutcome::Success(listed) = listed else {
+        panic!("resource list failed")
+    };
+    assert_eq!(listed, json!({"resources":[]}));
+    assert_eq!(
+        dispatch_port
+            .calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        before + 1
+    );
+}
+
+#[tokio::test]
+async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch() {
+    let catalog = readable_resource_catalog();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let reference = resources::ResourceReference {
+        v: 1,
+        user_id: actor.user_id,
+        workspace_id: actor.current_workspace_id,
+        instance_id: "selected".into(),
+        tool_id: "lookup".into(),
+        des_id: catalog.tools[0].des_id.clone(),
+        arguments: json!({"query":"file"}),
+        resource_uri: "file:///tmp/file.bin".into(),
+    };
+    let uri = reference.encode().unwrap();
+    let dependencies = media_fixture_dependencies();
+    let interfaces = media_fixture_interfaces();
+    let dispatch_port = MediaFixtureDispatch {
+        value: json!({}),
+        calls: Default::default(),
+    };
+    let mut cases = Vec::new();
+    let mut other_user = actor.clone();
+    other_user.user_id = uuid::Uuid::from_u128(999);
+    cases.push((other_user, catalog.clone(), "selected", uri.clone()));
+    let mut other_workspace = actor.clone();
+    other_workspace.current_workspace_id = uuid::Uuid::from_u128(999);
+    cases.push((other_workspace, catalog.clone(), "selected", uri.clone()));
+    cases.push((actor.clone(), catalog.clone(), "unselected", uri.clone()));
+    cases.push((
+        actor.clone(),
+        catalog.clone(),
+        "selected",
+        "https://example.com/unknown".into(),
+    ));
+    let mut revoked = catalog.clone();
+    revoked.bindings[0].visible = false;
+    cases.push((actor.clone(), revoked, "selected", uri.clone()));
+    let mut flag_false = catalog.clone();
+    flag_false.tools[0].output_mapping["resource_read"] = json!(false);
+    cases.push((actor.clone(), flag_false, "selected", uri.clone()));
+    let mut changed = catalog.clone();
+    changed.tools[0].des_id = "changed".into();
+    cases.push((actor.clone(), changed, "selected", uri.clone()));
+    let mut unknown_tool = reference.clone();
+    unknown_tool.tool_id = "arbitrary-write-tool".into();
+    cases.push((
+        actor.clone(),
+        catalog.clone(),
+        "selected",
+        unknown_tool.encode().unwrap(),
+    ));
+    let mut unknown_instance = reference.clone();
+    unknown_instance.instance_id = "unknown".into();
+    cases.push((
+        actor.clone(),
+        catalog.clone(),
+        "selected",
+        unknown_instance.encode().unwrap(),
+    ));
+    for (actor, catalog, selected, uri) in cases {
+        let result = dispatch(
+            &dependencies,
+            &interfaces,
+            &dispatch_port,
+            &HeaderMap::new(),
+            &actor,
+            &catalog,
+            &VirtualMcpScope::single(selected.into()),
+            resources::READ_TOOL,
+            json!({"uri":uri}),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(result, VirtualToolOutcome::Error { .. }));
+        assert_eq!(
+            dispatch_port
+                .calls
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+}

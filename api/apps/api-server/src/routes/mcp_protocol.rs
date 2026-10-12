@@ -28,6 +28,7 @@ use interface_operation::{
 pub(crate) mod client_context;
 mod input_schema;
 mod interface_operation;
+mod resources;
 pub(crate) mod result_delivery;
 pub(crate) mod virtual_ui;
 
@@ -177,15 +178,11 @@ async fn handle_mcp_request(
         "tools/list" => McpInvocationInput::ToolsList {
             path_regex_enabled: scope.path_regex_enabled(&catalog),
         },
-        "tools/call" => {
-            let Some(name) = request.params.get("name").and_then(Value::as_str) else {
-                return Ok(jsonrpc_error(request.id, -32602, "Invalid name"));
+        "tools/call" | "resources/read" | "resources/list" => {
+            let (name, arguments) = match protocol_call(&request.method, &request.params) {
+                Ok(call) => call,
+                Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
             };
-            let arguments = request
-                .params
-                .get("arguments")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
             let Ok(arguments) = McpToolArguments::from_protocol(arguments) else {
                 return Ok(jsonrpc_error(request.id, -32602, "Invalid arguments"));
             };
@@ -236,7 +233,7 @@ async fn handle_mcp_request(
                 jsonrpc: "2.0",
                 id: request.id,
                 result: Some(
-                    json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":instance_name,"version":env!("CARGO_PKG_VERSION")}}),
+                    json!({"protocolVersion":"2025-03-26","capabilities":resources::capabilities(),"serverInfo":{"name":instance_name,"version":env!("CARGO_PKG_VERSION")}}),
                 ),
                 error: None,
             },
@@ -278,6 +275,33 @@ async fn handle_mcp_request(
             Some(data) => jsonrpc_error_data(request.id, code, message, data),
             None => jsonrpc_error(request.id, code, message),
         }),
+    }
+}
+
+/// Project resources through the same typed ToolCall entry and invocation kernel.
+fn protocol_call<'a>(method: &str, params: &'a Value) -> Result<(&'a str, Value), &'static str> {
+    match method {
+        "resources/read" => {
+            let uri = params
+                .get("uri")
+                .and_then(Value::as_str)
+                .ok_or("Invalid resource URI")?;
+            Ok((resources::READ_TOOL, json!({"uri":uri})))
+        }
+        "resources/list" => Ok((resources::LIST_TOOL, json!({}))),
+        _ => {
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or("Invalid name")?;
+            Ok((
+                name,
+                params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+            ))
+        }
     }
 }
 
