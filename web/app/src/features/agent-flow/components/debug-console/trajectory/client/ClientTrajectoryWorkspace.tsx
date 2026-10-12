@@ -1,12 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Empty, Input, Spin } from 'antd';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import type {
-  RecordClientTrajectoryCursor,
+  ClientTrajectoryIndexItem,
   ClientTrajectoryStep,
   ClientTrajectoryOptions
 } from '@1flowbase/api-client';
@@ -21,7 +20,12 @@ import {
   inTrajectoryRange,
   type TrajectoryRange
 } from '../TrajectoryTimeline';
-import { useProgressiveTrajectory } from '../use-progressive-trajectory';
+import { useTrajectoryWindow } from '../virtual/use-trajectory-window';
+import {
+  TrajectoryVirtualList,
+  type TrajectoryVirtualListRef
+} from '../virtual/TrajectoryVirtualList';
+import { indexLane, PendingClientRow } from './virtual-client-rows';
 import './client-trajectory.css';
 
 export function ClientTrajectoryWorkspace({
@@ -45,6 +49,9 @@ export function ClientTrajectoryWorkspace({
   );
   const [timeScale, setTimeScale] = useState(true);
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
+  const [brushItems, setBrushItems] = useState<
+    ClientTrajectoryIndexItem[] | null
+  >(null);
   const [search, setSearch] = useState('');
   const [groupCategories, setGroupCategories] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -52,99 +59,171 @@ export function ClientTrajectoryWorkspace({
   const [detailWidth, setDetailWidth] = useState<number | null>(null);
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
-  const rows = useRef(new Map<string, HTMLButtonElement>());
-  const pages = useInfiniteQuery({
+  const virtualList = useRef<TrajectoryVirtualListRef>(null);
+  const [generation, setGeneration] = useState(0);
+  const windowQuery = {
+    category: category ?? undefined,
+    keyword: search.trim() || undefined,
+    ...(timeScale && timeRange
+      ? {
+          from: new Date(Math.floor(timeRange[0])).toISOString(),
+          to: new Date(Math.floor(timeRange[1]) + 1).toISOString()
+        }
+      : {})
+  };
+  const {
+    overview: indexQuery,
+    pages,
+    loaded,
+    items,
+    initialKey,
+    onVisibleKeys,
+    retry
+  } = useTrajectoryWindow({
     queryKey: [
       loader.loadRecordClientTrajectory
         ? 'record-client-trajectory'
         : 'client-trajectory',
       runId,
       scope ?? 'run',
-      options
+      options,
+      windowQuery,
+      generation
     ],
     enabled:
       active &&
       Boolean(loader.loadRecordClientTrajectory || loader.loadClientTrajectory),
-    initialPageParam: undefined as RecordClientTrajectoryCursor | undefined,
-    queryFn: ({ pageParam }) =>
-      loader.loadRecordClientTrajectory
-        ? loader.loadRecordClientTrajectory(runId, scope, pageParam, options)
-        : loader.loadClientTrajectory!(
+    loadPage: (focusId, indexOnly) => {
+      const requestOptions = {
+        ...options,
+        ...(indexOnly ? windowQuery : {}),
+        focus_step_id: focusId ?? options?.focus_step_id,
+        index_only: indexOnly
+      };
+      return loader.loadRecordClientTrajectory
+        ? loader.loadRecordClientTrajectory(
             runId,
             scope,
-            pageParam as number | undefined,
-            options
-          ),
-    getNextPageParam: (page, _pages, cursor) =>
-      page.next_cursor != null &&
-      (typeof page.next_cursor === 'string'
-        ? page.next_cursor !== cursor
-        : cursor === undefined ||
-          (typeof cursor === 'number' && page.next_cursor > cursor))
-        ? page.next_cursor
-        : undefined,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false
+            undefined,
+            requestOptions
+          )
+        : loader.loadClientTrajectory!(runId, scope, undefined, requestOptions);
+    },
+    getIndexKey: (step: ClientTrajectoryIndexItem) => step.id,
+    getRowKey: (step: ClientTrajectoryStep) => step.id
   });
-  useProgressiveTrajectory(active, pages);
-  const items = useMemo(
-    () => pages.data?.pages.flatMap((page) => page.items) ?? [],
-    [pages.data]
-  );
+  const overview = indexQuery.data?.overview;
+  const index = overview?.items ?? [];
+  const timelineItems = brushItems ?? index;
   const coordinates = useMemo(
     () =>
       new Map(
-        items.map((step, index) => [
+        timelineItems.map((step, position) => [
           step.id,
-          timeScale ? Date.parse(step.created_at) : index
+          timeScale ? Date.parse(step.created_at) : position
         ])
       ),
-    [items, timeScale]
+    [timelineItems, timeScale]
   );
-  const selectedStep = items.find((step) => step.id === selected);
-  const categories = [...new Set(items.map((step) => step.category))];
-  const query = search.trim().toLocaleLowerCase();
-  const matches = (step: ClientTrajectoryStep) =>
-    inTrajectoryRange(coordinates.get(step.id)!, timeRange) &&
-    (!category || step.category === category) &&
-    (!query ||
-      [
-        step.name,
-        step.namespace,
-        step.preview,
-        step.call_id,
-        step.parameters_preview,
-        step.result_preview
-      ]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(query));
-  // Indexing backend parent identities is presentation only; protocol classification lives on the server.
+  const selectedStep = selected ? loaded.get(selected) : undefined;
+  const categories = Object.keys(overview?.category_counts ?? {});
+  const matches = (step: ClientTrajectoryIndexItem) =>
+    timeScale || inTrajectoryRange(coordinates.get(step.id)!, timeRange);
+  const requestRoots = useMemo(
+    () =>
+      new Map(
+        (overview?.request_roots ?? []).map((step) => [step.request_id, step])
+      ),
+    [overview]
+  );
   const requests = useMemo(() => {
-    const groups = new Map<string, ClientTrajectoryStep[]>();
-    for (const step of items) {
+    const groups = new Map<string, ClientTrajectoryIndexItem[]>();
+    for (const step of index) {
       const group = groups.get(step.request_id) ?? [];
       group.push(step);
       groups.set(step.request_id, group);
     }
     return [...groups.entries()];
-  }, [items]);
+  }, [overview]);
+  type Slot =
+    | {
+        key: string;
+        kind: 'request';
+        id: string;
+        root?: ClientTrajectoryIndexItem;
+      }
+    | {
+        key: string;
+        kind: 'category';
+        id: string;
+        category: string;
+        count: number;
+      }
+    | {
+        key: string;
+        kind: 'step';
+        step: ClientTrajectoryIndexItem;
+        grouped: boolean;
+      };
+  const slots: Slot[] = [];
+  for (const [id, steps] of requests) {
+    const root =
+      steps.find((step) => step.category === 'request') ?? requestRoots.get(id);
+    const children = steps.filter(
+      (step) => step.category !== 'request' && matches(step)
+    );
+    if (
+      !children.length &&
+      !steps.some((step) => step.category === 'request' && matches(step))
+    )
+      continue;
+    slots.push({ key: root?.id ?? `request:${id}`, kind: 'request', id, root });
+    if (collapsed.has(id)) continue;
+    if (!groupCategories) {
+      for (const step of children)
+        slots.push({ key: step.id, kind: 'step', step, grouped: false });
+    } else {
+      for (const lane of new Set(children.map((step) => step.category))) {
+        const key = `${id}:${lane}`;
+        const laneRows = children.filter((step) => step.category === lane);
+        slots.push({
+          key: `category:${key}`,
+          kind: 'category',
+          id: key,
+          category: lane,
+          count: laneRows.length
+        });
+        if (!collapsed.has(key))
+          for (const step of laneRows)
+            slots.push({ key: step.id, kind: 'step', step, grouped: true });
+      }
+    }
+  }
   function focus(id: string) {
-    const step = items.find((item) => item.id === id);
-    if (!step) return;
+    const step =
+      timelineItems.find((item) => item.id === id) ??
+      overview?.request_roots?.find((item) => item.id === id);
     setSelected(id);
     setCategory(null);
     setSearch('');
-    setCollapsed((current) => {
-      const next = new Set(current);
-      next.delete(step.request_id);
-      next.delete(`${step.request_id}:${step.category}`);
-      return next;
-    });
-    requestAnimationFrame(() =>
-      rows.current.get(id)?.scrollIntoView?.({ block: 'nearest' })
-    );
+    onVisibleKeys([id]);
+    if (step)
+      setCollapsed((current) => {
+        const next = new Set(current);
+        next.delete(step.request_id);
+        next.delete(`${step.request_id}:${step.category}`);
+        return next;
+      });
+    requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
   }
+  useEffect(() => {
+    if (!active || !selected || !index.some((step) => step.id === selected))
+      return;
+    onVisibleKeys([selected]);
+    requestAnimationFrame(() =>
+      virtualList.current?.scrollTo({ key: selected })
+    );
+  }, [active, selected, overview, onVisibleKeys]);
   function toggle(id: string) {
     setCollapsed((current) => {
       const next = new Set(current);
@@ -166,10 +245,6 @@ export function ClientTrajectoryWorkspace({
       <button
         key={step.id}
         type="button"
-        ref={(element) => {
-          if (element) rows.current.set(step.id, element);
-          else rows.current.delete(step.id);
-        }}
         className="provider-trajectory__row client-trajectory__row"
         data-lane={clientLane(step)}
         data-selected={selected === step.id || undefined}
@@ -206,7 +281,7 @@ export function ClientTrajectoryWorkspace({
       <div className="provider-trajectory__toolbar">
         <div className="provider-trajectory__controls">
           <span className="client-trajectory__protocol">
-            {[...new Set(items.map((step) => step.protocol))]
+            {[...new Set(index.map((step) => step.protocol))]
               .map((protocol) =>
                 protocol === 'chat_completions'
                   ? 'Chat Completions'
@@ -223,6 +298,7 @@ export function ClientTrajectoryWorkspace({
             onClick={() => {
               setTimeScale(!timeScale);
               setTimeRange(null);
+              setBrushItems(null);
             }}
           >
             {i18nText(
@@ -265,12 +341,10 @@ export function ClientTrajectoryWorkspace({
           <Button
             size="small"
             type="text"
-            loading={pages.isRefetching}
-            onClick={() =>
-              void (pages.isFetchNextPageError
-                ? pages.fetchNextPage()
-                : pages.refetch())
-            }
+            loading={indexQuery.isFetching || pages.isFetching}
+            onClick={() => {
+              setGeneration((value) => value + 1);
+            }}
           >
             {i18nText('agentFlow', 'client_trajectory.refresh')}
           </Button>
@@ -287,20 +361,23 @@ export function ClientTrajectoryWorkspace({
         />
       </div>
       <TrajectoryTimeline
-        points={items.map((step) => ({
+        points={timelineItems.map((step) => ({
           id: step.id,
           value: coordinates.get(step.id)!,
-          lane: clientLane(step),
+          lane: indexLane(step),
           label: `${categoryLabel(step.category)} #${step.sequence}`
         }))}
         timeScale={timeScale}
         range={timeRange}
-        onChange={setTimeRange}
+        onChange={(range) => {
+          setTimeRange(range);
+          setBrushItems(range ? timelineItems : null);
+        }}
         selected={selected}
         onSelect={focus}
       />
       <div className="provider-trajectory__split" ref={split}>
-        <div className="provider-trajectory__ledger">
+        <div className="provider-trajectory__ledger client-trajectory__virtual-ledger">
           <nav
             className="client-trajectory__categories"
             aria-label={i18nText('agentFlow', 'client_trajectory.categories')}
@@ -320,9 +397,7 @@ export function ClientTrajectoryWorkspace({
                 onClick={() => setCategory(category === key ? null : key)}
               >
                 {categoryLabel(key)}{' '}
-                <span>
-                  {items.filter((step) => step.category === key).length}
-                </span>
+                <span>{overview?.category_counts[key] ?? 0}</span>
               </button>
             ))}
           </nav>
@@ -341,7 +416,7 @@ export function ClientTrajectoryWorkspace({
               </Button>
             </div>
           ) : null}
-          {pages.isLoading ? (
+          {indexQuery.isLoading || pages.isLoading ? (
             <div className="provider-trajectory__loading" role="status">
               <Spin />
               <span>
@@ -349,24 +424,20 @@ export function ClientTrajectoryWorkspace({
               </span>
             </div>
           ) : null}
-          {pages.isError ? (
+          {indexQuery.isError || pages.isError ? (
             <Alert
               type="error"
               title={i18nText('agentFlow', 'auto.loading_failed')}
               action={
-                <Button
-                  onClick={() =>
-                    void (pages.isFetchNextPageError
-                      ? pages.fetchNextPage()
-                      : pages.refetch())
-                  }
-                >
+                <Button onClick={retry}>
                   {i18nText('agentFlow', 'auto.retry')}
                 </Button>
               }
             />
           ) : null}
-          {!pages.isLoading && !pages.isError && !items.some(matches) ? (
+          {!(indexQuery.isLoading || pages.isLoading) &&
+          !(indexQuery.isError || pages.isError) &&
+          !slots.length ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={i18nText(
@@ -375,15 +446,67 @@ export function ClientTrajectoryWorkspace({
               )}
             />
           ) : null}
-          {requests.map(([id, steps]) => {
-            const root = steps.find((step) => step.category === 'request');
-            const children = steps.filter(
-              (step) => step.category !== 'request' && matches(step)
-            );
-            if (!children.length && !(root && matches(root))) return null;
-            const lanes = [...new Set(children.map((step) => step.category))];
-            return (
-              <section key={id} className="client-trajectory__request">
+          <TrajectoryVirtualList
+            ref={virtualList}
+            items={slots}
+            getKey={(slot) => slot.key}
+            getEventKey={(slot) =>
+              slot.kind === 'step'
+                ? slot.step.id
+                : slot.kind === 'request'
+                  ? slot.root?.id
+                  : undefined
+            }
+            initialKey={initialKey}
+            resetKey={`${runId}:${scope ?? 'run'}:${generation}`}
+            active={active}
+            onVisibleKeys={onVisibleKeys}
+            renderItem={(slot) => {
+              if (slot.kind === 'step') {
+                const row = loaded.get(slot.step.id);
+                const content = row ? (
+                  renderStep(row)
+                ) : (
+                  <PendingClientRow
+                    step={slot.step}
+                    selected={selected === slot.step.id}
+                    onSelect={() => focus(slot.step.id)}
+                  />
+                );
+                return slot.grouped ? (
+                  <div className="client-trajectory__category-group">
+                    {content}
+                  </div>
+                ) : (
+                  content
+                );
+              }
+              if (slot.kind === 'category')
+                return (
+                  <div className="client-trajectory__category-group">
+                    <button
+                      className="client-trajectory__category-header"
+                      type="button"
+                      aria-expanded={!collapsed.has(slot.id)}
+                      onClick={() => toggle(slot.id)}
+                    >
+                      {collapsed.has(slot.id) ? (
+                        <RightOutlined />
+                      ) : (
+                        <DownOutlined />
+                      )}
+                      <span>{categoryLabel(slot.category)}</span>
+                      <small>{slot.count}</small>
+                    </button>
+                  </div>
+                );
+              const root = slot.root
+                ? (loaded.get(slot.root.id) ?? slot.root)
+                : items.find(
+                    (step) =>
+                      step.request_id === slot.id && step.category === 'request'
+                  );
+              return (
                 <div className="client-trajectory__request-header">
                   <button
                     type="button"
@@ -392,66 +515,29 @@ export function ClientTrajectoryWorkspace({
                       'agentFlow',
                       'client_trajectory.request'
                     )}
-                    aria-expanded={!collapsed.has(id)}
-                    onClick={() => toggle(id)}
+                    aria-expanded={!collapsed.has(slot.id)}
+                    onClick={() => toggle(slot.id)}
                   >
-                    {collapsed.has(id) ? <RightOutlined /> : <DownOutlined />}
+                    {collapsed.has(slot.id) ? (
+                      <RightOutlined />
+                    ) : (
+                      <DownOutlined />
+                    )}
                   </button>
                   <button
                     type="button"
                     className="client-trajectory__request-select"
                     aria-pressed={selected === root?.id}
-                    ref={(element) => {
-                      if (root && element) rows.current.set(root.id, element);
-                    }}
-                    onClick={() => root && setSelected(root.id)}
+                    onClick={() => root && focus(root.id)}
                   >
                     <strong>{categoryLabel('request')}</strong>
-                    <span>{root?.preview || id}</span>
+                    <span>{root?.preview || slot.id}</span>
                     <small>{root ? formatDateTime(root.created_at) : ''}</small>
                   </button>
                 </div>
-                {!collapsed.has(id)
-                  ? !groupCategories
-                    ? children.map(renderStep)
-                    : lanes.map((lane) => {
-                        const key = `${id}:${lane}`;
-                        const rows = children.filter(
-                          (step) => step.category === lane
-                        );
-                        return (
-                          <section
-                            key={key}
-                            className="client-trajectory__category-group"
-                          >
-                            <button
-                              className="client-trajectory__category-header"
-                              type="button"
-                              aria-expanded={!collapsed.has(key)}
-                              onClick={() => toggle(key)}
-                            >
-                              {collapsed.has(key) ? (
-                                <RightOutlined />
-                              ) : (
-                                <DownOutlined />
-                              )}
-                              <span>{categoryLabel(lane)}</span>
-                              <small>{rows.length}</small>
-                            </button>
-                            {!collapsed.has(key) ? rows.map(renderStep) : null}
-                          </section>
-                        );
-                      })
-                  : null}
-              </section>
-            );
-          })}
-          {pages.hasNextPage && !pages.isError ? (
-            <div className="provider-trajectory__more" role="status">
-              <Spin size="small" />{' '}
-              {i18nText('agentFlow', 'trajectory.loading_pages')}
-            </div>
-          ) : null}
+              );
+            }}
+          />
         </div>
         {selectedStep ? (
           <aside
@@ -514,7 +600,7 @@ export function ClientTrajectoryWorkspace({
                 aria-label={i18nText('agentFlow', 'client_trajectory.close')}
                 onClick={() => {
                   setSelected(null);
-                  rows.current.get(selectedStep.id)?.focus();
+                  virtualList.current?.focusKey(selectedStep.id);
                 }}
               />
             </div>
@@ -534,6 +620,7 @@ export function ClientTrajectoryWorkspace({
               nodeRunId={scope}
               onRelated={(id) => {
                 setTimeRange(null);
+                setBrushItems(null);
                 focus(id);
               }}
             />
@@ -542,11 +629,11 @@ export function ClientTrajectoryWorkspace({
       </div>
       <footer className="provider-trajectory__footer">
         <span role="status">
-          {pages.isError
+          {indexQuery.isError || pages.isError
             ? i18nText('agentFlow', 'auto.loading_failed')
-            : pages.isPending
+            : indexQuery.isPending || pages.isPending
               ? i18nText('agentFlow', 'trajectory.loading_first_page')
-              : pages.isFetching || pages.hasNextPage
+              : indexQuery.isFetching || pages.isFetching
                 ? i18nText('agentFlow', 'trajectory.loading_pages')
                 : i18nText('agentFlow', 'trajectory.loading_complete')}
         </span>

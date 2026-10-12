@@ -1,12 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  useInfiniteQuery,
-  useQuery,
-  useQueryClient
-} from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Popover, Select, Spin } from 'antd';
 import type {
   ConversationTrajectoryQuery,
+  ConversationTrajectoryIndexItem,
   ConversationClientTrajectoryStep
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
@@ -19,7 +16,12 @@ import {
   TrajectoryTimeline,
   type TrajectoryRange
 } from '../TrajectoryTimeline';
-import { useProgressiveTrajectory } from '../use-progressive-trajectory';
+import { useTrajectoryWindow } from '../virtual/use-trajectory-window';
+import {
+  TrajectoryVirtualList,
+  type TrajectoryVirtualListRef
+} from '../virtual/TrajectoryVirtualList';
+import { indexLane, PendingClientRow } from './virtual-client-rows';
 import { integrityLabel } from '../trajectory-presentation';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane, sectionLabel } from './presentation';
@@ -129,23 +131,22 @@ function CanonicalTimeline({
   focusRecordId: string;
   active: boolean;
 }) {
-  const queryClient = useQueryClient();
   const [category, setCategory] = useState<string>();
   const [timeScale, setTimeScale] = useState(true);
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
   const [brushItems, setBrushItems] = useState<
-    ConversationClientTrajectoryStep[] | null
+    ConversationTrajectoryIndexItem[] | null
   >(null);
   const preserveRangeOnSelect = useRef(false);
   const pointerStart = useRef<number | null>(null);
   const pointerMoved = useRef(false);
   const committedSelection = useRef<{
     range: TrajectoryRange;
-    items: ConversationClientTrajectoryStep[] | null;
+    items: ConversationTrajectoryIndexItem[] | null;
   }>({ range: null, items: null });
   const pendingSelection = useRef<{
     range: TrajectoryRange;
-    items: ConversationClientTrajectoryStep[] | null;
+    items: ConversationTrajectoryIndexItem[] | null;
   } | null>(null);
   const pendingAxisFilter = useRef<Record<string, string> | null>(null);
   const [axisFilter, setAxisFilter] = useState<Record<string, string> | null>(
@@ -156,12 +157,7 @@ function CanonicalTimeline({
   const [detailWidth, setDetailWidth] = useState<number | null>(null);
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
-  const rows = useRef(new Map<string, HTMLButtonElement>());
-  const ledger = useRef<HTMLDivElement>(null);
-  const scrollAnchor = useRef<{
-    element: HTMLButtonElement;
-    top: number;
-  } | null>(null);
+  const virtualList = useRef<TrajectoryVirtualListRef>(null);
   const [provenance, setProvenance] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -201,7 +197,15 @@ function CanonicalTimeline({
     focus_record_id: focusRecordId,
     limit: 50
   };
-  const pages = useInfiniteQuery({
+  const {
+    overview: indexQuery,
+    pages,
+    loaded,
+    items,
+    initialKey,
+    onVisibleKeys,
+    retry
+  } = useTrajectoryWindow({
     queryKey: [
       'conversation-client-trajectory',
       logConversationId,
@@ -212,24 +216,18 @@ function CanonicalTimeline({
       active &&
       !invalidTime &&
       Boolean(loader.queryConversationClientTrajectory),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
+    loadPage: (focusId, indexOnly) =>
       loader.queryConversationClientTrajectory!(logConversationId, {
         ...query,
-        cursor: pageParam
+        focus_step_id: focusId,
+        index_only: indexOnly
       }),
-    getPreviousPageParam: (page) => page.previous_cursor ?? undefined,
-    getNextPageParam: (page) => page.next_cursor ?? undefined,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false
+    getIndexKey: (step: ConversationTrajectoryIndexItem) => step.id,
+    getRowKey: (step: ConversationClientTrajectoryStep) => step.id
   });
-  useProgressiveTrajectory(active && !invalidTime, pages);
   // Preserve server full-precision order, including duplicate timestamps.
-  const items = useMemo(
-    () => pages.data?.pages.flatMap((page) => page.items) ?? [],
-    [pages.data]
-  );
+  const scopeOverview = indexQuery.data?.overview;
+  const index = scopeOverview?.items ?? [];
   const matchesByStep = useMemo(() => {
     const matches = new Map<
       string,
@@ -243,29 +241,6 @@ function CanonicalTimeline({
       }
     return matches;
   }, [pages.data]);
-  useLayoutEffect(() => {
-    const anchor = scrollAnchor.current;
-    // Keep the focused round/user's viewport in place as older pages prepend.
-    // If the browser already anchored it, the measured adjustment is zero.
-    const first = items[0] && rows.current.get(items[0].id);
-    if (
-      ledger.current &&
-      anchor?.element.isConnected &&
-      first !== anchor.element
-    )
-      ledger.current.scrollTop +=
-        anchor.element.getBoundingClientRect().top -
-        ledger.current.getBoundingClientRect().top -
-        anchor.top;
-    scrollAnchor.current = first
-      ? {
-          element: first,
-          top:
-            first.getBoundingClientRect().top -
-            (ledger.current?.getBoundingClientRect().top ?? 0)
-        }
-      : null;
-  }, [items]);
   const related = useQuery({
     queryKey: [
       'conversation-trajectory-related',
@@ -289,8 +264,8 @@ function CanonicalTimeline({
       setRelatedStep(related.data.items[0]);
   }, [relatedTarget, related.data]);
   const selectedStep =
-    relatedStep ?? items.find((step) => step.id === selected);
-  const timelineItems = brushItems ?? items;
+    relatedStep ?? (selected ? loaded.get(selected) : undefined);
+  const timelineItems = brushItems ?? index;
   const coordinates = new Map(
     timelineItems.map((step, index) => [
       step.id,
@@ -299,24 +274,21 @@ function CanonicalTimeline({
   );
   useEffect(() => {
     setSeenCategories((current) => [
-      ...new Set([...current, ...items.map((step) => step.category)])
+      ...new Set([
+        ...current,
+        ...Object.keys(scopeOverview?.category_counts ?? {})
+      ])
     ]);
-  }, [pages.data]);
+  }, [scopeOverview]);
   function select(id: string) {
     preserveRangeOnSelect.current = false;
-    if (items.some((step) => step.id === id)) {
+    if (index.some((step) => step.id === id)) {
       setSelected(id);
-      setRelatedTarget(null);
       setRelatedStep(null);
-    } else {
-      // An axis point can belong to the retained display domain, outside current filters.
-      if (!selectedStep)
-        setRelatedStep(timelineItems.find((step) => step.id === id) ?? null);
-      setRelatedTarget(id);
-    }
-    requestAnimationFrame(() =>
-      rows.current.get(id)?.scrollIntoView?.({ block: 'nearest' })
-    );
+      setRelatedTarget(null);
+      onVisibleKeys([id]);
+      requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
+    } else setRelatedTarget(id);
   }
   function changeRange(range: TrajectoryRange) {
     if (!range && preserveRangeOnSelect.current) return;
@@ -380,15 +352,6 @@ function CanonicalTimeline({
     );
   }
   function refresh() {
-    queryClient.removeQueries({
-      queryKey: [
-        'conversation-client-trajectory',
-        logConversationId,
-        query,
-        generation
-      ],
-      exact: true
-    });
     setSelected(null);
     setRelatedTarget(null);
     setRelatedStep(null);
@@ -402,10 +365,6 @@ function CanonicalTimeline({
       <button
         key={`${step.record_id}:${step.id}`}
         type="button"
-        ref={(element) => {
-          if (element) rows.current.set(step.id, element);
-          else rows.current.delete(step.id);
-        }}
         className="provider-trajectory__row client-trajectory__row conversation-trajectory__row"
         data-lane={clientLane(step)}
         data-selected={selectedStep?.id === step.id || undefined}
@@ -451,6 +410,24 @@ function CanonicalTimeline({
       </button>
     );
   }
+  type Slot =
+    | { key: string; kind: 'step'; step: ConversationTrajectoryIndexItem }
+    | { key: string; kind: 'category'; category: string; count: number };
+  const slots: Slot[] = [];
+  if (!groupCategories)
+    for (const step of index) slots.push({ key: step.id, kind: 'step', step });
+  else
+    for (const key of new Set(index.map((step) => step.category))) {
+      const categoryRows = index.filter((step) => step.category === key);
+      slots.push({
+        key: `category:${key}`,
+        kind: 'category',
+        category: key,
+        count: categoryRows.length
+      });
+      for (const step of categoryRows)
+        slots.push({ key: step.id, kind: 'step', step });
+    }
   const detailLoader = useMemo<ConversationLogTraceLoader>(
     () => ({
       loadClientTrajectorySection: (
@@ -474,7 +451,7 @@ function CanonicalTimeline({
       <div className="provider-trajectory__toolbar">
         <div className="provider-trajectory__controls">
           <span className="client-trajectory__protocol">
-            {[...new Set(items.map((step) => step.protocol))]
+            {[...new Set(index.map((step) => step.protocol))]
               .map((protocol) =>
                 protocol === 'chat_completions'
                   ? 'Chat Completions'
@@ -660,7 +637,7 @@ function CanonicalTimeline({
           points={timelineItems.map((step) => ({
             id: step.id,
             value: coordinates.get(step.id)!,
-            lane: clientLane(step),
+            lane: indexLane(step),
             label: `${categoryLabel(step.category)} #${step.sequence}`
           }))}
           timeScale={timeScale}
@@ -679,17 +656,7 @@ function CanonicalTimeline({
         <Alert type="warning" title={text('invalid_time')} />
       ) : null}
       <div className="provider-trajectory__split" ref={split}>
-        <div
-          className="provider-trajectory__ledger"
-          ref={ledger}
-          onScroll={() => {
-            const anchor = scrollAnchor.current;
-            if (anchor && ledger.current)
-              anchor.top =
-                anchor.element.getBoundingClientRect().top -
-                ledger.current.getBoundingClientRect().top;
-          }}
-        >
+        <div className="provider-trajectory__ledger client-trajectory__virtual-ledger">
           <nav
             className="client-trajectory__categories"
             aria-label={text('loaded_categories')}
@@ -701,7 +668,7 @@ function CanonicalTimeline({
               onClick={() => setCategory(undefined)}
             >
               {i18nText('agentFlow', 'client_trajectory.all')}{' '}
-              <span>{items.length}</span>
+              <span>{scopeOverview?.total_count ?? 0}</span>
             </button>
             {seenCategories.map((key) => (
               <button
@@ -712,9 +679,7 @@ function CanonicalTimeline({
                 onClick={() => setCategory(category === key ? undefined : key)}
               >
                 {categoryLabel(key)}{' '}
-                <span>
-                  {items.filter((step) => step.category === key).length}
-                </span>
+                <span>{scopeOverview?.category_counts[key] ?? 0}</span>
               </button>
             ))}
             <span
@@ -749,32 +714,26 @@ function CanonicalTimeline({
               </button>
             </span>
           </nav>
-          {pages.isLoading ? (
+          {indexQuery.isLoading || pages.isLoading ? (
             <div className="provider-trajectory__loading" role="status">
               <Spin />
               {i18nText('agentFlow', 'trajectory.loading_first_page')}
             </div>
           ) : null}
-          {pages.isError ? (
+          {indexQuery.isError || pages.isError ? (
             <Alert
               type="error"
               title={i18nText('agentFlow', 'auto.loading_failed')}
               action={
-                <Button
-                  onClick={() =>
-                    void (pages.isFetchPreviousPageError
-                      ? pages.fetchPreviousPage()
-                      : pages.isFetchNextPageError
-                        ? pages.fetchNextPage()
-                        : pages.refetch())
-                  }
-                >
+                <Button onClick={retry}>
                   {i18nText('agentFlow', 'auto.retry')}
                 </Button>
               }
             />
           ) : null}
-          {!pages.isPending && !pages.isError && !items.length ? (
+          {!(indexQuery.isPending || pages.isPending) &&
+          !(indexQuery.isError || pages.isError) &&
+          !index.length ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={i18nText(
@@ -783,24 +742,46 @@ function CanonicalTimeline({
               )}
             />
           ) : null}
-          {!groupCategories
-            ? items.map(renderStep)
-            : [...new Set(items.map((step) => step.category))].map((key) => (
-                <section
-                  key={key}
-                  className="client-trajectory__category-group"
-                >
-                  <div className="client-trajectory__category-header">
-                    <span>{categoryLabel(key)}</span>
-                    <small>
-                      {items.filter((step) => step.category === key).length}
-                    </small>
+          <TrajectoryVirtualList
+            ref={virtualList}
+            items={slots}
+            getKey={(slot) => slot.key}
+            getEventKey={(slot) =>
+              slot.kind === 'step' ? slot.step.id : undefined
+            }
+            initialKey={initialKey}
+            resetKey={`${logConversationId}:${generation}`}
+            active={active && !invalidTime}
+            onVisibleKeys={onVisibleKeys}
+            renderItem={(slot) => {
+              if (slot.kind === 'category')
+                return (
+                  <div className="client-trajectory__category-group">
+                    <div className="client-trajectory__category-header">
+                      <span>{categoryLabel(slot.category)}</span>
+                      <small>{slot.count}</small>
+                    </div>
                   </div>
-                  {items
-                    .filter((step) => step.category === key)
-                    .map(renderStep)}
-                </section>
-              ))}
+                );
+              const row = loaded.get(slot.step.id);
+              const content = row ? (
+                renderStep(row)
+              ) : (
+                <PendingClientRow
+                  step={slot.step}
+                  selected={selected === slot.step.id}
+                  onSelect={() => select(slot.step.id)}
+                />
+              );
+              return groupCategories ? (
+                <div className="client-trajectory__category-group">
+                  {content}
+                </div>
+              ) : (
+                content
+              );
+            }}
+          />
         </div>
         {selectedStep ? (
           <aside
@@ -865,7 +846,7 @@ function CanonicalTimeline({
                   setSelected(null);
                   setRelatedTarget(null);
                   setRelatedStep(null);
-                  rows.current.get(selectedStep.id)?.focus();
+                  virtualList.current?.focusKey(selectedStep.id);
                 }}
               />
             </div>
@@ -897,8 +878,7 @@ function CanonicalTimeline({
               runId={logConversationId}
               loader={detailLoader}
               onRelated={(id) => {
-                if (items.some((step) => step.id === id)) select(id);
-                else setRelatedTarget(id);
+                select(id);
               }}
             />
           </aside>
@@ -906,8 +886,8 @@ function CanonicalTimeline({
       </div>
       <footer className="provider-trajectory__footer">
         <span role="status">
-          {!pages.isError &&
-          (pages.isFetching || pages.hasPreviousPage || pages.hasNextPage)
+          {!(indexQuery.isError || pages.isError) &&
+          (indexQuery.isFetching || pages.isFetching)
             ? i18nText('agentFlow', 'trajectory.loading_pages')
             : text('loaded')}
         </span>

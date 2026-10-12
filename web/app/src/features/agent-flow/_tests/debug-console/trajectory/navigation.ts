@@ -1,3 +1,4 @@
+import './listy-layout';
 import '../../../../../test/fixtures/rc-util-unique-ids';
 
 import { fireEvent, within } from '@testing-library/react';

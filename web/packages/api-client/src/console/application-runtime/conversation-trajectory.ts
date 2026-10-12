@@ -1,6 +1,8 @@
 import { apiFetch } from '../../transport';
 import type {
   ClientTrajectoryStep,
+  ClientTrajectoryIndexItem,
+  TrajectoryOverview,
   ClientTrajectorySection
 } from './client-trajectory';
 export interface ConversationTrajectoryQuery {
@@ -10,6 +12,8 @@ export interface ConversationTrajectoryQuery {
   keyword?: string;
   search_sections?: string[];
   focus_record_id?: string;
+  focus_step_id?: string;
+  index_only?: boolean;
 }
 export interface ConversationClientTrajectoryStep extends ClientTrajectoryStep {
   record_id: string;
@@ -28,7 +32,13 @@ export interface RecordTrajectoryMatch {
   sequence: number;
   snippet: string;
 }
+export interface ConversationTrajectoryIndexItem extends ClientTrajectoryIndexItem {
+  record_id: string;
+  log_conversation_id: string;
+  is_subagent: boolean;
+}
 export interface ConversationClientTrajectoryQueryPage {
+  overview?: TrajectoryOverview<ConversationTrajectoryIndexItem>;
   log_conversation_id: string;
   items: ConversationClientTrajectoryStep[];
   matches: RecordTrajectoryMatch[];

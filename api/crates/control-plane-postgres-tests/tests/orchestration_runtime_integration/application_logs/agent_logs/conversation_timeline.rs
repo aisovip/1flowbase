@@ -9,6 +9,8 @@ fn query() -> ConversationClientTrajectoryQuery {
         keyword: None,
         search_sections: vec![],
         focus_record_id: None,
+        focus_step_id: None,
+        index_only: false,
     }
 }
 
@@ -75,6 +77,40 @@ async fn canonical_timeline_interleaves_descendants_bidirectionally_and_focus_is
         )
     });
     let expected: Vec<Uuid> = facts.into_iter().map(|(_, id)| id).collect();
+    let mut index_query = query();
+    index_query.index_only = true;
+    let index_page = store
+        .query_conversation_client_trajectory(app, conversation, &index_query)
+        .await
+        .unwrap();
+    assert!(index_page.items.is_empty());
+    let overview = index_page.overview.unwrap();
+    assert_eq!(overview.total_count, expected.len() as i64);
+    assert_eq!(
+        overview.items.iter().map(|p| p.step.id).collect::<Vec<_>>(),
+        expected
+    );
+    assert!(overview.items.iter().any(|p| p.is_subagent));
+    let wire = serde_json::to_value(&overview).unwrap();
+    assert!(wire["items"].as_array().unwrap().iter().all(|p| p
+        .get("available_sections")
+        .is_none()
+        && p.get("parameters_preview").is_none()
+        && p.get("raw").is_none()));
+    let mut step_focus = query();
+    step_focus.focus_step_id = expected.last().copied();
+    let focused_step = store
+        .query_conversation_client_trajectory(app, conversation, &step_focus)
+        .await
+        .unwrap();
+    assert_eq!(focused_step.items[0].step.id, *expected.last().unwrap());
+    assert!(focused_step.previous_cursor.is_some());
+    step_focus.cursor = focused_step.previous_cursor;
+    let older_step = store
+        .query_conversation_client_trajectory(app, conversation, &step_focus)
+        .await
+        .unwrap();
+    assert_eq!(older_step.items[0].step.id, expected[expected.len() - 2]);
     let mut q = query();
     let mut pages = vec![];
     loop {

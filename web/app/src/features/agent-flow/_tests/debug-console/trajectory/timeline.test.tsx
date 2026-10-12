@@ -58,3 +58,52 @@ test('brush range filters inclusively, handles adjust it, reset restores newly l
   expect(select).toHaveBeenCalledWith('200');
   vi.unstubAllGlobals();
 });
+
+test('dense timeline bounds DOM while retaining exact distant and equal-time event selection', () => {
+  const width = vi
+    .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+    .mockReturnValue(800);
+  const select = vi.fn();
+  const context = {
+    scale: vi.fn(),
+    fillRect: vi.fn(),
+    fillStyle: '',
+    globalAlpha: 1
+  };
+  const canvas = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  const points = Array.from({ length: 10000 }, (_, i) => ({
+    id: String(i),
+    value: Math.floor(i / 2),
+    lane: 'model',
+    label: `event ${i}`
+  }));
+  try {
+    const { container } = render(
+      <TrajectoryTimeline
+        points={points}
+        range={null}
+        onChange={() => undefined}
+        onSelect={select}
+        selected={null}
+        timeScale={false}
+      />
+    );
+    expect(
+      container.querySelectorAll('.provider-trajectory__block').length
+    ).toBeLessThanOrEqual(2);
+    expect(container.querySelectorAll('canvas')).toHaveLength(1);
+    const axis = screen.getByTestId('trajectory-brush');
+    fireEvent.keyDown(axis, { key: 'End' });
+    fireEvent.keyDown(axis, { key: 'Enter' });
+    expect(select).toHaveBeenLastCalledWith('9999');
+    fireEvent.keyDown(axis, { key: 'ArrowLeft' });
+    fireEvent.keyDown(axis, { key: 'Enter' });
+    expect(select).toHaveBeenLastCalledWith('9998');
+    expect(context.fillRect).toHaveBeenCalledTimes(10000);
+  } finally {
+    width.mockRestore();
+    canvas.mockRestore();
+  }
+});

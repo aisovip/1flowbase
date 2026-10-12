@@ -807,6 +807,39 @@ async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
         .await
         .unwrap();
     assert_eq!(client.items[0].id, b);
+    let client_index = store
+        .client_trajectory_query_page(
+            flow,
+            Some(node),
+            control_plane_contracts::ports::ClientTrajectoryReadQuery {
+                request_id: Some(b),
+                index_only: true,
+                limit: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let overview = client_index.overview.unwrap();
+    assert_eq!(overview.total_count, 1);
+    assert_eq!(overview.items[0].id, b);
+    assert_eq!(
+        overview.items[0].node_run_id, None,
+        "capture remains run-wide; membership comes from the actual node link"
+    );
+    let closed = store
+        .client_trajectory_query_page(
+            flow,
+            Some(Uuid::now_v7()),
+            control_plane_contracts::ports::ClientTrajectoryReadQuery {
+                index_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(closed.overview.unwrap().total_count, 0);
+
     assert!(store
         .client_trajectory_filtered_page(
             flow,

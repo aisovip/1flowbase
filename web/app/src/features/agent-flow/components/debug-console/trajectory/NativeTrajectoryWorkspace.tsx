@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useMemo, useRef, useState } from 'react';
 import { Alert, Button, Empty, Spin, Segmented, Select } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import type {
-  WorkflowTrajectoryPage,
+  WorkflowTrajectoryIndexItem,
   WorkflowTrajectoryEvent,
   WorkflowTrajectoryCategory,
   ProviderTrajectoryStep,
@@ -24,8 +23,11 @@ import {
 } from './workflow/presentation';
 import { WorkflowEventDetail } from './workflow/WorkflowEventDetail';
 import { TrajectoryTimeline, type TrajectoryRange } from './TrajectoryTimeline';
-import { workflowTrajectoryQueryOptions } from './workflow/query-options';
-import { useProgressiveTrajectory } from './use-progressive-trajectory';
+import { useTrajectoryWindow } from './virtual/use-trajectory-window';
+import {
+  TrajectoryVirtualList,
+  type TrajectoryVirtualListRef
+} from './virtual/TrajectoryVirtualList';
 import './provider-trajectory.css';
 import './workflow/workflow-trajectory.css';
 
@@ -57,7 +59,7 @@ export function NativeTrajectoryWorkspace({
   const [nodeFilter, setNodeFilter] = useState<string | undefined>(nodeRunId);
   const [groupCalls, setGroupCalls] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const rows = useRef(new Map<string, HTMLButtonElement>());
+  const list = useRef<TrajectoryVirtualListRef>(null);
   const filters = {
     category,
     node_run_id: nodeFilter,
@@ -65,20 +67,28 @@ export function NativeTrajectoryWorkspace({
     from: timeRange ? new Date(timeRange[0]).toISOString() : undefined,
     to: timeRange ? new Date(timeRange[1]).toISOString() : undefined
   };
-  const pages = useInfiniteQuery({
-    ...workflowTrajectoryQueryOptions(runId, loader, filters),
-    enabled: active && Boolean(loader.loadWorkflowTrajectory)
+  const {
+    pages,
+    overview: indexQuery,
+    loaded,
+    items,
+    initialKey,
+    onVisibleKeys,
+    retry
+  } = useTrajectoryWindow({
+    queryKey: ['workflow-trajectory', runId, filters],
+    enabled: active && Boolean(loader.loadWorkflowTrajectory),
+    loadPage: (focusId, indexOnly) =>
+      loader.loadWorkflowTrajectory!(runId, undefined, {
+        ...filters,
+        index_only: indexOnly,
+        focus_event_id: focusId ?? options?.focus_event_id
+      }),
+    getRowKey: (row: WorkflowTrajectoryEvent) => row.event_id,
+    getIndexKey: (row: WorkflowTrajectoryIndexItem) => row.event_id
   });
-  useProgressiveTrajectory(active, pages);
-  const items = useMemo(
-    () => pages.data?.pages.flatMap((page) => page.items) ?? [],
-    [pages.data]
-  );
-  const [scopeOverview, setScopeOverview] = useState<WorkflowTrajectoryPage>();
-  const overview = pages.data?.pages[0] ?? scopeOverview;
-  useEffect(() => {
-    if (pages.data?.pages[0]) setScopeOverview(pages.data.pages[0]);
-  }, [pages.data]);
+  const overview = indexQuery.data;
+  const matches = useMemo(() => overview?.overview?.items ?? [], [overview]);
   const selectedStep = items.find(
     (step) =>
       step.event_id === selected || step.native_step?.event_id === selected
@@ -87,9 +97,8 @@ export function NativeTrajectoryWorkspace({
     const available = split.current?.clientWidth ?? 1000;
     setDetailWidth(Math.max(320, Math.min(720, available - 280, width)));
   }
-  const matches = items;
   const groups = useMemo(() => {
-    const result: Array<[string, WorkflowTrajectoryEvent[]]> = [];
+    const result: Array<[string, WorkflowTrajectoryIndexItem[]]> = [];
     for (const step of matches) {
       const key = workflowGroupKey(step);
       const last = result.at(-1);
@@ -98,7 +107,7 @@ export function NativeTrajectoryWorkspace({
     }
     return result;
   }, [matches]);
-  function focusStep(step: WorkflowTrajectoryEvent) {
+  function focusStep(step: WorkflowTrajectoryIndexItem) {
     setSelected(step.event_id);
     setCollapsed((current) => {
       const next = new Set(current);
@@ -106,20 +115,30 @@ export function NativeTrajectoryWorkspace({
       return next;
     });
     requestAnimationFrame(() =>
-      rows.current
-        .get(step.event_id)
-        ?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+      list.current?.scrollTo({ key: step.event_id, align: 'auto' })
     );
   }
+  type Slot =
+    | { key: string; event: WorkflowTrajectoryIndexItem }
+    | { key: string; group: string; steps: WorkflowTrajectoryIndexItem[] };
+  const slots = useMemo<Slot[]>(
+    () =>
+      groupCalls
+        ? groups.flatMap(([group, steps]): Slot[] => [
+            { key: `group:${group}:${steps[0].event_id}`, group, steps },
+            ...(!collapsed.has(group)
+              ? steps.map((event) => ({ key: event.event_id, event }))
+              : [])
+          ])
+        : matches.map((event) => ({ key: event.event_id, event })),
+    [groupCalls, groups, collapsed, matches]
+  );
+
   function renderStep(step: WorkflowTrajectoryEvent) {
     const isSelected = selected === step.event_id;
     return (
       <button
         key={step.event_id}
-        ref={(element) => {
-          if (element) rows.current.set(step.event_id, element);
-          else rows.current.delete(step.event_id);
-        }}
         type="button"
         className="provider-trajectory__row"
         data-lane={workflowEventLane(step)}
@@ -217,7 +236,7 @@ export function NativeTrajectoryWorkspace({
           i18nText('agentFlow', 'trajectory.task_request_lane'),
           i18nText('agentFlow', 'auto.tools')
         ]}
-        points={items.map((step) => ({
+        points={matches.map((step) => ({
           id: step.event_id,
           value: Date.parse(step.created_at),
           lane: workflowEventLane(step),
@@ -232,7 +251,7 @@ export function NativeTrajectoryWorkspace({
             : undefined
         }
         onSelect={(id) => {
-          const step = items.find((item) => item.event_id === id);
+          const step = matches.find((item) => item.event_id === id);
           if (step) {
             focusStep(step);
           }
@@ -258,13 +277,7 @@ export function NativeTrajectoryWorkspace({
               showIcon
               title={i18nText('agentFlow', 'auto.loading_failed')}
               action={
-                <Button
-                  onClick={() =>
-                    void (pages.isFetchNextPageError
-                      ? pages.fetchNextPage()
-                      : pages.refetch())
-                  }
-                >
+                <Button onClick={retry}>
                   {i18nText('agentFlow', 'auto.retry')}
                 </Button>
               }
@@ -282,9 +295,47 @@ export function NativeTrajectoryWorkspace({
               }
             />
           ) : null}
-          {groupCalls
-            ? groups.map(([key, steps]) => (
-                <section key={`${key}:${steps[0].event_id}`}>
+          {slots.length ? (
+            <TrajectoryVirtualList
+              ref={list}
+              items={slots}
+              getKey={(slot) => slot.key}
+              getEventKey={(slot) =>
+                'event' in slot ? slot.event.event_id : undefined
+              }
+              initialKey={initialKey}
+              resetKey={JSON.stringify([runId, filters])}
+              onVisibleKeys={onVisibleKeys}
+              active={active}
+              renderItem={(slot) => {
+                if ('event' in slot) {
+                  const step = loaded.get(slot.event.event_id);
+                  return step ? (
+                    renderStep(step)
+                  ) : (
+                    <div
+                      className="provider-trajectory__row trajectory-virtual-list__pending"
+                      data-lane={workflowEventLane(slot.event)}
+                      aria-busy="true"
+                    >
+                      <span
+                        className="provider-trajectory__marker"
+                        aria-hidden="true"
+                      />
+                      <span className="provider-trajectory__kind">
+                        {workflowEventLabel(slot.event)}
+                      </span>
+                      <span className="provider-trajectory__preview">
+                        <Spin size="small" />
+                      </span>
+                      <span className="provider-trajectory__row-time">
+                        {formatDateTime(slot.event.created_at)}
+                      </span>
+                    </div>
+                  );
+                }
+                const { group: key, steps } = slot;
+                return (
                   <button
                     type="button"
                     className="provider-trajectory__group"
@@ -322,15 +373,9 @@ export function NativeTrajectoryWorkspace({
                       })}
                     </span>
                   </button>
-                  {!collapsed.has(key) ? steps.map(renderStep) : null}
-                </section>
-              ))
-            : matches.map(renderStep)}
-          {pages.hasNextPage && !pages.isError ? (
-            <div className="provider-trajectory__more" role="status">
-              <Spin size="small" />{' '}
-              {i18nText('agentFlow', 'trajectory.loading_pages')}
-            </div>
+                );
+              }}
+            />
           ) : null}
         </div>
         {selectedStep ? (
@@ -395,9 +440,8 @@ export function NativeTrajectoryWorkspace({
                   value1: i18nText('agentFlow', 'trajectory.inspector')
                 })}
                 onClick={() => {
-                  const row = rows.current.get(selectedStep.event_id);
+                  list.current?.focusKey(selectedStep.event_id);
                   setSelected(null);
-                  row?.focus();
                 }}
               />
             </div>
@@ -421,7 +465,7 @@ export function NativeTrajectoryWorkspace({
             ? i18nText('agentFlow', 'auto.loading_failed')
             : pages.isPending
               ? i18nText('agentFlow', 'trajectory.loading_first_page')
-              : pages.isFetching || pages.hasNextPage
+              : pages.isFetching
                 ? i18nText('agentFlow', 'trajectory.loading_pages')
                 : i18nText('agentFlow', 'trajectory.loading_complete')}
         </span>

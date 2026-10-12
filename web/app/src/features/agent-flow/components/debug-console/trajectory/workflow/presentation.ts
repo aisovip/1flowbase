@@ -1,4 +1,4 @@
-import type { WorkflowTrajectoryEvent } from '@1flowbase/api-client';
+import type { WorkflowTrajectoryIndexItem } from '@1flowbase/api-client';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { invocationKey, stepLabel, stepLane } from '../trajectory-presentation';
 
@@ -6,19 +6,18 @@ export function workflowNodeName(event: {
   node_alias: string | null;
   node_run_id: string | null;
 }) {
-  if (event.node_run_id === null)
-    return i18nText('agentFlow', 'auto.workflow');
+  if (event.node_run_id === null) return i18nText('agentFlow', 'auto.workflow');
   return (
     event.node_alias ||
     i18nText('agentFlow', 'trajectory.node_name_not_recorded')
   );
 }
-export function workflowGroupKey(event: WorkflowTrajectoryEvent) {
+export function workflowGroupKey(event: WorkflowTrajectoryIndexItem) {
   return event.native_step
     ? invocationKey(event.native_step)
     : `${event.flow_run_id}:${event.task_run_id}:${event.node_run_id}:${event.category}`;
 }
-export function workflowEventLane(event: WorkflowTrajectoryEvent) {
+export function workflowEventLane(event: WorkflowTrajectoryIndexItem) {
   return event.native_step
     ? stepLane(event.native_step)
     : event.category === 'tools'
@@ -27,7 +26,7 @@ export function workflowEventLane(event: WorkflowTrajectoryEvent) {
         ? 'input'
         : 'model';
 }
-export function workflowEventLabel(event: WorkflowTrajectoryEvent): string {
+export function workflowEventLabel(event: WorkflowTrajectoryIndexItem): string {
   if (event.native_step) return stepLabel(event.native_step);
   switch (event.event_type) {
     case 'flow_run_started':
@@ -50,10 +49,7 @@ export function workflowEventLabel(event: WorkflowTrajectoryEvent): string {
     case 'flow_run_paused':
       return i18nText('agentFlow', 'trajectory.event_flow_run_paused');
     case 'flow_run_waiting_callback':
-      return i18nText(
-        'agentFlow',
-        'trajectory.event_waiting_callback'
-      );
+      return i18nText('agentFlow', 'trajectory.event_waiting_callback');
     case 'flow_run_waiting_human':
       return i18nText('agentFlow', 'trajectory.event_waiting_human');
     case 'public_run_callback_cancelled':
@@ -113,6 +109,8 @@ export function workflowEventLabel(event: WorkflowTrajectoryEvent): string {
           return i18nText('agentFlow', 'trajectory.round_activities');
         case 'agents':
           return i18nText('agentFlow', 'trajectory.agent_activities');
+        default:
+          return event.category;
       }
   }
 }

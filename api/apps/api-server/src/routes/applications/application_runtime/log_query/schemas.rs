@@ -107,12 +107,21 @@ fn conversation_trajectory_query_page_schema() -> Value {
         .clone(),
     );
     let step = object(Value::Object(properties.clone()));
-    object(json!({
+    let mut page = object(json!({
         "log_conversation_id":uuid(),"items":{"type":"array","items":step},
         "matches":{"type":"array","items":object(json!({"step_id":uuid(),"section":text(),"sequence":integer(),"snippet":text()}))},
         "previous_cursor":nullable(text()),"next_cursor":nullable(text()),
         "search_sections":strings(),"integrity":text()
-    }))
+    }));
+    let index = object(
+        json!({"id":uuid(),"request_id":uuid(),"sequence":integer(),"created_at":timestamp(),"category":text(),"protocol":text(),"flow_run_id":nullable(uuid()),"node_run_id":nullable(uuid()),"record_id":uuid(),"log_conversation_id":uuid(),"is_subagent":{"type":"boolean"}}),
+    );
+    let mut index = index;
+    index["properties"]["preview"] = text();
+    page["properties"]["overview"] = object(
+        json!({"total_count":integer(),"category_counts":{"type":"object","additionalProperties":integer()},"time_start":nullable(timestamp()),"time_end":nullable(timestamp()),"items":{"type":"array","items":index}}),
+    );
+    page
 }
 fn query_fields_schema() -> Value {
     let fields = json!({"type":"array","items":object(json!({"field":text(),"value_type":{"type":"string","enum":["string","uuid","number","boolean","datetime"]},"operators":strings(),"sortable":{"type":"boolean"}}))});

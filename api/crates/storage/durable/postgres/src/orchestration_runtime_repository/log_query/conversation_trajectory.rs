@@ -256,6 +256,36 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
     } else {
         None
     };
+    let focus_step = if let Some(step_id) = query.focus_step_id {
+        let sql = format!("select {EVENT_TIME}::text event_time,s.id step_id,t.id record_id {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and s.id=$3");
+        let row = sqlx::query(&sql)
+            .bind(app)
+            .bind(conversation)
+            .bind(step_id)
+            .fetch_optional(store.pool())
+            .await?
+            .ok_or_else(|| invalid("conversation_trajectory_focus_step"))?;
+        Some(Position {
+            timestamp: row.try_get("event_time")?,
+            step_id: row.try_get("step_id")?,
+            record_id: row.try_get("record_id")?,
+        })
+    } else {
+        None
+    };
+    if query.index_only {
+        let overview = conversation_index(store, app, conversation, query, &sections).await?;
+        return Ok(ConversationClientTrajectoryQueryPage {
+            log_conversation_id: conversation,
+            items: vec![],
+            matches: vec![],
+            previous_cursor: None,
+            next_cursor: None,
+            search_sections: vec![],
+            integrity: "complete".into(),
+            overview: Some(overview),
+        });
+    }
     if let Some(page) = &page {
         // A cursor position must identify an actual event in this exact namespace.
         // Never cast untrusted numeric cursor text: compare its canonical rendering.
@@ -272,8 +302,34 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
             return Err(invalid("log_query_cursor"));
         }
     }
+    let initial_position = if page.is_none() {
+        if let Some(target) = &focus_step {
+            let sql=format!("select {EVENT_TIME}::text event_time,s.id step_id,t.id record_id {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and ({EVENT_TIME},s.id,t.id)<($3::numeric,$4::uuid,$5::uuid) order by {EVENT_TIME} desc,s.id desc,t.id desc limit 1");
+            sqlx::query(&sql)
+                .bind(app)
+                .bind(conversation)
+                .bind(&target.timestamp)
+                .bind(target.step_id)
+                .bind(target.record_id)
+                .fetch_optional(store.pool())
+                .await?
+                .map(|r| {
+                    Ok::<_, anyhow::Error>(Position {
+                        timestamp: r.try_get("event_time")?,
+                        step_id: r.try_get("step_id")?,
+                        record_id: r.try_get("record_id")?,
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let initial_page = page.is_none();
     let previous = page.as_ref().is_some_and(|p| p.previous);
-    let initial_focus = if page.is_none() {
+    let initial_focus = if page.is_none() && focus_step.is_none() {
         focus_time.as_deref()
     } else {
         None
@@ -284,7 +340,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
         conversation,
         query,
         &sections,
-        page.map(|p| p.position),
+        page.map(|p| p.position).or(initial_position),
         previous,
         initial_focus,
         lookahead,
@@ -306,6 +362,23 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
                     step_id: Uuid::nil(),
                     record_id: Uuid::nil(),
                 }),
+                true,
+                None,
+                lookahead,
+            )
+            .await?;
+            reverse = true;
+        }
+    }
+    if hits.is_empty() && initial_page {
+        if let Some(target) = focus_step {
+            hits = scan(
+                store,
+                app,
+                conversation,
+                query,
+                &sections,
+                Some(target),
                 true,
                 None,
                 lookahead,
@@ -373,6 +446,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
         matches.extend(hit.matches);
     }
     Ok(ConversationClientTrajectoryQueryPage {
+        overview: None,
         log_conversation_id: conversation,
         items,
         matches,
@@ -384,5 +458,112 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
             vec![]
         },
         integrity: "complete".into(),
+    })
+}
+
+async fn conversation_index(
+    store: &PgControlPlaneStore,
+    app: Uuid,
+    conversation: Uuid,
+    query: &ConversationClientTrajectoryQuery,
+    sections: &[String],
+) -> Result<
+    control_plane_contracts::ports::TrajectoryOverview<
+        control_plane_contracts::ports::ConversationTrajectoryIndexItem,
+    >,
+> {
+    use control_plane_contracts::ports::{
+        ClientTrajectoryIndexItem, ConversationTrajectoryIndexItem, TrajectoryOverview,
+    };
+    let mut items = Vec::new();
+    let simple = matches!(&query.filter, domain::ResourceFilterExpr::All(filters) if filters.is_empty())
+        && query.keyword.is_none();
+    if simple {
+        // Exact source order and identities only. No restored metadata/body projection.
+        let sql=format!("select s.id,s.request_id,s.event_sequence,s.observed_at,s.metadata->>'category' category,s.metadata->>'protocol' protocol,case when s.metadata->>'category'='request' then runtime_original_json(s.metadata,s.raw_json_payloads,'metadata') end request_metadata,s.flow_run_id,s.node_run_id,t.id record_id,(t.parent_task_run_id is not null or t.parent_source_task_id is not null) is_subagent {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} order by {EVENT_TIME},s.id,t.id");
+        for r in sqlx::query(&sql)
+            .bind(app)
+            .bind(conversation)
+            .fetch_all(store.pool())
+            .await?
+        {
+            items.push(ConversationTrajectoryIndexItem {
+                step: ClientTrajectoryIndexItem {
+                    protocol: r.try_get("protocol")?,
+                    preview: r
+                        .try_get::<Option<Value>, _>("request_metadata")?
+                        .and_then(|v| v.get("preview").and_then(Value::as_str).map(str::to_owned)),
+                    id: r.try_get("id")?,
+                    request_id: r.try_get("request_id")?,
+                    sequence: r.try_get("event_sequence")?,
+                    created_at: r.try_get("observed_at")?,
+                    category: r.try_get("category")?,
+                    flow_run_id: r.try_get("flow_run_id")?,
+                    node_run_id: r.try_get("node_run_id")?,
+                },
+                record_id: r.try_get("record_id")?,
+                log_conversation_id: conversation,
+                is_subagent: r.try_get("is_subagent")?,
+            });
+        }
+    } else {
+        // Interactive predicates retain canonical lossless and semantic-search behavior.
+        let mut position = None;
+        loop {
+            let hits = scan(
+                store,
+                app,
+                conversation,
+                query,
+                sections,
+                position,
+                false,
+                None,
+                100,
+            )
+            .await?;
+            let done = hits.len() < 100;
+            for hit in hits {
+                position = Some(hit.position);
+                let s = hit.item;
+                items.push(ConversationTrajectoryIndexItem {
+                    step: ClientTrajectoryIndexItem {
+                        protocol: s.step.protocol,
+                        preview: if s.step.category == "request" {
+                            Some(s.step.preview)
+                        } else {
+                            None
+                        },
+                        id: s.step.id,
+                        request_id: s.step.request_id,
+                        sequence: s.step.sequence,
+                        created_at: s.step.created_at,
+                        category: s.step.category,
+                        flow_run_id: s.step.flow_run_id,
+                        node_run_id: s.step.node_run_id,
+                    },
+                    record_id: s.record_id,
+                    log_conversation_id: conversation,
+                    is_subagent: s.is_subagent,
+                });
+            }
+            if done {
+                break;
+            }
+        }
+    }
+    let mut category_counts = std::collections::BTreeMap::new();
+    for p in &items {
+        *category_counts.entry(p.step.category.clone()).or_insert(0) += 1;
+    }
+    let time_start = items.first().map(|p| p.step.created_at.clone());
+    let time_end = items.last().map(|p| p.step.created_at.clone());
+    Ok(TrajectoryOverview {
+        request_roots: None,
+        total_count: items.len() as i64,
+        category_counts,
+        time_start,
+        time_end,
+        items,
     })
 }

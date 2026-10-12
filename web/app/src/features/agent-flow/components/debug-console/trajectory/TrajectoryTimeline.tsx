@@ -1,7 +1,19 @@
-import { useMemo, useRef, type CSSProperties, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent
+} from 'react';
 import { Button, Tooltip } from 'antd';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
+
+import {
+  DenseTrajectoryPoints,
+  nearestTimelinePoint
+} from './virtual/DenseTrajectoryPoints';
 
 export type TrajectoryRange = readonly [number, number] | null;
 export type TimelinePoint = {
@@ -14,7 +26,7 @@ export function inTrajectoryRange(value: number, range: TrajectoryRange) {
   return !range || (value >= range[0] && value <= range[1]);
 }
 
-/** Full loaded domain stays fixed while the brush controls the ledger viewport. */
+/** Exact scope index drives both dense painting and keyboard event selection. */
 export function TrajectoryTimeline({
   points,
   range,
@@ -50,6 +62,41 @@ export function TrajectoryTimeline({
       [values[0] ?? 0, values[0] ?? 0]
     );
   }, [points, extent]);
+  const [width, setWidth] = useState(0);
+  const [cursor, setCursor] = useState<string | null>(null);
+  useEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const update = () => setWidth(element.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const ordered = useMemo(
+    () =>
+      points
+        .filter((point) => Number.isFinite(point.value))
+        .slice()
+        .sort((a, b) => a.value - b.value),
+    [points]
+  );
+  const lanes = useMemo(
+    () =>
+      Object.fromEntries(
+        ['input', 'model', 'tool'].map((lane) => [
+          lane,
+          ordered.filter((point) => point.lane === lane)
+        ])
+      ),
+    [ordered]
+  );
+  // Use canvas once 5px event markers overlap, not a limit on event count.
+  const dense = width > 0 && points.length * 5 > width;
+  const activePoint =
+    ordered.find((point) => point.id === cursor) ??
+    ordered.find((point) => point.id === selected) ??
+    ordered[0];
   const [min, max] = domain;
   const span = Math.max(1, max - min);
   const position = (value: number) =>
@@ -65,9 +112,20 @@ export function TrajectoryTimeline({
         span
     );
   };
+  function nearestAt(event: PointerEvent) {
+    const y = event.clientY - track.current!.getBoundingClientRect().top;
+    const lane = y < 20 ? 'input' : y < 40 ? 'model' : 'tool';
+    return nearestTimelinePoint(
+      lanes[lane]?.length ? lanes[lane] : ordered,
+      valueAt(event)
+    );
+  }
   function move(event: PointerEvent) {
     const gesture = drag.current;
-    if (!gesture) return;
+    if (!gesture) {
+      if (dense) setCursor(nearestAt(event)?.id ?? null);
+      return;
+    }
     if (Math.abs(event.clientX - gesture.x) < 3 && !gesture.moved) return;
     gesture.moved = true;
     const value = valueAt(event);
@@ -105,6 +163,30 @@ export function TrajectoryTimeline({
           ref={track}
           className="provider-trajectory__lanes"
           data-testid="trajectory-brush"
+          tabIndex={dense ? 0 : undefined}
+          role={dense ? 'group' : undefined}
+          aria-label={dense ? activePoint?.label : undefined}
+          onKeyDown={(event) => {
+            if (!dense || !activePoint) return;
+            const index = ordered.indexOf(activePoint);
+            let next: TimelinePoint | undefined;
+            if (event.key === 'ArrowLeft')
+              next = ordered[Math.max(0, index - 1)];
+            else if (event.key === 'ArrowRight')
+              next = ordered[Math.min(ordered.length - 1, index + 1)];
+            else if (event.key === 'Home') next = ordered[0];
+            else if (event.key === 'End') next = ordered.at(-1);
+            else if (event.key === 'Enter' || event.key === ' ') {
+              if (!inTrajectoryRange(activePoint.value, range)) onChange(null);
+              onSelect(activePoint.id);
+              event.preventDefault();
+              return;
+            }
+            if (next) {
+              setCursor(next.id);
+              event.preventDefault();
+            }
+          }}
           onPointerDown={(event) => {
             if (event.button !== 0 || !points.length) return;
             const mode = (event.target as HTMLElement).dataset.brush ?? 'new';
@@ -124,12 +206,12 @@ export function TrajectoryTimeline({
               !drag.current.moved &&
               drag.current.mode === 'new'
             ) {
-              const value = valueAt(event);
-              const nearest = points.reduce((a, b) =>
-                Math.abs(a.value - value) <= Math.abs(b.value - value) ? a : b
-              );
+              const nearest = nearestAt(event);
               onChange(null);
-              onSelect(nearest.id);
+              if (nearest) {
+                setCursor(nearest.id);
+                onSelect(nearest.id);
+              }
             }
             drag.current = null;
           }}
@@ -148,13 +230,27 @@ export function TrajectoryTimeline({
               }}
             />
           ) : null}
-          {points.map((point) => (
+          {dense ? (
+            <DenseTrajectoryPoints
+              points={ordered}
+              range={range}
+              min={min}
+              max={max}
+            />
+          ) : null}
+          {(dense
+            ? ordered.filter(
+                (point) => point.id === activePoint?.id || point.id === selected
+              )
+            : points
+          ).map((point) => (
             <Tooltip
               key={point.id}
               title={`${point.label} · ${format(point.value)}`}
             >
               <button
                 type="button"
+                tabIndex={dense ? -1 : undefined}
                 className="provider-trajectory__block"
                 data-lane={point.lane}
                 data-selected={selected === point.id || undefined}
@@ -165,6 +261,7 @@ export function TrajectoryTimeline({
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => {
                   if (!inTrajectoryRange(point.value, range)) onChange(null);
+                  setCursor(point.id);
                   onSelect(point.id);
                 }}
                 style={

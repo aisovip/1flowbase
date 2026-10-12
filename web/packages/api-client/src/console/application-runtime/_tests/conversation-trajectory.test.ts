@@ -91,3 +91,18 @@ test('query returns exact provenance and search fields without aliases', async (
     await queryConsoleConversationClientTrajectory('app', 'canonical')
   ).toBe(page);
 });
+
+test('exact index acquisition and selected unloaded event keep canonical membership', async () => {
+  const query = {
+    index_only: true,
+    focus_record_id: 'initial-round',
+    focus_step_id: 'unloaded-child-event'
+  };
+  await queryConsoleConversationClientTrajectory('app', 'canonical', query);
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/conversations/canonical/client-trajectory/query',
+    method: 'POST',
+    body: query,
+    baseUrl: undefined
+  });
+});

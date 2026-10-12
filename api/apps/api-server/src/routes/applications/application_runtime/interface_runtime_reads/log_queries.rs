@@ -19,6 +19,8 @@ impl ApplicationRuntimeReadsAdapter {
             keyword: query.keyword,
             search_sections: query.search_sections.unwrap_or_default(),
             focus_record_id: query.focus_record_id,
+            focus_step_id: query.focus_step_id,
+            index_only: query.index_only.unwrap_or(false),
         };
         Ok(self
             .store

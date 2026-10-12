@@ -16,6 +16,8 @@ pub struct ConversationTrajectoryQuery {
     pub search_sections: Option<Vec<String>>,
     /// Initially position at this member record; older and newer events remain readable.
     pub focus_record_id: Option<Uuid>,
+    pub focus_step_id: Option<Uuid>,
+    pub index_only: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]

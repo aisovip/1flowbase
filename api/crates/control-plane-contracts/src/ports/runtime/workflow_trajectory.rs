@@ -29,6 +29,9 @@ impl WorkflowEventCategory {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WorkflowTrajectoryQuery {
     #[serde(default)]
+    pub index_only: bool,
+    pub focus_event_id: Option<String>,
+    #[serde(default)]
     pub category: WorkflowEventCategory,
     pub node_run_id: Option<Uuid>,
     pub request_id: Option<Uuid>,
@@ -69,6 +72,9 @@ pub struct WorkflowTrajectoryEvent {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowTrajectoryPage {
+    pub previous_cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overview: Option<super::TrajectoryOverview<WorkflowTrajectoryIndexItem>>,
     pub items: Vec<WorkflowTrajectoryEvent>,
     pub next_cursor: Option<String>,
     pub nodes: Vec<WorkflowTrajectoryNode>,
@@ -90,3 +96,19 @@ impl std::fmt::Display for InvalidWorkflowTrajectoryQuery {
     }
 }
 impl std::error::Error for InvalidWorkflowTrajectoryQuery {}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowTrajectoryIndexItem {
+    pub node_id: Option<String>,
+    pub event_type: String,
+    pub node_alias: Option<String>,
+    pub task_run_id: Option<Uuid>,
+    pub parent_task_run_id: Option<Uuid>,
+    pub native_step: Option<ProviderTrajectoryStep>,
+    pub event_id: String,
+    pub event_sequence: Option<i64>,
+    pub created_at: String,
+    pub category: String,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Option<Uuid>,
+}

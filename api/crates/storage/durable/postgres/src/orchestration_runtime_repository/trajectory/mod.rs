@@ -40,6 +40,15 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         self.trajectory_page_for_scope(flow_run_id, node_run_id, cursor, limit, selection)
             .await
     }
+    async fn client_trajectory_query_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        query: control_plane_contracts::ports::ClientTrajectoryReadQuery,
+    ) -> Result<control_plane_contracts::ports::ClientTrajectoryPage> {
+        self.read_client_trajectory_query(flow_run_id, node_run_id, query)
+            .await
+    }
     async fn client_trajectory_filtered_page(
         &self,
         flow_run_id: Uuid,

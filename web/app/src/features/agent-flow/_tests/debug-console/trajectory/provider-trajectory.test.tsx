@@ -205,7 +205,9 @@ test('filters on the server, resets cursors, retains the same ledger and reuses 
         node_run_id: undefined,
         request_id: 'request-exact',
         from: undefined,
-        to: undefined
+        to: undefined,
+        index_only: false,
+        focus_event_id: undefined
       }
     )
   );
@@ -221,37 +223,15 @@ test('filters on the server, resets cursors, retains the same ledger and reuses 
     screen.getByText('所有事件', { selector: '.ant-segmented-item-label' })
   );
   await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
-  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(2);
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(4);
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
 });
-test('paginates summaries only and displays true parent relationships without inventing native bodies', async () => {
-  const {
-    loadWorkflowTrajectory,
-    loadWorkflowTrajectoryBody,
-    loadTrajectoryBody
-  } = fixture();
-  loadWorkflowTrajectory
-    .mockResolvedValueOnce(
-      workflowPage(
-        [{ ...node, category: 'tools', event_type: 'tool_callback_completed' }],
-        'opaque-next'
-      )
-    )
-    .mockResolvedValue(workflowPage([second]));
-  // The first request starts at render; change categories to exercise this response chain.
+test('keeps bodies lazy and displays true parent relationships without inventing native bodies', async () => {
+  const { loadWorkflowTrajectoryBody, loadTrajectoryBody } = fixture();
   await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
-  fireEvent.click(
-    screen.getByText('子任务', { selector: '.ant-segmented-item-label' })
-  );
-  await waitFor(() =>
-    expect(loadWorkflowTrajectory).toHaveBeenCalledWith(
-      'run-current',
-      'opaque-next',
-      expect.objectContaining({ category: 'agents' })
-    )
-  );
   expect(loadWorkflowTrajectoryBody).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: /^工具回调完成 ·/ }));
+  expect(loadTrajectoryBody).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: /^节点开始 ·/ }));
   fireEvent.click(
     within(screen.getByRole('complementary')).getByRole('tab', {
       name: '元数据'
@@ -283,7 +263,7 @@ test('opens lazily in the existing floating workspace and restores focus when de
   fireEvent.click(row);
   await screen.findByText('Actual system input');
   fireEvent.click(screen.getByRole('button', { name: '关闭步骤检查器' }));
-  expect(row).toHaveFocus();
+  await waitFor(() => expect(row).toHaveFocus());
   fireEvent.click(row);
   await screen.findByText('Actual system input');
   expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
@@ -384,4 +364,62 @@ test('switches native input process and output sections without mixing data or r
   expect(await inspector.findByText('event output')).toBeInTheDocument();
   expect(inspector.queryByText('event configuration')).not.toBeInTheDocument();
   expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
+});
+
+test('the Native workspace loads missing visible rows from the exact focus locator', async () => {
+  const event = (index: number): WorkflowTrajectoryEvent => ({
+    event_id: `native-${index}`,
+    event_sequence: index,
+    event_type: 'node_started',
+    created_at: `2026-09-22T00:0${index}:00Z`,
+    category: 'nodes',
+    flow_run_id: 'run-current',
+    task_run_id: 'task-root',
+    parent_task_run_id: null,
+    node_run_id: 'node-current',
+    node_id: 'llm',
+    node_alias: 'Native node',
+    node_type: 'llm',
+    status: 'running',
+    preview: `native-page-${index}`,
+    native_step: null
+  });
+  const loadWorkflowTrajectory = vi
+    .fn()
+    .mockImplementation((_runId, _cursor, options) =>
+      Promise.resolve(
+        options?.index_only
+          ? { ...workflowPage([event(1), event(2), event(3)]), items: [] }
+          : workflowPage([
+              event(
+                options?.focus_event_id === 'native-2'
+                  ? 2
+                  : options?.focus_event_id === 'native-3'
+                    ? 3
+                    : 1
+              )
+            ])
+      )
+    );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <NativeTrajectoryWorkspace
+        runId="run-current"
+        loader={{ loadWorkflowTrajectory }}
+      />
+    </QueryClientProvider>
+  );
+  expect(await screen.findByText('native-page-3')).toBeInTheDocument();
+  expect(screen.getByText('native-page-1')).toBeInTheDocument();
+  expect(screen.getByText('native-page-2')).toBeInTheDocument();
+  expect(loadWorkflowTrajectory).toHaveBeenCalledWith(
+    'run-current',
+    undefined,
+    expect.objectContaining({ focus_event_id: 'native-3', index_only: false })
+  );
+  view.unmount();
+  client.clear();
 });

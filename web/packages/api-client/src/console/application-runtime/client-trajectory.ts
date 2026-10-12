@@ -2,6 +2,11 @@ import { apiFetch } from '../../transport';
 export interface ClientTrajectoryOptions {
   request_id?: string;
   focus_step_id?: string;
+  index_only?: boolean;
+  category?: string;
+  keyword?: string;
+  from?: string;
+  to?: string;
 }
 export interface ClientTrajectoryStep {
   id: string;
@@ -28,7 +33,28 @@ export interface ClientTrajectoryStep {
   related_step_id: string | null;
   available_sections: string[];
 }
+export interface ClientTrajectoryIndexItem {
+  protocol: string;
+  preview?: string;
+  id: string;
+  sequence: number;
+  created_at: string;
+  category: string;
+  request_id: string;
+  flow_run_id: string | null;
+  node_run_id: string | null;
+}
+export interface TrajectoryOverview<T> {
+  request_roots?: ClientTrajectoryIndexItem[];
+  total_count: number;
+  category_counts: Record<string, number>;
+  time_start: string | null;
+  time_end: string | null;
+  items: T[];
+}
 export interface ClientTrajectoryPage {
+  previous_cursor?: number | null;
+  overview?: TrajectoryOverview<ClientTrajectoryIndexItem>;
   items: ClientTrajectoryStep[];
   next_cursor: number | null;
   integrity: string;
@@ -55,6 +81,16 @@ export function getConsoleClientTrajectory(
   if (options?.request_id) query.set('request_id', options.request_id);
   if (options?.focus_step_id && cursor === undefined)
     query.set('focus_step_id', options.focus_step_id);
+  for (const key of [
+    'index_only',
+    'category',
+    'keyword',
+    'from',
+    'to'
+  ] as const) {
+    const value = options?.[key];
+    if (value !== undefined) query.set(key, String(value));
+  }
   if (nodeRunId) query.set('node_run_id', nodeRunId);
   if (cursor !== undefined) query.set('cursor', String(cursor));
   return apiFetch<ClientTrajectoryPage>({

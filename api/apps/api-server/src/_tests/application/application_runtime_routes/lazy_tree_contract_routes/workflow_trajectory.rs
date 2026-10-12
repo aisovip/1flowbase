@@ -44,6 +44,42 @@ async fn workflow_trajectory_routes_preserve_authorization_filters_and_selected_
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{page}");
+    let (index_status, index) = get(
+        &app,
+        Some(&cookie),
+        &format!("{base}?index_only=true&node_run_id={node}"),
+    )
+    .await;
+    assert_eq!(index_status, StatusCode::OK, "{index}");
+    assert_eq!(index["data"]["items"], json!([]));
+    assert!(index["data"]["overview"]["total_count"].as_i64().unwrap() > 0);
+    for point in index["data"]["overview"]["items"].as_array().unwrap() {
+        assert!(point.get("preview").is_none());
+        if !point["native_step"].is_null() {
+            assert!(point["native_step"]["metadata"].get("body").is_none());
+            assert!(point["native_step"]["metadata"].get("preview").is_none());
+        }
+    }
+    assert_eq!(
+        get(&app, None, &format!("{base}?index_only=true")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let locator = index["data"]["overview"]["items"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()["event_id"]
+        .as_str()
+        .unwrap();
+    let (focus_status, focus) = get(
+        &app,
+        Some(&cookie),
+        &format!("{base}?focus_event_id={locator}&limit=1"),
+    )
+    .await;
+    assert_eq!(focus_status, StatusCode::OK, "{focus}");
+    assert_eq!(focus["data"]["items"][0]["event_id"], locator);
+
     let first = &page["data"]["items"][0];
     assert_eq!(first["node_alias"], "执行时节点名");
     assert_eq!(first["node_run_id"], node.to_string());

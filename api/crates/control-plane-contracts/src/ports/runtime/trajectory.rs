@@ -110,6 +110,12 @@ pub trait ProviderTrajectoryRepository: Send + Sync {
         limit: i64,
         selection: TrajectorySelection,
     ) -> anyhow::Result<ProviderTrajectoryPage>;
+    async fn client_trajectory_query_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        query: super::ClientTrajectoryReadQuery,
+    ) -> anyhow::Result<super::ClientTrajectoryPage>;
     async fn client_trajectory_filtered_page(
         &self,
         flow_run_id: Uuid,

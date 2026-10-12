@@ -10,7 +10,8 @@ use control_plane::ports::{
         ("category" = Option<String>, Query, description = "all, nodes, requests, tools, rounds or agents"),
         ("node_run_id" = Option<Uuid>, Query), ("request_id" = Option<Uuid>, Query),
         ("from" = Option<String>, Query), ("to" = Option<String>, Query),
-        ("cursor" = Option<String>, Query), ("limit" = Option<i64>, Query)),
+        ("cursor" = Option<String>, Query), ("limit" = Option<i64>, Query),
+        ("index_only" = Option<bool>, Query), ("focus_event_id" = Option<String>, Query)),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_workflow_trajectory(
     State(state): State<Arc<ApiState>>,

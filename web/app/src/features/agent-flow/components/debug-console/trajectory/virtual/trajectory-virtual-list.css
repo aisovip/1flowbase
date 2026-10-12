@@ -1,0 +1,19 @@
+.trajectory-virtual-list {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.trajectory-virtual-list .provider-trajectory__row {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+.provider-trajectory__ledger:has(> .trajectory-virtual-list) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.trajectory-virtual-list__pending {
+  opacity: 0.55;
+}

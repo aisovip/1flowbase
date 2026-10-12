@@ -119,6 +119,83 @@ async fn workflow_trajectory_scope_filters_keyset_and_selected_bodies() {
         .unwrap();
     assert_eq!(all.nodes.len(), 4);
     assert_eq!(all.items.len(), 11);
+    let index_page = store
+        .workflow_trajectory_page(
+            application,
+            root,
+            WorkflowTrajectoryQuery {
+                index_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(index_page.items.is_empty());
+    assert_eq!(index_page.nodes.len(), all.nodes.len());
+    let overview = index_page.overview.unwrap();
+    assert_eq!(overview.total_count, 11);
+    assert_eq!(
+        overview
+            .items
+            .iter()
+            .map(|p| &p.event_id)
+            .collect::<Vec<_>>(),
+        all.items.iter().map(|p| &p.event_id).collect::<Vec<_>>()
+    );
+    assert_eq!(overview.time_start, all.time_start);
+    let wire = serde_json::to_value(&overview).unwrap();
+    for p in wire["items"].as_array().unwrap() {
+        assert!(p.get("preview").is_none());
+        if !p["native_step"].is_null() {
+            assert!(p["native_step"]["metadata"].get("body_ref").is_none());
+            assert!(p["native_step"]["metadata"].get("preview").is_none());
+        }
+    }
+    let target = all.items.last().unwrap().event_id.clone();
+    let focused = store
+        .workflow_trajectory_page(
+            application,
+            root,
+            WorkflowTrajectoryQuery {
+                focus_event_id: Some(target.clone()),
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(focused.items[0].event_id, target);
+    assert!(focused.previous_cursor.is_some());
+    let older = store
+        .workflow_trajectory_page(
+            application,
+            root,
+            WorkflowTrajectoryQuery {
+                cursor: focused.previous_cursor,
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        older.items[0].event_id,
+        all.items[all.items.len() - 2].event_id
+    );
+    let newer = store
+        .workflow_trajectory_page(
+            application,
+            root,
+            WorkflowTrajectoryQuery {
+                cursor: older.next_cursor,
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(newer.items[0].event_id, target);
+
     let tool_positions = all
         .items
         .iter()

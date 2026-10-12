@@ -71,5 +71,6 @@ pub fn conversation_trajectory_query_fingerprint(
         &query.keyword,
         sections,
         query.focus_record_id,
+        query.focus_step_id,
     ))
 }

@@ -1,8 +1,8 @@
 use super::*;
 use control_plane_contracts::ports::{
-    InvalidWorkflowTrajectoryQuery, WorkflowEventSection, WorkflowTrajectoryBody,
-    WorkflowTrajectoryEvent, WorkflowTrajectoryNode, WorkflowTrajectoryPage,
-    WorkflowTrajectoryQuery,
+    InvalidWorkflowTrajectoryQuery, TrajectoryOverview, WorkflowEventSection,
+    WorkflowTrajectoryBody, WorkflowTrajectoryEvent, WorkflowTrajectoryIndexItem,
+    WorkflowTrajectoryNode, WorkflowTrajectoryPage, WorkflowTrajectoryQuery,
 };
 use time::format_description::well_known::Rfc3339;
 
@@ -49,11 +49,15 @@ impl PgControlPlaneStore {
             );
         }
         // Opaque wire value encodes the immutable chronological key; no ordinal is invented.
-        let cursor: Option<(String, Uuid, i32, i64, String)> = query
+        let previous = query
+            .cursor
+            .as_deref()
+            .is_some_and(|v| v.starts_with("previous:"));
+        let mut cursor: Option<(String, Uuid, i32, i64, String)> = query
             .cursor
             .as_deref()
             .map(|v| {
-                serde_json::from_str(v)
+                serde_json::from_str(v.strip_prefix("previous:").unwrap_or(v))
                     .map_err(|_| InvalidWorkflowTrajectoryQuery("invalid trajectory cursor".into()))
             })
             .transpose()?;
@@ -70,6 +74,48 @@ impl PgControlPlaneStore {
                 );
             }
         }
+        let initial_focus = query.cursor.is_none() && query.focus_event_id.is_some();
+        if let Some(id) = query.focus_event_id.as_deref() {
+            let sql=format!("{} select event_id,created_at,flow_run_id,source_rank,event_sequence from enriched where event_id=$3 or source_id::text=$3 order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id limit 1",event_sql());
+            let row = sqlx::query(&sql)
+                .bind(application_id)
+                .bind(flow_run_id)
+                .bind(id)
+                .fetch_optional(self.pool())
+                .await?
+                .ok_or_else(|| {
+                    InvalidWorkflowTrajectoryQuery("trajectory focus not found".into())
+                })?;
+            if initial_focus {
+                cursor = Some((
+                    row.get::<OffsetDateTime, _>("created_at")
+                        .format(&Rfc3339)?,
+                    row.get("flow_run_id"),
+                    row.get("source_rank"),
+                    row.get::<Option<i64>, _>("event_sequence").unwrap_or(0),
+                    row.get("event_id"),
+                ));
+            }
+        }
+        if let Some((time, run, rank, sequence, id)) = &cursor {
+            let sql=format!("{} select exists(select 1 from enriched where created_at=$3 and flow_run_id=$4 and source_rank=$5 and coalesce(event_sequence,0)=$6 and event_id=$7)",event_sql());
+            let valid: bool = sqlx::query_scalar(&sql)
+                .bind(application_id)
+                .bind(flow_run_id)
+                .bind(timestamp(Some(time))?)
+                .bind(run)
+                .bind(rank)
+                .bind(sequence)
+                .bind(id)
+                .fetch_one(self.pool())
+                .await?;
+            if !valid {
+                return Err(InvalidWorkflowTrajectoryQuery(
+                    "invalid trajectory cursor scope".into(),
+                )
+                .into());
+            }
+        }
         let cursor_time = timestamp(cursor.as_ref().map(|v| v.0.as_str()))?;
         let cursor_id = cursor.as_ref().map(|v| v.4.as_str());
         let limit = query.limit.unwrap_or(50).clamp(1, 100);
@@ -78,30 +124,42 @@ impl PgControlPlaneStore {
             .replace("$3", "(e.metadata->>'trigger_request_id')")
             .replace("$4", "(e.metadata->>'context_flow_run_id')")
             .replace("$5", "(e.metadata->>'context_response_id')");
+        let comparison = if previous {
+            "<"
+        } else if initial_focus {
+            ">="
+        } else {
+            ">"
+        };
+        let direction = if previous { "desc" } else { "asc" };
         let sql = format!("{} select e.*,({links}) links from enriched e
             where ($3='all' or e.category=$3 or ($3='agents' and e.depth>0) or ($3='rounds' and e.is_round))
             and ($4::uuid is null or e.node_run_id=$4)
             and ($5::text is null or e.metadata->>'trigger_request_id'=$5)
             and ($6::timestamptz is null or e.created_at >= $6)
             and ($7::timestamptz is null or e.created_at <= $7)
-            and ($8::timestamptz is null or (e.created_at,e.flow_run_id,e.source_rank,coalesce(e.event_sequence,0),e.event_id)>($8,$9::uuid,$10::integer,$11::bigint,$12::text))
-            order by e.created_at,e.flow_run_id,e.source_rank,coalesce(e.event_sequence,0),e.event_id limit $13",event_sql());
-        let rows = sqlx::query(&sql)
-            .bind(application_id)
-            .bind(flow_run_id)
-            .bind(query.category.as_str())
-            .bind(query.node_run_id)
-            .bind(query.request_id.map(|v| v.to_string()))
-            .bind(from)
-            .bind(to)
-            .bind(cursor_time)
-            .bind(cursor.as_ref().map(|v| v.1))
-            .bind(cursor.as_ref().map(|v| v.2))
-            .bind(cursor.as_ref().map(|v| v.3))
-            .bind(cursor_id)
-            .bind(limit + 1)
-            .fetch_all(self.pool())
-            .await?;
+            and ($8::timestamptz is null or (e.created_at,e.flow_run_id,e.source_rank,coalesce(e.event_sequence,0),e.event_id){comparison}($8,$9::uuid,$10::integer,$11::bigint,$12::text))
+            order by e.created_at {direction},e.flow_run_id {direction},e.source_rank {direction},coalesce(e.event_sequence,0) {direction},e.event_id {direction} limit $13",event_sql());
+        let rows = if query.index_only {
+            Vec::new()
+        } else {
+            sqlx::query(&sql)
+                .bind(application_id)
+                .bind(flow_run_id)
+                .bind(query.category.as_str())
+                .bind(query.node_run_id)
+                .bind(query.request_id.map(|v| v.to_string()))
+                .bind(from)
+                .bind(to)
+                .bind(cursor_time)
+                .bind(cursor.as_ref().map(|v| v.1))
+                .bind(cursor.as_ref().map(|v| v.2))
+                .bind(cursor.as_ref().map(|v| v.3))
+                .bind(cursor_id)
+                .bind(limit + 1)
+                .fetch_all(self.pool())
+                .await?
+        };
         let more = rows.len() > limit as usize;
         let mut items = Vec::new();
         for row in rows.into_iter().take(limit as usize) {
@@ -139,7 +197,47 @@ impl PgControlPlaneStore {
                 native_step,
             });
         }
-        let next_cursor = if more {
+        if previous {
+            items.reverse();
+        }
+        let cursor_for = |e: &WorkflowTrajectoryEvent| {
+            serde_json::to_string(&(
+                &e.created_at,
+                e.flow_run_id,
+                source_rank(&e.event_id),
+                e.event_sequence.unwrap_or(0),
+                &e.event_id,
+            ))
+        };
+        let before = if let Some(first) = items.first() {
+            let sql=format!("{} select exists(select 1 from enriched e where ($3='all' or e.category=$3 or ($3='agents' and e.depth>0) or ($3='rounds' and e.is_round)) and ($4::uuid is null or e.node_run_id=$4) and ($5::text is null or e.metadata->>'trigger_request_id'=$5) and ($6::timestamptz is null or e.created_at >= $6) and ($7::timestamptz is null or e.created_at <= $7) and (e.created_at,e.flow_run_id,e.source_rank,coalesce(e.event_sequence,0),e.event_id)<($8,$9::uuid,$10::integer,$11::bigint,$12::text))",event_sql());
+            sqlx::query_scalar::<_, bool>(&sql)
+                .bind(application_id)
+                .bind(flow_run_id)
+                .bind(query.category.as_str())
+                .bind(query.node_run_id)
+                .bind(query.request_id.map(|id| id.to_string()))
+                .bind(from)
+                .bind(to)
+                .bind(timestamp(Some(&first.created_at))?)
+                .bind(first.flow_run_id)
+                .bind(source_rank(&first.event_id))
+                .bind(first.event_sequence.unwrap_or(0))
+                .bind(&first.event_id)
+                .fetch_one(self.pool())
+                .await?
+        } else {
+            false
+        };
+        let previous_cursor = if before {
+            items
+                .first()
+                .map(|e| cursor_for(e).map(|c| format!("previous:{c}")))
+                .transpose()?
+        } else {
+            None
+        };
+        let next_cursor = if more && !previous || previous && query.cursor.is_some() {
             items
                 .last()
                 .map(|e| {
@@ -167,7 +265,91 @@ impl PgControlPlaneStore {
         .bind(flow_run_id)
         .fetch_one(self.pool())
         .await?;
+        let overview = if query.index_only {
+            // The full index excludes links, previews, bodies and locator payloads.
+            let sql=format!("{} select event_id,source_id,event_sequence,event_type,created_at,category,flow_run_id,node_run_id,node_id,node_alias,task_run_id,parent_task_run_id,depth,is_round,metadata->>'trigger_request_id' trigger_request_id,jsonb_strip_nulls(jsonb_build_object('kind',metadata->'kind','purpose',metadata->'purpose','source',metadata->'source','status',metadata->'status','step_key',metadata->'step_key','flow_run_id',metadata->'flow_run_id','node_id',metadata->'node_id','node_run_id',metadata->'node_run_id','invocation_id',metadata->'invocation_id','provider_attempt_index',metadata->'provider_attempt_index','run_mode',metadata->'run_mode')) metadata from enriched e order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id",event_sql());
+            let rows = sqlx::query(&sql)
+                .bind(application_id)
+                .bind(flow_run_id)
+                .fetch_all(self.pool())
+                .await?;
+            let mut index = Vec::new();
+            let mut category_counts = std::collections::BTreeMap::new();
+            for row in rows {
+                let event_id: String = row.get("event_id");
+                let category: String = row.get("category");
+                let depth: i32 = row.get("depth");
+                let is_round: bool = row.get("is_round");
+                let event_time = row.get::<OffsetDateTime, _>("created_at");
+                let event_node: Option<Uuid> = row.get("node_run_id");
+                let event_request: Option<String> = row.get("trigger_request_id");
+                if query.node_run_id.is_some_and(|id| event_node != Some(id))
+                    || query
+                        .request_id
+                        .is_some_and(|id| event_request.as_deref() != Some(id.to_string().as_str()))
+                    || from.is_some_and(|time| event_time < time)
+                    || to.is_some_and(|time| event_time > time)
+                {
+                    continue;
+                }
+                *category_counts.entry(category.clone()).or_insert(0) += 1;
+                if depth > 0 {
+                    *category_counts.entry("agents".into()).or_insert(0) += 1;
+                }
+                if is_round {
+                    *category_counts.entry("rounds".into()).or_insert(0) += 1;
+                }
+                if query.category.as_str() != "all"
+                    && category != query.category.as_str()
+                    && !(query.category.as_str() == "agents" && depth > 0)
+                    && !(query.category.as_str() == "rounds" && is_round)
+                {
+                    continue;
+                }
+                let created_at = row
+                    .get::<OffsetDateTime, _>("created_at")
+                    .format(&Rfc3339)?;
+                let native_step = if event_id.starts_with("native:") {
+                    Some(ProviderTrajectoryStep {
+                        event_id: row.get("source_id"),
+                        event_sequence: row.get("event_sequence"),
+                        event_type: row.get("event_type"),
+                        created_at: created_at.clone(),
+                        metadata: row.get("metadata"),
+                        links: vec![],
+                    })
+                } else {
+                    None
+                };
+                index.push(WorkflowTrajectoryIndexItem {
+                    node_id: row.get("node_id"),
+                    event_id,
+                    event_sequence: row.get("event_sequence"),
+                    created_at,
+                    category,
+                    flow_run_id: row.get("flow_run_id"),
+                    node_run_id: row.get("node_run_id"),
+                    node_alias: row.get("node_alias"),
+                    task_run_id: row.get("task_run_id"),
+                    parent_task_run_id: row.get("parent_task_run_id"),
+                    event_type: row.get("event_type"),
+                    native_step,
+                });
+            }
+            Some(TrajectoryOverview {
+                request_roots: None,
+                total_count: index.len() as i64,
+                category_counts,
+                time_start: formatted(extent.get("time_start"))?,
+                time_end: formatted(extent.get("time_end"))?,
+                items: index,
+            })
+        } else {
+            None
+        };
         Ok(WorkflowTrajectoryPage {
+            previous_cursor,
+            overview,
             items,
             next_cursor,
             nodes,

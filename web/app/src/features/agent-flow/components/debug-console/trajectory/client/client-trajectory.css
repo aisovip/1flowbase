@@ -289,3 +289,16 @@
     padding: 8px;
   }
 }
+
+/* The virtual viewport owns scrolling; category controls retain their compact layout. */
+.client-trajectory .client-trajectory__virtual-ledger {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.client-trajectory__virtual-ledger > .client-trajectory__categories,
+.client-trajectory__virtual-ledger > .client-trajectory__note,
+.client-trajectory__virtual-ledger > .provider-trajectory__loading {
+  flex: none;
+}

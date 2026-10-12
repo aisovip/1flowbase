@@ -1,3 +1,4 @@
+import type { TrajectoryOverview } from './client-trajectory';
 import { apiFetch } from '../../transport';
 
 export type ProviderTrajectoryView = 'semantic' | 'protocol';
@@ -154,6 +155,8 @@ export type WorkflowTrajectoryCategory =
   | 'rounds'
   | 'agents';
 export interface WorkflowTrajectoryOptions {
+  index_only?: boolean;
+  focus_event_id?: string;
   category?: WorkflowTrajectoryCategory;
   node_run_id?: string;
   request_id?: string;
@@ -184,7 +187,23 @@ export interface WorkflowTrajectoryEvent {
   preview: string;
   native_step: ProviderTrajectoryStep | null;
 }
+export interface WorkflowTrajectoryIndexItem {
+  node_id: string | null;
+  event_type: string;
+  node_alias: string | null;
+  task_run_id: string | null;
+  parent_task_run_id: string | null;
+  native_step: ProviderTrajectoryStep | null;
+  event_id: string;
+  event_sequence: number | null;
+  created_at: string;
+  category: string;
+  flow_run_id: string;
+  node_run_id: string | null;
+}
 export interface WorkflowTrajectoryPage {
+  previous_cursor?: string | null;
+  overview?: TrajectoryOverview<WorkflowTrajectoryIndexItem>;
   items: WorkflowTrajectoryEvent[];
   next_cursor: string | null;
   nodes: WorkflowTrajectoryNode[];
@@ -208,7 +227,7 @@ export function getConsoleWorkflowTrajectory(
 ) {
   const query = new URLSearchParams({ limit: '100' });
   for (const [key, value] of Object.entries(options ?? {}))
-    if (value !== undefined) query.set(key, value);
+    if (value !== undefined) query.set(key, String(value));
   if (cursor) query.set('cursor', cursor);
   return apiFetch<WorkflowTrajectoryPage>({
     path: `/api/console/applications/${applicationId}/logs/runs/${runId}/workflow-trajectory?${query}`,

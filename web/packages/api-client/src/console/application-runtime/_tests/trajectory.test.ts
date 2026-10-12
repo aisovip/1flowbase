@@ -91,3 +91,38 @@ test('workflow summary sends exact server filters and opaque cursors; body escap
     baseUrl: undefined
   });
 });
+
+test('native index and visible focus windows preserve node/request scope and exact acquisition controls', async () => {
+  await getConsoleClientTrajectory('app', 'run', 'node', undefined, undefined, {
+    request_id: 'request',
+    index_only: true,
+    category: 'tool_call',
+    keyword: 'unloaded NUL\0match',
+    from: '2026-10-12T00:00:00Z'
+  });
+  const call = vi.mocked(apiFetch).mock.calls[0][0];
+  const query = new URL(call.path, 'https://example.test').searchParams;
+  expect(query.get('node_run_id')).toBe('node');
+  expect(query.get('request_id')).toBe('request');
+  expect(query.get('index_only')).toBe('true');
+  expect(query.get('keyword')).toBe('unloaded NUL\0match');
+  await getConsoleClientTrajectory('app', 'run', 'node', -105, undefined, {
+    request_id: 'request'
+  });
+  expect(
+    new URL(
+      vi.mocked(apiFetch).mock.calls[1][0].path,
+      'https://example.test'
+    ).searchParams.get('cursor')
+  ).toBe('-105');
+  await getConsoleWorkflowTrajectory('app', 'run', undefined, {
+    index_only: true,
+    focus_event_id: 'native:unloaded'
+  });
+  const workflow = new URL(
+    vi.mocked(apiFetch).mock.calls[2][0].path,
+    'https://example.test'
+  ).searchParams;
+  expect(workflow.get('index_only')).toBe('true');
+  expect(workflow.get('focus_event_id')).toBe('native:unloaded');
+});

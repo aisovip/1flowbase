@@ -1,6 +1,8 @@
 use super::*;
 #[path = "client_trajectory/archive.rs"]
 mod archive;
+#[path = "client_trajectory/query.rs"]
+mod query;
 #[path = "client_trajectory/semantic.rs"]
 mod semantic;
 use control_plane_contracts::ports::{
@@ -231,6 +233,28 @@ impl PgControlPlaneStore {
         limit: i64,
         selection: control_plane_contracts::ports::TrajectorySelection,
     ) -> Result<ClientTrajectoryPage> {
+        self.read_client_trajectory_window(
+            flow_run_id,
+            node_run_id,
+            cursor,
+            limit,
+            selection,
+            None,
+            false,
+        )
+        .await
+    }
+
+    async fn read_client_trajectory_window(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: control_plane_contracts::ports::TrajectorySelection,
+        ids: Option<&[Uuid]>,
+        previous: bool,
+    ) -> Result<ClientTrajectoryPage> {
         let cursor = if cursor.is_none() {
             if let Some(target) = selection.target_id {
                 let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3 and ($4::uuid is null or request_id=$4)")
@@ -245,7 +269,10 @@ impl PgControlPlaneStore {
         let limit = limit.clamp(1, 100);
         let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures c where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=c.request_id and l.node_run_id=$2)) and ($3::uuid is null or c.request_id=$3)")
             .bind(flow_run_id).bind(node_run_id).bind(selection.request_id).fetch_one(self.pool()).await?;
-        let rows = sqlx::query(r#"
+        let comparison = if previous { "<" } else { ">" };
+        let direction = if previous { "desc" } else { "asc" };
+        let sql = format!(
+            r#"
             select client_trajectory_step_storage_body(s.id,s.flow_run_id) as metadata,s.semantic_metadata_restored,s.event_sequence,
                 related.candidates as related_candidates,related.restored as related_restored
             from client_trajectory_steps s
@@ -258,9 +285,19 @@ impl PgControlPlaneStore {
                     and p.metadata->>'category'='tool_call' and p.metadata->>'origin'='emitted'
                     and p.metadata->'available_sections' ? 'parameters'
             ) related on s.metadata->>'origin'='submitted' and s.metadata->'available_sections' ? 'result'
-            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence>$3 and ($5::uuid is null or s.request_id=$5)
-            order by s.event_sequence limit $4
-        "#).bind(flow_run_id).bind(node_run_id).bind(cursor.unwrap_or(0)).bind(limit+1).bind(selection.request_id).fetch_all(self.pool()).await?;
+            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence{comparison}$3 and ($5::uuid is null or s.request_id=$5) and ($6::uuid[] is null or s.id=any($6))
+            order by s.event_sequence {direction} limit $4
+        "#
+        );
+        let rows = sqlx::query(&sql)
+            .bind(flow_run_id)
+            .bind(node_run_id)
+            .bind(cursor.unwrap_or(0))
+            .bind(limit + 1)
+            .bind(selection.request_id)
+            .bind(ids)
+            .fetch_all(self.pool())
+            .await?;
         let more = rows.len() > limit as usize;
         let mut items = Vec::new();
         for row in rows.into_iter().take(limit as usize) {
@@ -293,12 +330,17 @@ impl PgControlPlaneStore {
             }
             items.push(step);
         }
+        if previous {
+            items.reverse();
+        }
         let next_cursor = if more {
             items.last().map(|s| s.sequence)
         } else {
             None
         };
         Ok(ClientTrajectoryPage {
+            overview: None,
+            previous_cursor: None,
             items,
             next_cursor,
             integrity,

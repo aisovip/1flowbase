@@ -138,6 +138,25 @@ async fn application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy
         .0,
         StatusCode::UNAUTHORIZED
     );
+    let (index_status, client_index) = get(
+        &app,
+        Some(&cookie),
+        &format!("{base}/client-trajectory?index_only=true"),
+    )
+    .await;
+    assert_eq!(index_status, StatusCode::OK, "{client_index}");
+    assert_eq!(client_index["data"]["items"], json!([]));
+    assert!(client_index["data"]["overview"]["items"].is_array());
+    assert_eq!(
+        get(
+            &app,
+            None,
+            &format!("{base}/client-trajectory?index_only=true")
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     let item = &page["data"]["items"][0];
     assert_eq!(item["metadata"]["flow_run_id"], run);
     assert!(item["metadata"].get("body").is_none());

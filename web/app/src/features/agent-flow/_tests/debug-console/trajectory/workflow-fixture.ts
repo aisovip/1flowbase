@@ -31,6 +31,16 @@ export function workflowPage(
 ): WorkflowTrajectoryPage {
   return {
     items,
+    overview: {
+      items,
+      total_count: items.length,
+      category_counts: items.reduce<Record<string, number>>((counts, event) => {
+        counts[event.category] = (counts[event.category] ?? 0) + 1;
+        return counts;
+      }, {}),
+      time_start: '2026-09-22T00:00:00Z',
+      time_end: '2026-09-22T01:00:00Z'
+    },
     next_cursor,
     nodes: [
       {

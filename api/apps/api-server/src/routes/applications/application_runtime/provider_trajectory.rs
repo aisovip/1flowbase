@@ -138,6 +138,11 @@ pub async fn get_run_payload(
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ClientTrajectoryQuery {
+    pub index_only: Option<bool>,
+    pub category: Option<String>,
+    pub keyword: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
     pub request_id: Option<Uuid>,
     pub focus_step_id: Option<Uuid>,
     pub node_run_id: Option<Uuid>,
@@ -149,7 +154,7 @@ pub struct ClientTrajectoryQuery {
 /// List original client Responses trajectory summaries.
 /// Reads bounded metadata within the authorized application and run without loading protocol bodies.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/client-trajectory",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_step_id" = Option<Uuid>, Query)),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_step_id" = Option<Uuid>, Query), ("index_only" = Option<bool>, Query), ("category" = Option<String>, Query), ("keyword" = Option<String>, Query), ("from" = Option<String>, Query), ("to" = Option<String>, Query)),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_client_trajectory(
     State(state): State<Arc<ApiState>>,

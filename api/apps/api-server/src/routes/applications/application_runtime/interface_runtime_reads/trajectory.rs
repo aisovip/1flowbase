@@ -15,14 +15,19 @@ impl ApplicationRuntimeReadsAdapter {
         self.visible_trajectory_run(actor, application_id, run_id)
             .await?;
         self.store
-            .client_trajectory_filtered_page(
+            .client_trajectory_query_page(
                 run_id,
                 query.node_run_id,
-                query.cursor,
-                query.limit.unwrap_or(50),
-                TrajectorySelection {
+                control_plane::ports::ClientTrajectoryReadQuery {
+                    cursor: query.cursor,
+                    limit: query.limit.unwrap_or(50),
                     request_id: query.request_id,
-                    target_id: query.focus_step_id,
+                    focus_step_id: query.focus_step_id,
+                    category: query.category,
+                    keyword: query.keyword,
+                    from: query.from,
+                    to: query.to,
+                    index_only: query.index_only.unwrap_or(false),
                 },
             )
             .await

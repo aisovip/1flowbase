@@ -50,6 +50,10 @@ pub struct ClientTrajectoryStep {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientTrajectoryPage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<TrajectoryOverview<ClientTrajectoryIndexItem>>,
+    #[serde(default)]
+    pub previous_cursor: Option<i64>,
     pub items: Vec<ClientTrajectoryStep>,
     pub next_cursor: Option<i64>,
     pub integrity: String,
@@ -124,4 +128,42 @@ pub struct AppendClientTrajectoryArchiveInput {
 pub struct ClientTrajectoryArchiveReceipt {
     pub request_id: Uuid,
     pub persisted_through: i64,
+}
+
+/// Exact lightweight index. No previews, sections or protocol bodies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientTrajectoryIndexItem {
+    pub protocol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    pub id: Uuid,
+    pub sequence: i64,
+    pub created_at: String,
+    pub category: String,
+    pub request_id: Uuid,
+    pub flow_run_id: Option<Uuid>,
+    pub node_run_id: Option<Uuid>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrajectoryOverview<T> {
+    /// Actual request headers retained independently of interactive event predicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_roots: Option<Vec<ClientTrajectoryIndexItem>>,
+    pub total_count: i64,
+    pub category_counts: std::collections::BTreeMap<String, i64>,
+    pub time_start: Option<String>,
+    pub time_end: Option<String>,
+    pub items: Vec<T>,
+}
+#[derive(Debug, Default, Clone)]
+pub struct ClientTrajectoryReadQuery {
+    pub cursor: Option<i64>,
+    pub limit: i64,
+    pub request_id: Option<Uuid>,
+    pub focus_step_id: Option<Uuid>,
+    pub category: Option<String>,
+    pub keyword: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub index_only: bool,
 }

@@ -325,6 +325,8 @@ fn conversation_trajectory_provenance_filter_and_fingerprint_contract() {
         keyword: None,
         search_sections: vec![],
         focus_record_id: None,
+        focus_step_id: None,
+        index_only: false,
     };
     let fingerprint = |query: &ConversationClientTrajectoryQuery, scope, source| {
         conversation_trajectory_query_fingerprint(

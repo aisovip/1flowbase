@@ -121,6 +121,8 @@ pub struct ConversationClientTrajectoryQuery {
     pub search_sections: Vec<String>,
     /// Initial position only; never restricts canonical membership.
     pub focus_record_id: Option<Uuid>,
+    pub focus_step_id: Option<Uuid>,
+    pub index_only: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationClientTrajectoryStep {
@@ -138,6 +140,8 @@ pub struct ConversationClientTrajectoryStep {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationClientTrajectoryQueryPage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<super::TrajectoryOverview<ConversationTrajectoryIndexItem>>,
     pub log_conversation_id: Uuid,
     pub items: Vec<ConversationClientTrajectoryStep>,
     pub matches: Vec<RecordTrajectoryMatch>,
@@ -145,4 +149,13 @@ pub struct ConversationClientTrajectoryQueryPage {
     pub next_cursor: Option<String>,
     pub search_sections: Vec<String>,
     pub integrity: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationTrajectoryIndexItem {
+    #[serde(flatten)]
+    pub step: super::ClientTrajectoryIndexItem,
+    pub record_id: Uuid,
+    pub log_conversation_id: Uuid,
+    pub is_subagent: bool,
 }

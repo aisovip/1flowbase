@@ -10,8 +10,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type {
   ClientTrajectoryStep,
+  ClientTrajectoryOptions,
   ConversationClientTrajectoryStep,
-  ConversationTrajectoryQuery
+  ConversationTrajectoryQuery,
+  ConversationClientTrajectoryQueryPage
 } from '@1flowbase/api-client';
 import { ProviderTrajectory } from '../../../components/debug-console/trajectory/ProviderTrajectory';
 import type { ConversationLogTraceLoader } from '../../../components/debug-console/conversation-log-trace-model';
@@ -57,32 +59,80 @@ const tool: ClientTrajectoryStep = {
   origin: 'emitted',
   available_sections: ['overview', 'parameters', 'schema', 'timing', 'raw']
 };
+function indexOverview(
+  items: (ClientTrajectoryStep | ConversationClientTrajectoryStep)[]
+) {
+  const category_counts: Record<string, number> = {};
+  for (const step of items)
+    category_counts[step.category] = (category_counts[step.category] ?? 0) + 1;
+  return {
+    total_count: items.length,
+    category_counts,
+    time_start: items[0]?.created_at ?? null,
+    time_end: items.at(-1)?.created_at ?? null,
+    items: items.map((step) => ({
+      id: step.id,
+      request_id: step.request_id,
+      sequence: step.sequence,
+      created_at: step.created_at,
+      category: step.category,
+      protocol: step.protocol,
+      flow_run_id: step.flow_run_id,
+      node_run_id: step.node_run_id,
+      ...(step.category === 'request' ? { preview: step.preview } : {}),
+      ...('record_id' in step
+        ? {
+            record_id: step.record_id,
+            log_conversation_id: step.log_conversation_id,
+            is_subagent: step.is_subagent
+          }
+        : {})
+    }))
+  };
+}
 function fixture(namespace: string | null = null, protocol = 'responses') {
+  const all = [
+    { ...root, protocol },
+    { ...tool, namespace, protocol },
+    {
+      ...root,
+      id: 'result-1',
+      sequence: 3,
+      category: 'tool_result',
+      name: 'exec_command',
+      result_preview: '/work',
+      related_step_id: tool.id,
+      call_id: tool.call_id,
+      available_sections: ['result']
+    }
+  ];
   const loadClientTrajectory = vi
     .fn()
-    .mockImplementation((_run, _node, cursor) =>
-      Promise.resolve({
-        items: cursor
-          ? [
-              {
-                ...root,
-                id: 'result-1',
-                sequence: 3,
-                category: 'tool_result',
-                name: 'exec_command',
-                result_preview: '/work',
-                related_step_id: tool.id,
-                call_id: tool.call_id,
-                available_sections: ['result']
-              }
-            ]
-          : [
-              { ...root, protocol },
-              { ...tool, namespace, protocol }
-            ],
-        next_cursor: cursor ? null : 2,
-        integrity: 'complete'
-      })
+    .mockImplementation(
+      (_run, _node, _cursor, options?: ClientTrajectoryOptions) => {
+        const matching = all.filter(
+          (step) =>
+            (!options?.category || step.category === options.category) &&
+            (!options?.keyword ||
+              [
+                step.name,
+                step.namespace,
+                step.preview,
+                step.call_id,
+                step.parameters_preview,
+                step.result_preview
+              ]
+                .join(' ')
+                .toLowerCase()
+                .includes(options.keyword.toLowerCase()))
+        );
+        return Promise.resolve({
+          items: options?.index_only ? [] : all,
+          ...(options?.index_only ? { overview: indexOverview(matching) } : {}),
+          next_cursor: null,
+          integrity: 'complete'
+        });
+      }
     );
   const loadClientTrajectorySection = vi
     .fn()
@@ -148,7 +198,7 @@ test('defaults to original client classification and lazily loads only selected 
   const call = await screen.findByRole('button', {
     name: '工具调用 · exec_command'
   });
-  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
+  expect(loadWorkflowTrajectory).toHaveBeenCalled();
   expect(loadClientTrajectorySection).not.toHaveBeenCalled();
   fireEvent.click(call);
   await waitFor(() =>
@@ -194,7 +244,7 @@ test('defaults to original client classification and lazily loads only selected 
   fireEvent.click(screen.getByRole('button', { name: '关闭详情' }));
   expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
 });
-test('paginates summaries, keeps original categories and follows actual call relation', async () => {
+test('loads viewport rows, keeps original categories and follows actual call relation', async () => {
   const { loadClientTrajectory } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   await screen.findByRole('button', { name: '工具调用 · exec_command' });
@@ -204,9 +254,12 @@ test('paginates summaries, keeps original categories and follows actual call rel
   expect(loadClientTrajectory).toHaveBeenCalledWith(
     'run-1',
     undefined,
-    2,
-    undefined
+    undefined,
+    expect.objectContaining({ index_only: true })
   );
+  expect(
+    loadClientTrajectory.mock.calls.every((call) => call[2] === undefined)
+  ).toBe(true);
   fireEvent.click(result);
   fireEvent.click(await screen.findByRole('button', { name: '定位关联调用' }));
   expect(
@@ -252,7 +305,7 @@ test('Chat toolbar uses backend protocol classification', async () => {
 });
 
 test('imported records reuse total trajectory and lazy sections without a native run or internal calls', async () => {
-  const queryConversationClientTrajectory = vi.fn().mockResolvedValue({
+  const canonicalPage: ConversationClientTrajectoryQueryPage = {
     log_conversation_id: 'canonical-1',
     items: [
       {
@@ -277,7 +330,20 @@ test('imported records reuse total trajectory and lazy sections without a native
     next_cursor: null,
     search_sections: ['overview', 'parameters', 'result'],
     integrity: 'complete'
-  });
+  };
+  const queryConversationClientTrajectory = vi
+    .fn()
+    .mockImplementation((_canonical, query: ConversationTrajectoryQuery) =>
+      Promise.resolve(
+        query.index_only
+          ? {
+              ...canonicalPage,
+              items: [],
+              overview: indexOverview(canonicalPage.items)
+            }
+          : canonicalPage
+      )
+    );
   const loadConversationClientTrajectorySection = vi
     .fn()
     .mockImplementation((_canonical, stepId, section) =>
@@ -325,7 +391,7 @@ test('imported records reuse total trajectory and lazy sections without a native
   });
   expect(queryConversationClientTrajectory).toHaveBeenCalledWith(
     'canonical-1',
-    expect.objectContaining({ focus_record_id: 'record-1', cursor: undefined })
+    expect.objectContaining({ focus_record_id: 'record-1', index_only: true })
   );
   expect(loadRecordClientTrajectory).not.toHaveBeenCalled();
   expect(loadConversationClientTrajectorySection).not.toHaveBeenCalled();
@@ -360,66 +426,44 @@ test('imported records reuse total trajectory and lazy sections without a native
   ).not.toBeInTheDocument();
 });
 
-test('canonical trajectory preserves equal-sequence steps and follows opaque cursors without ordering or parsing them', async () => {
-  const before = 's1:9:018f0000-0000-7000-8000-000000000001';
-  const equalSequence = 's1:10:018f0000-0000-7000-8000-000000000002';
-  const step = (
-    id: string,
-    sequence: number,
-    name: string
-  ): ConversationClientTrajectoryStep => ({
-    ...tool,
-    id,
-    sequence,
-    name,
-    record_id: 'record-equal',
-    log_conversation_id: 'canonical-equal',
-    parent_task_run_id: null,
-    is_subagent: false,
-    source_kind: 'imported',
-    source_id: 'source-1',
-    source_client: 'codex',
-    source_session_id: 'session-1',
-    source_task_id: 'task-equal',
-    flow_run_id: null,
-    transport: 'file',
-    parent_id: null,
-    available_sections: ['parameters']
-  });
+test('canonical index preserves equal-sequence events and loads missing viewport windows by identity', async () => {
+  const steps: ConversationClientTrajectoryStep[] = ['first', 'second'].map(
+    (name) => ({
+      ...tool,
+      id: `step-${name}`,
+      sequence: 10,
+      name: `same-sequence-${name}`,
+      record_id: 'record-equal',
+      log_conversation_id: 'canonical-equal',
+      parent_task_run_id: null,
+      is_subagent: name === 'second',
+      source_kind: 'imported',
+      source_id: 'source-1',
+      source_client: 'codex',
+      source_session_id: 'session-1',
+      source_task_id: 'task-equal',
+      flow_run_id: null,
+      transport: 'file',
+      parent_id: null,
+      available_sections: ['parameters']
+    })
+  );
   const queryConversationClientTrajectory = vi
     .fn()
     .mockImplementation(
-      (_canonical: string, query: ConversationTrajectoryQuery) => {
-        const base = {
+      (_canonical: string, query: ConversationTrajectoryQuery) =>
+        Promise.resolve({
           log_conversation_id: 'canonical-equal',
           matches: [],
           previous_cursor: null,
+          next_cursor: 'opaque-do-not-drain',
           search_sections: ['overview', 'parameters', 'result'],
-          integrity: 'complete'
-        };
-        if (query.cursor === undefined)
-          return Promise.resolve({
-            ...base,
-            items: [step('step-before', 9, 'previous')],
-            next_cursor: before
-          });
-        if (query.cursor === before)
-          return Promise.resolve({
-            ...base,
-            items: [step('step-first', 10, 'same-sequence-first')],
-            next_cursor: equalSequence
-          });
-        if (query.cursor === equalSequence)
-          return Promise.resolve({
-            ...base,
-            items: [step('step-second', 10, 'same-sequence-second')],
-            next_cursor: null
-          });
-        throw new Error('Cursor was changed by consumer');
-      }
+          integrity: 'complete',
+          ...(query.index_only
+            ? { items: [], overview: indexOverview(steps) }
+            : { items: [steps[query.focus_step_id === 'step-second' ? 1 : 0]] })
+        })
     );
-  const loadClientTrajectory = vi.fn();
-  const loadRecordClientTrajectory = vi.fn();
   const loadConversationClientTrajectorySection = vi.fn().mockResolvedValue({
     request_id: root.id,
     evidence_scope: 'step',
@@ -431,8 +475,6 @@ test('canonical trajectory preserves equal-sequence steps and follows opaque cur
   const loader: ConversationLogTraceLoader = {
     sourceKind: 'imported',
     queryConversationClientTrajectory,
-    loadClientTrajectory,
-    loadRecordClientTrajectory,
     loadConversationClientTrajectorySection
   };
   render(
@@ -449,36 +491,26 @@ test('canonical trajectory preserves equal-sequence steps and follows opaque cur
     </QueryClientProvider>
   );
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
-  await screen.findByRole('button', { name: '工具调用 · previous' });
-  expect(queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
-  expect(
-    screen.queryByRole('button', { name: '加载更新事件' })
-  ).not.toBeInTheDocument();
-  expect(
-    await screen.findByRole('button', {
-      name: '工具调用 · same-sequence-first'
-    })
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByRole('button', { name: '加载更新事件' })
-  ).not.toBeInTheDocument();
+  await screen.findByRole('button', { name: '工具调用 · same-sequence-first' });
   const second = await screen.findByRole('button', {
     name: '工具调用 · same-sequence-second'
   });
   expect(queryConversationClientTrajectory).toHaveBeenCalledWith(
     'canonical-equal',
-    expect.objectContaining({ focus_record_id: 'record-equal', cursor: before })
-  );
-  expect(queryConversationClientTrajectory).toHaveBeenCalledWith(
-    'canonical-equal',
     expect.objectContaining({
       focus_record_id: 'record-equal',
-      cursor: equalSequence
+      focus_step_id: 'step-second',
+      index_only: false
     })
   );
-  expect(queryConversationClientTrajectory).toHaveBeenCalledTimes(3);
-  expect(loadClientTrajectory).not.toHaveBeenCalled();
-  expect(loadRecordClientTrajectory).not.toHaveBeenCalled();
+  expect(
+    queryConversationClientTrajectory.mock.calls.every(
+      (call) => call[1].cursor === undefined
+    )
+  ).toBe(true);
+  expect(
+    screen.getByText('子代理', { selector: '.conversation-trajectory__source' })
+  ).toBeInTheDocument();
   expect(loadConversationClientTrajectorySection).not.toHaveBeenCalled();
   fireEvent.click(second);
   expect(
@@ -490,4 +522,85 @@ test('canonical trajectory preserves equal-sequence steps and follows opaque cur
     'parameters',
     undefined
   );
+});
+
+test('a large single request stays virtual and a timeline jump loads the target without intermediate pages', async () => {
+  const all: ClientTrajectoryStep[] = [
+    root,
+    ...Array.from({ length: 5000 }, (_, index) => ({
+      ...tool,
+      id: `large-${index}`,
+      sequence: index + 2,
+      name: `call-${index}`
+    }))
+  ];
+  const loadClientTrajectory = vi
+    .fn()
+    .mockImplementation(
+      (_run, _node, _cursor, options?: ClientTrajectoryOptions) => {
+        const focused = options?.focus_step_id
+          ? all.findIndex((step) => step.id === options.focus_step_id)
+          : 0;
+        return Promise.resolve(
+          options?.index_only
+            ? {
+                items: [],
+                overview: indexOverview(all),
+                next_cursor: null,
+                integrity: 'complete'
+              }
+            : {
+                items: all.slice(
+                  Math.max(0, focused),
+                  Math.max(0, focused) + 100
+                ),
+                next_cursor: 100,
+                integrity: 'complete'
+              }
+        );
+      }
+    );
+  const { ClientTrajectoryWorkspace } =
+    await import('../../../components/debug-console/trajectory/client/ClientTrajectoryWorkspace');
+  const view = render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ClientTrajectoryWorkspace
+        runId="run-1"
+        loader={{ loadClientTrajectory }}
+      />
+    </QueryClientProvider>
+  );
+  await screen.findByRole('button', { name: '工具调用 · call-0' });
+  expect(
+    view.container.querySelectorAll('.client-trajectory__row').length
+  ).toBeLessThan(150);
+  expect(
+    loadClientTrajectory.mock.calls.filter((call) => !call[3]?.index_only)
+      .length
+  ).toBeLessThan(5);
+  // Full index keeps the last event keyboard-addressable while its row is absent.
+  const axis = view.container.querySelector('.provider-trajectory__lanes')!;
+  fireEvent.keyDown(axis, { key: 'End' });
+  fireEvent.keyDown(axis, { key: 'Enter' });
+  await waitFor(() =>
+    expect(loadClientTrajectory).toHaveBeenCalledWith(
+      'run-1',
+      undefined,
+      undefined,
+      expect.objectContaining({
+        focus_step_id: 'large-4999',
+        index_only: false
+      })
+    )
+  );
+  expect(
+    loadClientTrajectory.mock.calls.every((call) => call[2] === undefined)
+  ).toBe(true);
+  expect(
+    view.container.querySelectorAll('.client-trajectory__row').length
+  ).toBeLessThan(150);
 });

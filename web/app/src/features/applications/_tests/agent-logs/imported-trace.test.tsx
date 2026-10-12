@@ -1,3 +1,4 @@
+import '../../../agent-flow/_tests/debug-console/trajectory/listy-layout';
 import '../../../../test/fixtures/rc-util-unique-ids';
 import type { ReactNode } from 'react';
 import {
@@ -65,40 +66,108 @@ function step(
     available_sections: ['parameters', 'raw']
   };
 }
+function indexOverview(items: ConversationClientTrajectoryStep[]) {
+  const category_counts: Record<string, number> = {};
+  for (const row of items)
+    category_counts[row.category] = (category_counts[row.category] ?? 0) + 1;
+  return {
+    total_count: items.length,
+    category_counts,
+    time_start: items[0]?.created_at ?? null,
+    time_end: items.at(-1)?.created_at ?? null,
+    items: items.map(
+      ({
+        id,
+        request_id,
+        sequence,
+        created_at,
+        category,
+        protocol,
+        flow_run_id,
+        node_run_id,
+        record_id,
+        log_conversation_id,
+        is_subagent
+      }) => ({
+        id,
+        request_id,
+        sequence,
+        created_at,
+        category,
+        protocol,
+        flow_run_id,
+        node_run_id,
+        record_id,
+        log_conversation_id,
+        is_subagent
+      })
+    )
+  };
+}
+function indexPage(
+  query: ConversationTrajectoryQuery,
+  page: ConversationClientTrajectoryQueryPage
+): ConversationClientTrajectoryQueryPage {
+  return query.index_only
+    ? {
+        ...page,
+        items: [],
+        matches: [],
+        overview: page.overview ?? indexOverview(page.items)
+      }
+    : page;
+}
 function fixture(paginated = false) {
   let refreshed = false;
   const queryConversationClientTrajectory = vi
     .fn()
     .mockImplementation(
-      async (_canonical: string, query: ConversationTrajectoryQuery) => ({
-        log_conversation_id: 'canonical',
-        items:
-          query.cursor === 'before'
-            ? [step('old-main', 'main-1')]
-            : query.cursor === 'after'
-              ? [step('grandchild-tool', 'grandchild', true)]
-              : refreshed
-                ? [step('late-backdated', 'main-1')]
+      async (_canonical: string, query: ConversationTrajectoryQuery) =>
+        indexPage(query, {
+          log_conversation_id: 'canonical',
+          overview: indexOverview(
+            refreshed
+              ? [step('late-backdated', 'main-1')]
+              : paginated
+                ? [
+                    step('old-main', 'main-1'),
+                    step('main-tool', 'main-round'),
+                    step('child-tool', 'child', true),
+                    step('grandchild-tool', 'grandchild', true)
+                  ]
                 : [
                     step('main-tool', 'main-round'),
                     step('child-tool', 'child', true)
-                  ],
-        matches: query.keyword
-          ? [
-              {
-                step_id: 'main-tool',
-                section: 'result',
-                sequence: 1,
-                snippet: 'server-only result'
-              }
-            ]
-          : [],
-        previous_cursor:
-          paginated && !refreshed && !query.cursor ? 'before' : null,
-        next_cursor: paginated && !refreshed && !query.cursor ? 'after' : null,
-        search_sections: query.search_sections ?? [],
-        integrity: 'complete'
-      })
+                  ]
+          ),
+          items:
+            query.focus_step_id === 'old-main'
+              ? [step('old-main', 'main-1')]
+              : query.focus_step_id === 'grandchild-tool'
+                ? [step('grandchild-tool', 'grandchild', true)]
+                : refreshed
+                  ? [step('late-backdated', 'main-1')]
+                  : [
+                      step('main-tool', 'main-round'),
+                      step('child-tool', 'child', true)
+                    ],
+          matches: query.keyword
+            ? [
+                {
+                  step_id: 'main-tool',
+                  section: 'result',
+                  sequence: 1,
+                  snippet: 'server-only result'
+                }
+              ]
+            : [],
+          previous_cursor:
+            paginated && !refreshed && !query.cursor ? 'before' : null,
+          next_cursor:
+            paginated && !refreshed && !query.cursor ? 'after' : null,
+          search_sections: query.search_sections ?? [],
+          integrity: 'complete'
+        })
     );
   const loadConversationClientTrajectorySection = vi
     .fn()
@@ -174,7 +243,7 @@ test.each(['message trace', 'trajectory window'])(
       'canonical',
       expect.objectContaining({
         focus_record_id: 'main-round',
-        cursor: undefined
+        index_only: true
       })
     );
     expect(screen.getByText('subagent', { selector: 'small' })).toHaveAttribute(
@@ -192,7 +261,7 @@ test.each(['message trace', 'trajectory window'])(
     expect(document.querySelector('.client-trajectory__request')).toBeNull();
   }
 );
-test('automatically loads both directions in server order and refresh restarts at original focus', async () => {
+test('loads visible windows in server index order and refresh restarts at original focus', async () => {
   const f = fixture(true);
   const { container } = mount(
     <ConversationTrajectoryWorkspace
@@ -202,7 +271,10 @@ test('automatically loads both directions in server order and refresh restarts a
     />
   );
   await screen.findByRole('button', { name: '工具调用 · main-tool' });
-  expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
+  expect(f.queryConversationClientTrajectory).toHaveBeenCalledWith(
+    'canonical',
+    expect.objectContaining({ index_only: true })
+  );
   expect(
     screen.queryByRole('button', { name: '加载更早事件' })
   ).not.toBeInTheDocument();
@@ -231,7 +303,7 @@ test('automatically loads both directions in server order and refresh restarts a
     'canonical',
     expect.objectContaining({
       focus_record_id: 'main-round',
-      cursor: undefined
+      focus_step_id: undefined
     })
   );
 });
@@ -364,7 +436,7 @@ test('related event outside the category and page opens through a separate canon
   f.queryConversationClientTrajectory.mockImplementation(
     async (_canonical: string, query: ConversationTrajectoryQuery) => {
       if (query.filter?.id) return pendingRelated;
-      return {
+      return indexPage(query, {
         log_conversation_id: 'canonical',
         items: [
           {
@@ -378,7 +450,7 @@ test('related event outside the category and page opens through a separate canon
         next_cursor: null,
         search_sections: query.search_sections ?? [],
         integrity: 'complete'
-      };
+      });
     }
   );
   const { container } = mount(
@@ -462,15 +534,18 @@ test('original toolbar, loaded category chips, axis focus and explicit category 
       sequence: 1
     }
   ];
-  f.queryConversationClientTrajectory.mockResolvedValue({
-    log_conversation_id: 'canonical',
-    items: events,
-    matches: [],
-    previous_cursor: null,
-    next_cursor: null,
-    search_sections: ['overview', 'parameters', 'result'],
-    integrity: 'complete'
-  });
+  f.queryConversationClientTrajectory.mockImplementation(
+    async (_canonical: string, query: ConversationTrajectoryQuery) =>
+      indexPage(query, {
+        log_conversation_id: 'canonical',
+        items: events,
+        matches: [],
+        previous_cursor: null,
+        next_cursor: null,
+        search_sections: ['overview', 'parameters', 'result'],
+        integrity: 'complete'
+      })
+  );
   const { container } = mount(
     <ConversationTrajectoryWorkspace
       recordId="main-round"
@@ -494,9 +569,9 @@ test('original toolbar, loaded category chips, axis focus and explicit category 
   ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '按分类归纳' }));
   expect(
-    container.querySelectorAll('.client-trajectory__category-group')
+    container.querySelectorAll('.client-trajectory__category-header')
   ).toHaveLength(3);
-  expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
+  expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(2);
   fireEvent.click(screen.getByRole('button', { name: '按分类归纳' }));
   expect(
     [...container.querySelectorAll('.conversation-trajectory__row strong')].map(
@@ -579,15 +654,18 @@ test('original toolbar, loaded category chips, axis focus and explicit category 
 
 test('advanced category filter can query an event kind not present in the loaded chips', async () => {
   const f = fixture();
-  f.queryConversationClientTrajectory.mockResolvedValue({
-    log_conversation_id: 'canonical',
-    items: [{ ...step('context-only', 'main-round'), category: 'context' }],
-    matches: [],
-    previous_cursor: null,
-    next_cursor: 'unread',
-    search_sections: ['overview', 'parameters', 'result'],
-    integrity: 'complete'
-  });
+  f.queryConversationClientTrajectory.mockImplementation(
+    async (_canonical: string, query: ConversationTrajectoryQuery) =>
+      indexPage(query, {
+        log_conversation_id: 'canonical',
+        items: [{ ...step('context-only', 'main-round'), category: 'context' }],
+        matches: [],
+        previous_cursor: null,
+        next_cursor: 'unread',
+        search_sections: ['overview', 'parameters', 'result'],
+        integrity: 'complete'
+      })
+  );
   mount(
     <ConversationTrajectoryWorkspace
       recordId="main-round"
@@ -632,15 +710,18 @@ test('cancelled brush restores the committed selection and Tab cannot submit its
     },
     { ...step('end', 'main-round'), created_at: '2026-10-12T00:00:02.123456Z' }
   ];
-  f.queryConversationClientTrajectory.mockResolvedValue({
-    log_conversation_id: 'canonical',
-    items: events,
-    matches: [],
-    previous_cursor: null,
-    next_cursor: null,
-    search_sections: [],
-    integrity: 'complete'
-  });
+  f.queryConversationClientTrajectory.mockImplementation(
+    async (_canonical: string, query: ConversationTrajectoryQuery) =>
+      indexPage(query, {
+        log_conversation_id: 'canonical',
+        items: events,
+        matches: [],
+        previous_cursor: null,
+        next_cursor: null,
+        search_sections: [],
+        integrity: 'complete'
+      })
+  );
   mount(
     <ConversationTrajectoryWorkspace
       recordId="main-round"
@@ -656,10 +737,10 @@ test('cancelled brush restores the committed selection and Tab cannot submit its
   try {
     fireEvent.pointerDown(track, { button: 0, clientX: 50, pointerId: 1 });
     fireEvent.pointerMove(track, { clientX: 150, pointerId: 1 });
-    expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
+    expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(2);
     fireEvent.pointerUp(track, { clientX: 150, pointerId: 1 });
     await waitFor(() =>
-      expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(2)
+      expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(4)
     );
     const start = screen.getByRole('slider', { name: '范围起点' });
     const end = screen.getByRole('slider', { name: '范围终点' });
@@ -675,7 +756,7 @@ test('cancelled brush restores the committed selection and Tab cannot submit its
     await act(async () => {
       await Promise.resolve();
     });
-    expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(2);
+    expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(4);
     expect(f.queryConversationClientTrajectory).toHaveBeenLastCalledWith(
       'canonical',
       expect.objectContaining({
@@ -712,15 +793,16 @@ test('sequence selection maps boundary timestamps and retains server-returned ti
     }
   ];
   f.queryConversationClientTrajectory.mockImplementation(
-    async (_canonical: string, query: ConversationTrajectoryQuery) => ({
-      log_conversation_id: 'canonical',
-      items: query.filter?.created_at ? events.slice(1) : events,
-      matches: [],
-      previous_cursor: null,
-      next_cursor: null,
-      search_sections: [],
-      integrity: 'complete'
-    })
+    async (_canonical: string, query: ConversationTrajectoryQuery) =>
+      indexPage(query, {
+        log_conversation_id: 'canonical',
+        items: query.filter?.created_at ? events.slice(1) : events,
+        matches: [],
+        previous_cursor: null,
+        next_cursor: null,
+        search_sections: [],
+        integrity: 'complete'
+      })
   );
   const { container } = mount(
     <ConversationTrajectoryWorkspace
