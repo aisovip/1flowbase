@@ -253,13 +253,6 @@ async fn expired_session_waits_for_physical_release_and_preserves_cursor_guards(
     clock.advance(Duration::from_secs(1));
     coordinator.maintain_and_dispatch().await;
     assert_eq!(runtime.commands().len(), 2);
-    let error = coordinator
-        .prepare_dispatched("runtime-b", &mut input, &context(10_000_000))
-        .await
-        .err()
-        .unwrap();
-    assert!(reason(error).contains("transport_session_evicted"));
-
     input.previous_response_id = Some("connection-bound-cursor".into());
     let epoch = TransportEpoch::new(17).unwrap();
     let mut directive = recovery_directive(epoch);

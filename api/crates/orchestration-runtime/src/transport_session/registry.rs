@@ -464,6 +464,19 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         Ok(next)
     }
 
+    /// Rebinds a settled physical generation while retaining its logical owner,
+    /// deadline and invocation sequence. The old fence becomes stale before the
+    /// replacement target can be observed through this registry.
+    pub fn rotate_generation_to(
+        &mut self,
+        fence: &TransportFence,
+        target: TransportRuntimeTargetId,
+    ) -> Result<TransportFence, RegistryError> {
+        let next = self.rotate_generation(fence)?;
+        self.record_mut(&next)?.physical.runtime_target_id = target;
+        Ok(next)
+    }
+
     pub fn terminate(
         &mut self,
         fence: &TransportFence,
