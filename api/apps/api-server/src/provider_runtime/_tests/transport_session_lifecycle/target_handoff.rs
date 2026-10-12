@@ -75,8 +75,12 @@ async fn target_handoff_resumes_idle_compaction_then_generation() {
             .iter()
             .any(|(target, _, generation)| target == "openai@old"
                 && *generation == old.fence.generation.get()));
+        assert_eq!(next.transport, RecoveryTransport::ProviderHttp);
         coordinator
-            .finish(next, &successful_output(lease.fence.generation.get()))
+            .finish(
+                next,
+                &output_with_result(ProviderInvocationResult::default()),
+            )
             .await
             .unwrap();
         let mut resume = invocation_input("upgrade-compaction", ProviderWireOperation::Generate);
@@ -91,6 +95,7 @@ async fn target_handoff_resumes_idle_compaction_then_generation() {
             .finish(continued, &successful_output(lease.fence.generation.get()))
             .await
             .unwrap();
+        assert_eq!(runtime.commands().len(), 1);
     }
 }
 
@@ -128,19 +133,15 @@ async fn target_handoff_never_overtakes_an_inflight_invocation() {
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(next.transport, RecoveryTransport::ProviderHttp);
     coordinator
         .finish(
             next,
-            &successful_output(
-                compact
-                    .transport_session_directive()
-                    .unwrap()
-                    .unwrap()
-                    .generation,
-            ),
+            &output_with_result(ProviderInvocationResult::default()),
         )
         .await
         .unwrap();
+    assert_eq!(runtime.commands().len(), 1);
 }
 
 #[tokio::test]
@@ -194,19 +195,15 @@ async fn target_handoff_retries_old_target_close_before_rebinding() {
         .unwrap();
     assert!(next.lease.fence.generation > old.fence.generation);
     assert_eq!(runtime.commands().len(), 2);
+    assert_eq!(next.transport, RecoveryTransport::ProviderHttp);
     coordinator
         .finish(
             next,
-            &successful_output(
-                compact
-                    .transport_session_directive()
-                    .unwrap()
-                    .unwrap()
-                    .generation,
-            ),
+            &output_with_result(ProviderInvocationResult::default()),
         )
         .await
         .unwrap();
+    assert_eq!(runtime.commands().len(), 2);
 }
 
 #[tokio::test]
