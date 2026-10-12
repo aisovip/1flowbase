@@ -51,6 +51,9 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
     if (errors.length) throw new Error(`Owned gateway cleanup failed: ${errors.map((e) => e.message).join('; ')}`);
   };
   try {
+    // A CI binary cannot resolve its compile-time workspace on this machine.
+    // Expose the source tree while keeping runtime writes in the owned scratch.
+    fs.symlinkSync(path.join(ROOT, 'api'), path.join(scratch, 'api'), 'dir');
     database = createDatabase({ container: 'docker-db-1', host: '127.0.0.1', port: 35432 });
     const port = await reserveLoopbackPort();
     if (port === 7600) throw new Error('Refusing shared API port');
