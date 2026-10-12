@@ -116,7 +116,7 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 
 服务器在 tools 之外声明 `capabilities.resources = {}`，保留原协议版本 `2025-03-26`。`resources/list` 返回 `{resources:[]}`；工具产出的资源不承诺进入资源目录。
 
-InterfaceWrapper 的 mapping 显式设置 `resource_read:true` 时，嵌入资源与指向相同原 URI 的 resource_link 使用宿主 URI：`1flowbase-resource://read/<BASE64URL_JSON>`。一般外部链接保留原 URI，不自动 fetch。自包含、带版本的引用只携带用户/workspace、所选 instance、tool ID、当前 `des_id`、调用者原业务 arguments 与原 resource URI，不含响应 binary、请求 headers、session 凭证或 hidden/default bindings；不维护 URI registry 或 binary cache。该声明用于输入参数可安全作为 locator 暴露的文件读取操作。
+InterfaceWrapper 的 mapping 显式设置 `resource_read:true` 时，嵌入资源与指向相同原 URI 的 resource_link 使用宿主 URI：`flowbase-resource://read/<BASE64URL_JSON>`。一般外部链接保留原 URI，不自动 fetch。自包含、带版本的引用只携带用户/workspace、所选 instance、tool ID、当前 `des_id`、调用者原业务 arguments 与原 resource URI，不含响应 binary、请求 headers、session 凭证或 hidden/default bindings；不维护 URI registry 或 binary cache。该声明用于输入参数可安全作为 locator 暴露的文件读取操作。
 
 `resources/read` 接收 `{uri}`，返回 `{contents:[{uri,mimeType?,text|blob}]}`。返回 URI 保持请求的宿主 URI，不递归包装。引用只定位资源，不授予权限：每次读取在调用前检查当前用户/workspace、所选且可见的工具/instance、显式 opt-in 与当前 revision。可见性撤销、opt-in 关闭、revision 改变、非法或未知宿主 URI 均在工具调用前拒绝。修改 locator 的 arguments 不扩大访问权限。
 

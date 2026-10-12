@@ -40,9 +40,9 @@ fn resource_reference_roundtrips_without_binary_and_denies_unknown_payload_field
     for invalid in [
         "https://example.com/file",
         "file:///tmp/file",
-        "1flowbase-resource://other/a",
-        "1flowbase-resource://read/%%",
-        "1flowbase-resource://read/e30",
+        "flowbase-resource://other/a",
+        "flowbase-resource://read/%%",
+        "flowbase-resource://read/e30",
     ] {
         assert!(ResourceReference::decode(invalid).is_err());
     }
@@ -81,8 +81,8 @@ fn resources_rpc_projects_through_tool_call_and_preserves_standard_result_shapes
         {"type":"resource_link","uri":"urn:test:a","name":"file"}
     ]});
     assert_eq!(
-        read_result(&result, "urn:test:a", "1flowbase-resource://read/reference").unwrap(),
-        json!({"contents":[{"uri":"1flowbase-resource://read/reference","mimeType":"application/octet-stream","blob":"YQ=="}]})
+        read_result(&result, "urn:test:a", "flowbase-resource://read/reference").unwrap(),
+        json!({"contents":[{"uri":"flowbase-resource://read/reference","mimeType":"application/octet-stream","blob":"YQ=="}]})
     );
     assert!(read_result(&result, "urn:test:missing", "requested").is_err());
     assert!(read_result(
@@ -91,4 +91,29 @@ fn resources_rpc_projects_through_tool_call_and_preserves_standard_result_shapes
         "requested"
     )
     .is_err());
+}
+
+#[test]
+fn host_reference_is_a_valid_uri_and_preserves_final_binary_budget() {
+    use base64::engine::general_purpose::STANDARD;
+    let uri = reference().encode().unwrap();
+    assert!(media::valid_uri(&uri));
+    let blob = STANDARD.encode(vec![73; 524_288]);
+    for result in [
+        json!({"content":[{"type":"resource","resource":{"uri":uri,"mimeType":"application/octet-stream","blob":blob}}]}),
+        json!({"contents":[{"uri":uri,"mimeType":"application/octet-stream","blob":blob}]}),
+    ] {
+        let original = result.clone();
+        let (_, response) = super::super::bounded_jsonrpc_response(
+            axum::http::StatusCode::OK,
+            super::super::JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: Some(json!(1)),
+                result: Some(result),
+                error: None,
+            },
+        );
+        assert!(response.0.error.is_none());
+        assert_eq!(response.0.result.unwrap(), original);
+    }
 }

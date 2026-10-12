@@ -12,7 +12,7 @@ use crate::error_response::ApiError;
 
 pub(super) const READ_TOOL: &str = "mcp_resources_read";
 pub(super) const LIST_TOOL: &str = "mcp_resources_list";
-const PREFIX: &str = "1flowbase-resource://read/";
+const PREFIX: &str = "flowbase-resource://read/";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

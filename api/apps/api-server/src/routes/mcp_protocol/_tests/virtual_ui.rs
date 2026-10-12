@@ -786,7 +786,7 @@ async fn resource_read_dispatch_reexecutes_once_and_retains_requested_uri_and_co
         .find(|item| item["type"] == "resource")
         .unwrap();
     let uri = resource["resource"]["uri"].as_str().unwrap();
-    assert!(uri.starts_with("1flowbase-resource://read/"));
+    assert!(uri.starts_with("flowbase-resource://read/"));
     assert_eq!(resource["resource"]["blob"], data);
     let link = first["content"]
         .as_array()
