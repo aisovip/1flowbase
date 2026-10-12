@@ -67,3 +67,44 @@ fn image_budget_validation_requires_canonical_complete_base64_across_chunks() {
     let invalid = format!("{}YQ==", "YQ==".repeat(1024));
     assert!(!valid_image_base64(&invalid));
 }
+
+#[test]
+fn standard_audio_and_resource_blobs_bypass_only_binary_budget() {
+    let data = STANDARD.encode(vec![33; JSON_RPC_RESPONSE_MAX_BYTES * 2]);
+    for result in [
+        json!({"content":[{"type":"audio","data":data,"mimeType":"audio/ogg"}]}),
+        json!({"content":[{"type":"resource","resource":{"uri":"urn:example:blob","mimeType":"application/octet-stream","blob":data}}]}),
+        json!({"contents":[{"uri":"file:///tmp/blob","blob":data}]}),
+        json!({"contents":[{"uri":"urn:example:empty","blob":""}]}),
+    ] {
+        let original = result.clone();
+        let (_, delivered) = bounded_jsonrpc_response(StatusCode::OK, response(result));
+        assert!(delivered.0.error.is_none());
+        assert_eq!(delivered.0.result, Some(original));
+    }
+}
+
+#[test]
+fn resource_text_metadata_unknown_fields_and_invalid_binary_stay_budgeted() {
+    let data = STANDARD.encode(vec![33; JSON_RPC_RESPONSE_MAX_BYTES * 2]);
+    let oversized = "x".repeat(JSON_RPC_RESPONSE_MAX_BYTES);
+    for result in [
+        json!({"content":[{"type":"resource","resource":{"uri":"urn:test:a","text":oversized}}]}),
+        json!({"contents":[{"uri":"urn:test:a","text":oversized}]}),
+        json!({"contents":[{"uri":"relative","blob":data}]}),
+        json!({"contents":[{"uri":"urn:test:a","blob":data,"text":"also text"}]}),
+        json!({"contents":[{"uri":"urn:test:a","blob":data,"mimeType":"invalid"}]}),
+        json!({"contents":[{"uri":"urn:test:a","blob":data,"unknown":oversized}]}),
+        json!({"content":[{"type":"audio","data":data,"mimeType":"image/png"}]}),
+        json!({"content":[{"type":"audio","data":data,"mimeType":"audio/ogg","annotations":{"description":oversized}}]}),
+        json!({"content":[{"type":"resource_link","uri":"urn:test:a","name":oversized}]}),
+        json!({"contents":[{"uri":"urn:test:a","blob":data}],"structuredContent":{"data":oversized}}),
+    ] {
+        let (_, delivered) = bounded_jsonrpc_response(StatusCode::OK, response(result));
+        assert!(delivered.0.result.is_none());
+        assert_eq!(
+            delivered.0.error.unwrap()["data"]["category"],
+            "response_size_limit"
+        );
+    }
+}

@@ -516,11 +516,11 @@ async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_conti
     use base64::Engine;
     let data = base64::engine::general_purpose::STANDARD.encode(vec![91; 64_000]);
     let mut catalog = catalog_with_server_bound_workspace();
-    catalog.tools[0].output_mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"});
+    catalog.tools[0].output_mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"},{"type":"text","text_path":"/native_text"},{"type":"audio","data_path":"/data","mime_type_path":"/audio_mime"},{"type":"resource_link","uri_path":"/uri","name_path":"/name"},{"type":"resource","uri_path":"/uri","blob_path":"/data"}],"structured_content_path":"/metadata"});
     catalog.tools[0].max_inline_chars = Some(1600);
     let metadata = json!({"path":"/tmp/image.png","byte_count":64000,"description":"metadata words ".repeat(2000)});
     let dispatch = MediaFixtureDispatch {
-        value: json!({"data":data,"mime_type":"image/png","metadata":metadata}),
+        value: json!({"data":data,"mime_type":"image/png","metadata":metadata,"native_text":"native text survives","audio_mime":"audio/wav","uri":"urn:fixture:media","name":"file"}),
         calls: Default::default(),
     };
     let dependencies = media_fixture_dependencies();
@@ -553,6 +553,19 @@ async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_conti
         .unwrap();
     assert_eq!(image["data"], data);
     assert_eq!(image["mimeType"], "image/png");
+    let content = result["content"].as_array().unwrap();
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "text" && item["text"] == "native text survives"));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "audio" && item["data"] == data));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "resource_link" && item["uri"] == "urn:fixture:media"));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "resource" && item["resource"]["blob"] == data));
     let structured = &result["structuredContent"];
     assert!(structured.to_string().chars().count() <= 1600);
     assert!(!structured.to_string().contains(&data));

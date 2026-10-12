@@ -287,7 +287,7 @@ fn managed_mcp_media_mapping_roundtrips_and_rejects_invalid_declarations() {
     for invalid in [
         json!({}),
         json!({"mcp_content":[],"structured_content_path":"/metadata"}),
-        json!({"mcp_content":[{"type":"audio","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
+        json!({"mcp_content":[{"type":"unknown","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
         json!({"mcp_content":[{"type":"image","data_path":"data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
         json!({"mcp_content":[{"type":"image","data_path":"/bad~2","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
         json!({"mcp_content":[{"type":"image","data_path":"/metadata/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
@@ -309,4 +309,52 @@ fn managed_mcp_media_mapping_roundtrips_and_rejects_invalid_declarations() {
         .unwrap()
         .get("output_mapping")
         .is_none());
+}
+
+#[test]
+fn standard_content_declarations_validate_paths_and_resource_read() {
+    use crate::ManagedMcpMediaMapping;
+    let blocks = json!([
+        {"type":"text","text_path":"/text","annotations_path":"/annotations"},
+        {"type":"image","data_path":"/image","mime_type_path":"/image_mime"},
+        {"type":"audio","data_path":"/audio","mime_type_path":"/audio_mime"},
+        {"type":"resource_link","uri_path":"/uri","name_path":"/name","description_path":"/description"},
+        {"type":"resource","uri_path":"/uri","text_path":"/text"},
+        {"type":"resource","uri_path":"/uri","blob_path":"/blob"}
+    ]);
+    for block in blocks.as_array().unwrap() {
+        let value = json!({"mcp_content":[block],"structured_content_path":"/metadata"});
+        let parsed = ManagedMcpMediaMapping::parse(&value).unwrap();
+        assert!(!parsed.resource_read);
+        assert!(ManagedMcpMediaMapping::parse(&serde_json::to_value(parsed).unwrap()).is_ok());
+        let resource_read = json!({"mcp_content":[block],"structured_content_path":"/metadata","resource_read":true});
+        assert_eq!(
+            ManagedMcpMediaMapping::parse(&resource_read).is_ok(),
+            block["type"] == "resource"
+        );
+    }
+    let readable = json!({"structured_content_path":"/metadata","resource_read":true,"mcp_content":[
+        {"type":"resource_link","uri_path":"/uri","name_path":"/name"},
+        {"type":"resource","uri_path":"/uri","blob_path":"/blob"}
+    ]});
+    assert!(ManagedMcpMediaMapping::parse(&readable).is_ok());
+    let mut mixed = readable.clone();
+    mixed["mcp_content"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"type":"text","text_path":"/text"}));
+    assert!(ManagedMcpMediaMapping::parse(&mixed).is_err());
+    for block in [
+        json!({"type":"resource","uri_path":"/uri"}),
+        json!({"type":"resource","uri_path":"/uri","text_path":"/text","blob_path":"/blob"}),
+        json!({"type":"text","text_path":"/metadata/text"}),
+        json!({"type":"audio","data_path":"/data","mime_type_path":"/data/mime"}),
+        json!({"type":"resource_link","uri_path":"relative","name_path":"/name"}),
+        json!({"type":"text","text_path":"/text","annotations_path":"/text"}),
+    ] {
+        assert!(ManagedMcpMediaMapping::parse(
+            &json!({"mcp_content":[block],"structured_content_path":"/metadata"})
+        )
+        .is_err());
+    }
 }

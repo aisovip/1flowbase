@@ -84,9 +84,9 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 详情缓存沿用现有 10 分钟有效期与存储容量边界；缓存不可用、过期、路径不存在或游标不匹配均明确返回状态。结果读取与业务执行分离，`retry_original: false` 表示不能为了恢复详情重试原操作，尤其不能重复写入。
 
 
-## 声明式图片返回
+## 声明式标准内容返回
 
-受管 operation 的 `mcp.output_mapping` 可声明原生 MCP 图片与独立 metadata：
+受管 operation 的 `mcp.output_mapping` 可声明标准 MCP 内容与独立 metadata：
 
 ```json
 {
@@ -95,6 +95,19 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 }
 ```
 
-路径是显式 JSON Pointer，指向业务响应对象；图片字段与 metadata 路径不得重叠。宿主只按声明提取，不猜测 stdout 或其他字符串。支持 JPEG、PNG、GIF、WebP 的标准 MIME；缺失路径、非对象 metadata、空/非法 base64、非法 MIME 或 mapping 明确失败。图片以完整 base64 与 `mimeType` 进入 `content` 的原生 `image` item，不进入 `structuredContent`、文本分页或 ephemeral 缓存。`max_inline_chars` 和字段/范围选择只作用于 metadata，详情续读也只保存 metadata；低文本预算不截断图片。上游 MCP proxy 的原生非文本内容在 metadata 分页时继续保留。
+路径是显式 JSON Pointer，指向业务响应对象；同一 block 的路径必须有效、互异、互不包含，并且与独立 metadata 对象路径不重叠。宿主只按声明提取，不猜测 stdout。缺失路径、非对象 metadata、非法 mapping 或原生字段明确失败。原有 image 声明与业务响应 wire 保持兼容。
+
+| `type` | 必填路径 | 可选路径 |
+| --- | --- | --- |
+| `text` | `text_path` | `annotations_path` |
+| `image`、`audio` | `data_path`、`mime_type_path` | `annotations_path` |
+| `resource_link` | `uri_path`、`name_path` | `mime_type_path`、`description_path`、`annotations_path` |
+| `resource` | `uri_path`、`text_path` / `blob_path` 恰好一个 | `mime_type_path`、`annotations_path` |
+
+图片和音频必须是非空、规范 base64，MIME 分别满足合法 `image/*`、`audio/*`，不限定业务 MIME 白名单；空 resource blob 是合法空文件。资源 URI 必须绝对，宿主不下载或解析目标。嵌入资源输出 `{type:"resource",resource:{uri,mimeType?,text|blob}}`，合法 annotations 保留。`resource_read` 默认 false，启用要求至少一个嵌入资源，可同时包含 resource_link；含 text、image 或 audio 的 mapping 不允许启用，声明可接入资源读取 adapter。
+
+本地声明的全部原生内容（含 text）独立于 metadata 的选择、文本分页与续读缓存。`max_inline_chars`、字段/范围选择和详情续读只作用于独立 metadata 对象，低 metadata 预算不截断原生 block。上游 proxy 的 text 继续保持现有 metadata 预算语义，非文本内容在分页时保留。
+
+最终 JSON-RPC 256 KiB envelope 只豁免通过验证的 `image.data`、`audio.data`、嵌入 `resource.resource.blob` 和 `resources/read` 的 `contents[].blob`。base64 验证复用固定大小 decode buffer，不额外分配完整 blob。MIME、URI、annotations、资源 text、metadata、未知字段与 JSON 结构仍计入预算；非法 binary 字段不豁免。
 
 业务 `output_schema` 保留原响应契约。`mcp_get.result_schema` 使用声明 metadata 路径对应的真实业务子 schema；无法静态解析时返回未约束 schema，不伪造字段。省略 `mcp.output_mapping` 保持原有纯文本投影。

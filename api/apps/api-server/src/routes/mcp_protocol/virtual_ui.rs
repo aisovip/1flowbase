@@ -1131,7 +1131,7 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                     )
                     .await;
                     Ok(VirtualToolOutcome::Success(
-                        result_delivery::media::retain_content(delivered, &media_content),
+                        result_delivery::media::retain_native_content(delivered, &media_content),
                     ))
                 }
                 Err(debug_execute::McpDebugExecuteError::Api(error)) => Ok(interface_error(&error)),

@@ -40,15 +40,52 @@ pub struct ManagedServiceMcpDeclaration {
 pub struct ManagedMcpMediaMapping {
     pub mcp_content: Vec<ManagedMcpImageMapping>,
     pub structured_content_path: String,
+    #[serde(default)]
+    pub resource_read: bool,
 }
 
+/// Canonical typed content declaration; the historical name remains reexported.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ManagedMcpImageMapping {
-    #[serde(rename = "type")]
-    pub content_type: String,
-    pub data_path: String,
-    pub mime_type_path: String,
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ManagedMcpImageMapping {
+    Text {
+        text_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations_path: Option<String>,
+    },
+    Image {
+        data_path: String,
+        mime_type_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations_path: Option<String>,
+    },
+    Audio {
+        data_path: String,
+        mime_type_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations_path: Option<String>,
+    },
+    ResourceLink {
+        uri_path: String,
+        name_path: String,
+        #[serde(default)]
+        mime_type_path: Option<String>,
+        #[serde(default)]
+        description_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations_path: Option<String>,
+    },
+    Resource {
+        uri_path: String,
+        #[serde(default)]
+        mime_type_path: Option<String>,
+        #[serde(default)]
+        text_path: Option<String>,
+        #[serde(default)]
+        blob_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotations_path: Option<String>,
+    },
 }
 
 impl ManagedMcpMediaMapping {
@@ -72,17 +109,79 @@ impl ManagedMcpMediaMapping {
                 || a.strip_prefix(b).is_some_and(|tail| tail.starts_with('/'))
                 || b.strip_prefix(a).is_some_and(|tail| tail.starts_with('/'))
         }
-        if mapping.mcp_content.is_empty()
-            || !pointer(&mapping.structured_content_path)
-            || mapping.mcp_content.iter().any(|image| {
-                image.content_type != "image"
-                    || !pointer(&image.data_path)
-                    || !pointer(&image.mime_type_path)
-                    || overlaps(&image.data_path, &mapping.structured_content_path)
-                    || overlaps(&image.data_path, &image.mime_type_path)
-            })
-        {
+        if mapping.mcp_content.is_empty() || !pointer(&mapping.structured_content_path) {
             return Err("invalid media mapping paths or content type");
+        }
+        for item in &mapping.mcp_content {
+            use ManagedMcpImageMapping::*;
+            let paths: Vec<&str> = match item {
+                Text {
+                    text_path,
+                    annotations_path,
+                } => std::iter::once(text_path.as_str())
+                    .chain(annotations_path.as_deref())
+                    .collect(),
+                Image {
+                    data_path,
+                    mime_type_path,
+                    annotations_path,
+                }
+                | Audio {
+                    data_path,
+                    mime_type_path,
+                    annotations_path,
+                } => [data_path.as_str(), mime_type_path.as_str()]
+                    .into_iter()
+                    .chain(annotations_path.as_deref())
+                    .collect(),
+                ResourceLink {
+                    uri_path,
+                    name_path,
+                    mime_type_path,
+                    description_path,
+                    annotations_path,
+                } => [uri_path.as_str(), name_path.as_str()]
+                    .into_iter()
+                    .chain(mime_type_path.as_deref())
+                    .chain(description_path.as_deref())
+                    .chain(annotations_path.as_deref())
+                    .collect(),
+                Resource {
+                    uri_path,
+                    mime_type_path,
+                    text_path,
+                    blob_path,
+                    annotations_path,
+                } => {
+                    if text_path.is_some() == blob_path.is_some() {
+                        return Err("resource requires exactly one text or blob path");
+                    }
+                    std::iter::once(uri_path.as_str())
+                        .chain(mime_type_path.as_deref())
+                        .chain(text_path.as_deref())
+                        .chain(blob_path.as_deref())
+                        .chain(annotations_path.as_deref())
+                        .collect()
+                }
+            };
+            if paths.iter().enumerate().any(|(index, path)| {
+                !pointer(path)
+                    || overlaps(path, &mapping.structured_content_path)
+                    || paths[..index].iter().any(|other| overlaps(path, other))
+            }) {
+                return Err("invalid media mapping paths or content type");
+            }
+            if mapping.resource_read && !matches!(item, Resource { .. } | ResourceLink { .. }) {
+                return Err("resource_read requires embedded resource content");
+            }
+        }
+        if mapping.resource_read
+            && !mapping
+                .mcp_content
+                .iter()
+                .any(|item| matches!(item, ManagedMcpImageMapping::Resource { .. }))
+        {
+            return Err("resource_read requires embedded resource content");
         }
         Ok(mapping)
     }

@@ -444,7 +444,7 @@ fn bounded_jsonrpc_response(
 }
 
 // Count the serialized envelope without allocating a second copy of native media.
-// Only validated image.data bytes are exempt: MIME, keys, annotations, text and metadata count.
+// Only validated standard binary fields are exempt; all other envelope fields count.
 fn response_envelope_bytes(response: &JsonRpcResponse) -> Option<usize> {
     struct Counter(usize);
     impl std::io::Write for Counter {
@@ -462,54 +462,25 @@ fn response_envelope_bytes(response: &JsonRpcResponse) -> Option<usize> {
     let mut counter = Counter(0);
     serde_json::to_writer(&mut counter, response).ok()?;
     let mut media_bytes = 0usize;
-    if let Some(content) = response
-        .result
-        .as_ref()
-        .and_then(|result| result.get("content"))
-        .and_then(Value::as_array)
-    {
-        for item in content {
-            if item.get("type").and_then(Value::as_str) != Some("image") {
-                continue;
-            }
-            let valid_mime = item
-                .get("mimeType")
-                .and_then(Value::as_str)
-                .is_some_and(|mime| {
-                    matches!(
-                        mime,
-                        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
-                    )
-                });
-            if let Some(data) = item
-                .get("data")
-                .and_then(Value::as_str)
-                .filter(|data| valid_mime && valid_image_base64(data))
-            {
-                media_bytes = media_bytes.checked_add(data.len())?;
+    if let Some(result) = &response.result {
+        for (field, resource_contents) in [("content", false), ("contents", true)] {
+            if let Some(content) = result.get(field).and_then(Value::as_array) {
+                for item in content {
+                    if let Some(bytes) =
+                        result_delivery::media::binary_bytes(item, resource_contents)
+                    {
+                        media_bytes = media_bytes.checked_add(bytes)?;
+                    }
+                }
             }
         }
     }
     counter.0.checked_sub(media_bytes)
 }
 
+#[cfg(test)]
 fn valid_image_base64(data: &str) -> bool {
-    use base64::Engine;
-    if data.is_empty()
-        || data
-            .bytes()
-            .enumerate()
-            .any(|(index, byte)| byte == b'=' && index < data.len().saturating_sub(2))
-    {
-        return false;
-    }
-    // Each full chunk ends on a base64 quartet; only the final chunk may be padded.
-    let mut decoded = [0u8; 3072];
-    data.as_bytes().chunks(4096).all(|chunk| {
-        base64::engine::general_purpose::STANDARD
-            .decode_slice(chunk, &mut decoded)
-            .is_ok()
-    })
+    result_delivery::media::valid_base64(data, false)
 }
 
 #[cfg(test)]

@@ -65,3 +65,81 @@ fn proxy_media_survives_metadata_paging_without_duplicating_original_text() {
     assert_eq!(delivered["content"][1], upstream[0]);
     assert_ne!(delivered["content"][0]["text"], "old");
 }
+
+#[test]
+fn standard_projection_and_local_text_survive_metadata_continuation() {
+    let declaration = json!({"structured_content_path":"/metadata","mcp_content":[
+        {"type":"text","text_path":"/text","annotations_path":"/annotations"},
+        {"type":"audio","data_path":"/data","mime_type_path":"/audio_mime"},
+        {"type":"resource_link","uri_path":"/uri","name_path":"/name","description_path":"/description","mime_type_path":"/mime"},
+        {"type":"resource","uri_path":"/uri","text_path":"/text","mime_type_path":"/mime"},
+        {"type":"resource","uri_path":"/uri","blob_path":"/blob"}
+    ]});
+    let source = json!({"text":"native text","annotations":{"audience":["assistant"],"priority":0.5,"lastModified":"2026-10-13T00:00:00Z"},"data":"YQ==","audio_mime":"audio/ogg","uri":"file:///tmp/content","name":"content","description":"linked file","mime":"text/plain","blob":"","metadata":{"count":1}});
+    let projected = project(&mapping(&declaration).unwrap().unwrap(), &source).unwrap();
+    assert_eq!(projected.content[0]["annotations"], source["annotations"]);
+    assert_eq!(
+        projected.content[1],
+        json!({"type":"audio","data":"YQ==","mimeType":"audio/ogg"})
+    );
+    assert_eq!(projected.content[2]["uri"], source["uri"]);
+    assert_eq!(projected.content[3]["resource"]["text"], "native text");
+    assert_eq!(projected.content[4]["resource"]["blob"], "");
+    let delivered = retain_native_content(
+        super::super::tool_result(json!({"next_cursor":"cursor"})),
+        &projected.content,
+    );
+    assert_eq!(delivered["content"][1]["text"], "native text");
+    assert_eq!(delivered["content"].as_array().unwrap().len(), 6);
+    assert_eq!(
+        delivered["structuredContent"],
+        json!({"next_cursor":"cursor"})
+    );
+}
+
+#[test]
+fn resource_projection_and_standard_validation_reject_invalid_shapes() {
+    for mime in ["image/svg+xml", "image/avif", "image/tiff"] {
+        assert!(valid_mime(mime, Some("image")));
+    }
+    for mime in ["audio/wav", "audio/mpeg", "audio/opus"] {
+        assert!(valid_mime(mime, Some("audio")));
+    }
+    for mime in [
+        "image/",
+        "image/png; charset=utf8",
+        "image/png/extra",
+        " image/png",
+    ] {
+        assert!(!valid_mime(mime, Some("image")));
+    }
+    for uri in [
+        "file:///tmp/a",
+        "urn:example:a",
+        "custom://host/a",
+        "https://example.com/a%20b",
+    ] {
+        assert!(valid_uri(uri));
+    }
+    for uri in [
+        "relative/a",
+        "https://example.com/a b",
+        "https://example.com/%zz",
+        "1bad:x",
+        "https://[invalid",
+    ] {
+        assert!(!valid_uri(uri));
+    }
+    let declaration = json!({"structured_content_path":"/metadata","mcp_content":[{"type":"resource","uri_path":"/uri","blob_path":"/blob"}]});
+    let parsed = mapping(&declaration).unwrap().unwrap();
+    for source in [
+        json!({"metadata":{},"uri":"relative","blob":"YQ=="}),
+        json!({"metadata":{},"uri":"urn:test:a","blob":"YR=="}),
+        json!({"metadata":{},"uri":"urn:test:a","blob":1}),
+    ] {
+        assert!(project(&parsed, &source).is_err());
+    }
+    assert!(!valid_annotations(&json!({"priority":2})));
+    assert!(!valid_annotations(&json!({"audience":["system"]})));
+    assert!(!valid_annotations(&json!([])));
+}
