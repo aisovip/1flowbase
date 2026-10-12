@@ -59,6 +59,7 @@ async fn create_model(
     ModelDefinitionRepository::create_model_definition(
         store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,

@@ -29,5 +29,14 @@ export function dataModelTemplatePresentation(
       )
     };
   }
+  if (identity === 'core/file/v1') {
+    return {
+      title: i18nText('settings', 'auto.file_table'),
+      description: i18nText(
+        'settings',
+        'auto.file_data_model_template_description'
+      )
+    };
+  }
   return { title: template.summary, description: template.description };
 }

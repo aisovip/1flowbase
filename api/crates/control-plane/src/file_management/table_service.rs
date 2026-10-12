@@ -13,10 +13,11 @@ use crate::{
 pub struct BindFileTableStorageCommand {
     pub actor_user_id: Uuid,
     pub file_table_id: Uuid,
-    pub bound_storage_id: Uuid,
+    pub bound_storage_id: Option<Uuid>,
 }
 
 pub struct CreateFileTableCommand {
+    pub bound_storage_id: Option<Uuid>,
     pub actor_user_id: Uuid,
     pub code: String,
     pub title: String,
@@ -74,6 +75,8 @@ where
         if !actor.is_root {
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
+        self.ensure_binding_available(command.bound_storage_id)
+            .await?;
 
         let table = self
             .repository
@@ -108,15 +111,32 @@ where
         &self,
         table: domain::FileTableRecord,
     ) -> Result<FileTableWithStorageTitle> {
-        let bound_storage_title = self
-            .repository
-            .get_file_storage(table.bound_storage_id)
-            .await?
-            .map(|storage| storage.title);
+        let bound_storage_title = match table.bound_storage_id {
+            Some(storage_id) => self
+                .repository
+                .get_file_storage(storage_id)
+                .await?
+                .map(|storage| storage.title),
+            None => None,
+        };
         Ok(FileTableWithStorageTitle {
             table,
             bound_storage_title,
         })
+    }
+
+    async fn ensure_binding_available(&self, storage_id: Option<Uuid>) -> Result<()> {
+        if let Some(storage_id) = storage_id {
+            let storage = self
+                .repository
+                .get_file_storage(storage_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+            if !storage.enabled {
+                return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -134,19 +154,18 @@ where
         )
         .await?;
 
-        let default_storage = self
-            .repository
-            .get_default_file_storage()
-            .await?
-            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
-
+        if command.bound_storage_id.is_some() && !actor.is_root {
+            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+        }
+        self.ensure_binding_available(command.bound_storage_id)
+            .await?;
         let table = FileTableProvisioningService::new(self.repository.clone())
             .create_workspace_file_table(CreateWorkspaceFileTableCommand {
                 actor_user_id: command.actor_user_id,
                 workspace_id: actor.current_workspace_id,
                 code: command.code,
                 title: command.title,
-                default_storage_id: default_storage.id,
+                bound_storage_id: command.bound_storage_id,
             })
             .await?;
         self.with_storage_title(table).await

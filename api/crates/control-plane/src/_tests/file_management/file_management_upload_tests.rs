@@ -154,13 +154,13 @@ fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine>
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
         external_capability_snapshot: None,
-        template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
-        template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
-        template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
+        template_provider: model.template_provider.clone(),
+        template_code: model.template_code.clone(),
+        template_version: model.template_version.clone(),
         physical_table_name: model.physical_table_name.clone(),
         scope_column_name: "scope_id".into(),
         fields: model.fields.clone(),
-        record_capabilities: domain::DataModelRecordCapabilities::read_write(),
+        record_capabilities: domain::data_model_capabilities(model).record,
         resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
     }]);
 
@@ -243,7 +243,7 @@ async fn upload_service_writes_object_and_runtime_record_with_storage_snapshot()
             scope_kind: FileTableScopeKind::Workspace,
             scope_id: workspace_id,
             model_definition_id: model.id,
-            bound_storage_id: storage_id,
+            bound_storage_id: Some(storage_id),
             is_builtin: false,
             is_default: false,
             status: "active".into(),
@@ -353,7 +353,7 @@ async fn upload_service_uses_current_table_binding_for_each_new_upload() {
             scope_kind: FileTableScopeKind::Workspace,
             scope_id: workspace_id,
             model_definition_id: model.id,
-            bound_storage_id: first_storage_id,
+            bound_storage_id: Some(first_storage_id),
             is_builtin: false,
             is_default: false,
             status: "active".into(),
@@ -387,7 +387,7 @@ async fn upload_service_uses_current_table_binding_for_each_new_upload() {
         &UpdateFileStorageBindingInput {
             actor_user_id: actor.user_id,
             file_table_id,
-            bound_storage_id: second_storage_id,
+            bound_storage_id: Some(second_storage_id),
         },
     )
     .await
@@ -455,7 +455,7 @@ async fn upload_service_requires_persisted_scope_grant_before_writing_runtime_re
             scope_kind: FileTableScopeKind::Workspace,
             scope_id: workspace_id,
             model_definition_id: model.id,
-            bound_storage_id: storage_id,
+            bound_storage_id: Some(storage_id),
             is_builtin: false,
             is_default: false,
             status: "active".into(),
@@ -488,4 +488,199 @@ async fn upload_service_requires_persisted_scope_grant_before_writing_runtime_re
 
     assert!(error.to_string().contains("data_model_scope_not_granted"));
     assert!(!root.exists());
+}
+
+#[tokio::test]
+async fn upload_service_inherits_current_default_for_unbound_file_template() {
+    let workspace_id = Uuid::now_v7();
+    let actor = actor_in_workspace(workspace_id);
+    let repository = MemoryFileManagementRepository::new(actor.clone());
+    let first_storage_id = Uuid::now_v7();
+    let second_storage_id = Uuid::now_v7();
+    let file_table_id = Uuid::now_v7();
+    let model_id = Uuid::now_v7();
+    let mut model = model_definition(
+        model_id,
+        DataModelScopeKind::System,
+        SYSTEM_SCOPE_ID,
+        "assets",
+    );
+    model.template_code = domain::file_management::FILE_DATA_MODEL_TEMPLATE_CODE.into();
+    model.fields = domain::file_management::FILE_METADATA_FIELDS
+        .iter()
+        .enumerate()
+        .map(
+            |(offset, (code, title, field_kind, required))| domain::ModelFieldRecord {
+                id: Uuid::now_v7(),
+                data_model_id: model.id,
+                code: (*code).into(),
+                title: (*title).into(),
+                description: None,
+                physical_column_name: (*code).into(),
+                external_field_key: None,
+                field_kind: *field_kind,
+                is_system: true,
+                is_writable: false,
+                is_required: *required,
+                api_required: false,
+                is_unique: false,
+                default_value: None,
+                display_interface: None,
+                display_options: serde_json::json!({}),
+                relation_target_model_id: None,
+                relation_options: serde_json::json!({}),
+                sort_order: offset as i32,
+                availability_status: MetadataAvailabilityStatus::Available,
+            },
+        )
+        .collect();
+    let first_root = temp_root("file-default-first");
+    let second_root = temp_root("file-default-second");
+
+    for (storage_id, code, root) in [
+        (first_storage_id, "local_first", first_root.clone()),
+        (second_storage_id, "local_second", second_root.clone()),
+    ] {
+        repository
+            .insert_file_storage(domain::FileStorageRecord {
+                id: storage_id,
+                code: code.into(),
+                title: code.into(),
+                driver_type: "local".into(),
+                enabled: true,
+                is_default: storage_id == first_storage_id,
+                config_json: serde_json::json!({
+                    "root_path": root.display().to_string(),
+                    "public_base_url": null,
+                }),
+                rule_json: serde_json::json!({}),
+                health_status: FileStorageHealthStatus::Ready,
+                last_health_error: None,
+                created_by: actor.user_id,
+                updated_by: actor.user_id,
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
+            })
+            .await;
+    }
+    repository.insert_model_definition(model.clone());
+    repository.insert_scope_grant(scope_grant(model.id, workspace_id));
+    repository
+        .insert_file_table(domain::FileTableRecord {
+            id: file_table_id,
+            code: "assets".into(),
+            title: "Assets".into(),
+            scope_kind: FileTableScopeKind::Workspace,
+            scope_id: workspace_id,
+            model_definition_id: model.id,
+            bound_storage_id: None,
+            is_builtin: false,
+            is_default: false,
+            status: "active".into(),
+            created_by: actor.user_id,
+            updated_by: actor.user_id,
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+        })
+        .await;
+
+    let engine = runtime_engine_for_model(&model);
+    let forged = engine
+        .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
+            actor: actor.clone(),
+            model_code: model.code.clone(),
+            payload: serde_json::json!({"filename":"forged.txt", "storage_id": second_storage_id}),
+            scope_grant: Some(runtime_core::runtime_acl::RuntimeScopeGrant {
+                data_model_id: model.id,
+                scope_kind: DataModelScopeKind::Workspace,
+                scope_id: workspace_id,
+                enabled: true,
+                permission_profile: ScopeDataModelPermissionProfile::ScopeAll,
+            }),
+        })
+        .await
+        .unwrap_err();
+    assert!(forged.to_string().contains("file_record_requires_upload"));
+    let service = FileUploadService::new(
+        repository.clone(),
+        Arc::new(storage_object::builtin_driver_registry()),
+        engine,
+    );
+
+    let first = service
+        .upload(UploadFileCommand {
+            actor: actor.clone(),
+            target: FileUploadTarget::Table(file_table_id),
+            original_filename: "first.txt".into(),
+            content_type: Some("text/plain".into()),
+            bytes: b"first".to_vec(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.storage_id, first_storage_id);
+
+    for mut storage in FileManagementRepository::list_file_storages(&repository)
+        .await
+        .unwrap()
+    {
+        storage.is_default = storage.id == second_storage_id;
+        repository.insert_file_storage(storage).await;
+    }
+    assert!(
+        FileManagementRepository::get_file_table(&repository, file_table_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .bound_storage_id
+            .is_none()
+    );
+
+    let second = service
+        .upload(UploadFileCommand {
+            actor: actor.clone(),
+            target: FileUploadTarget::Table(file_table_id),
+            original_filename: "second.txt".into(),
+            content_type: Some("text/plain".into()),
+            bytes: b"second".to_vec(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(second.storage_id, second_storage_id);
+    assert_eq!(
+        first.record["storage_id"],
+        serde_json::json!(first_storage_id)
+    );
+    assert_eq!(
+        second.record["storage_id"],
+        serde_json::json!(second_storage_id)
+    );
+    assert_eq!(
+        std::fs::read(first_root.join(first.record["path"].as_str().unwrap())).unwrap(),
+        b"first"
+    );
+    assert_eq!(
+        std::fs::read(second_root.join(second.record["path"].as_str().unwrap())).unwrap(),
+        b"second"
+    );
+
+    let mut disabled = FileManagementRepository::get_file_storage(&repository, second_storage_id)
+        .await
+        .unwrap()
+        .unwrap();
+    disabled.enabled = false;
+    repository.insert_file_storage(disabled).await;
+    let denied = service
+        .upload(UploadFileCommand {
+            actor,
+            target: FileUploadTarget::Table(file_table_id),
+            original_filename: "disabled.txt".into(),
+            content_type: Some("text/plain".into()),
+            bytes: b"must not upload".to_vec(),
+        })
+        .await
+        .unwrap_err();
+    assert!(denied.to_string().contains("file_storage_disabled"));
+
+    let _ = std::fs::remove_dir_all(first_root);
+    let _ = std::fs::remove_dir_all(second_root);
 }

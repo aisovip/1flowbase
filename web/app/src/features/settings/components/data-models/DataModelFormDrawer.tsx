@@ -16,6 +16,11 @@ import {
   dataModelTitleHelp
 } from './data-model-help-text';
 import { i18nText } from '../../../../shared/i18n/text';
+import { useAuthStore } from '../../../../state/auth-store';
+import {
+  fetchSettingsFileStorages,
+  type SettingsFileStorage
+} from '../../api/file-management';
 import {
   dataModelTemplateIdentity,
   dataModelTemplatePresentation
@@ -93,8 +98,40 @@ export function DataModelFormDrawer({
 }) {
   const [selectedTemplate, setSelectedTemplate] =
     useState<SettingsCompatibleDataModelTemplate | null>(null);
+  const [storages, setStorages] = useState<SettingsFileStorage[]>([]);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [boundStorageId, setBoundStorageId] = useState<string | null>(null);
+  const isRoot = useAuthStore(
+    (state) => state.actor?.effective_display_role === 'root'
+  );
+  const isFileTemplate =
+    selectedTemplate !== null &&
+    dataModelTemplateIdentity(selectedTemplate) === 'core/file/v1';
 
   useEffect(() => {
+    if (!open || !isFileTemplate || !isRoot) return;
+    let active = true;
+    setStorageError(null);
+    fetchSettingsFileStorages().then(
+      (items) => {
+        if (active) setStorages(items);
+      },
+      (error: unknown) => {
+        if (active)
+          setStorageError(
+            error instanceof Error
+              ? error.message
+              : i18nText('settings', 'auto.loading_failed')
+          );
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, isFileTemplate, isRoot]);
+
+  useEffect(() => {
+    setBoundStorageId(null);
     if (!open || mode !== 'create') {
       setSelectedTemplate(null);
       return;
@@ -198,6 +235,35 @@ export function DataModelFormDrawer({
             )
           }
         />
+        {isFileTemplate ? (
+          <>
+            <Typography.Text>
+              {i18nText('settings', 'auto.bound_storage')}
+            </Typography.Text>
+            <Select
+              aria-label={i18nText('settings', 'auto.bound_storage')}
+              style={{ width: '100%' }}
+              disabled={!isRoot || Boolean(storageError)}
+              value={boundStorageId ?? ''}
+              options={[
+                {
+                  label: i18nText('settings', 'auto.follow_default_storage'),
+                  value: ''
+                },
+                ...storages
+                  .filter((storage) => storage.enabled)
+                  .map((storage) => ({
+                    label: `${storage.title} (${storage.code})`,
+                    value: storage.id
+                  }))
+              ]}
+              onChange={(value) => setBoundStorageId(value || null)}
+            />
+            <Typography.Text type="secondary">
+              {i18nText('settings', 'auto.follow_default_storage_description')}
+            </Typography.Text>
+          </>
+        ) : null}
       </Space>
     ) : undefined;
 
@@ -221,6 +287,15 @@ export function DataModelFormDrawer({
   const statusMessages =
     mode === 'create'
       ? [
+          ...(isFileTemplate && storageError
+            ? [
+                {
+                  key: 'storage-error',
+                  message: storageError,
+                  type: 'warning' as const
+                }
+              ]
+            : []),
           ...(templatesError
             ? [
                 {
@@ -294,6 +369,11 @@ export function DataModelFormDrawer({
           template_provider: selectedTemplate.template_provider,
           template_code: selectedTemplate.template_code,
           template_version: selectedTemplate.template_version,
+          ...(isFileTemplate
+            ? {
+                bound_storage_id: boundStorageId
+              }
+            : {}),
           code: values.code as string,
           title,
           description: description.trim() || null,

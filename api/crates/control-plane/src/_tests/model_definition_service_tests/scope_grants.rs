@@ -6,6 +6,7 @@ async fn update_scope_grant_records_audit_event() {
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -730,6 +731,7 @@ async fn delete_scope_grant_records_audit_event() {
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,

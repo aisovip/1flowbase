@@ -1055,6 +1055,16 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
 }
 
 pub fn data_model_capabilities(model: &crate::ModelDefinitionRecord) -> DataModelCapabilities {
+    if crate::file_management::is_file_data_model_template(
+        &model.template_provider,
+        &model.template_code,
+        &model.template_version,
+    ) {
+        return DataModelCapabilities {
+            record: DataModelRecordCapabilities::read_only(),
+            ..DataModelCapabilities::custom()
+        };
+    }
     builtin_data_model_contract(&model.code)
         .filter(|_| {
             model.scope_kind == crate::DataModelScopeKind::System

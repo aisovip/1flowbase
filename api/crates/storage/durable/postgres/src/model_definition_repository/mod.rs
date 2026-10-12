@@ -1,6 +1,7 @@
 mod change_log;
 mod create;
 mod field_queries;
+mod file_template;
 mod model_queries;
 mod naming;
 
@@ -81,6 +82,7 @@ fn platform_runtime_field_records(
     )
     .collect::<Vec<_>>();
     fields.extend(crate::ordered_tree::schema::system_field_records(model));
+    fields.extend(file_template::field_records(model));
     fields
 }
 

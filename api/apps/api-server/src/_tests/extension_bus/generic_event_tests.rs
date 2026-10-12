@@ -216,6 +216,7 @@ impl Fixture {
             control_plane_contracts::ports::ModelDefinitionRepository::create_model_definition(
                 &self.store,
                 &control_plane_contracts::ports::CreateModelDefinitionInput {
+                    bound_storage_id: None,
                     actor_user_id: self.actor.user_id,
                     scope_kind: domain::DataModelScopeKind::Workspace,
                     scope_id: self.actor.current_workspace_id,

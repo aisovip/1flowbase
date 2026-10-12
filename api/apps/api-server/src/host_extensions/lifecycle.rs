@@ -372,6 +372,7 @@ mod tests {
         let model = ModelDefinitionRepository::create_model_definition(
             &store,
             &CreateModelDefinitionInput {
+                bound_storage_id: None,
                 actor_user_id: Uuid::nil(),
                 scope_kind: domain::DataModelScopeKind::Workspace,
                 scope_id: workspace.id,

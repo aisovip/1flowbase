@@ -7,6 +7,57 @@ use extension_contracts::{
 };
 use serde_json::Value;
 
+#[test]
+fn file_template_is_main_source_only_and_exposes_read_operations_with_owned_metadata() {
+    let identity = crate::file_data_model_template::file_template_identity();
+    let registry = core_data_model_template_registry().unwrap();
+    let file = registry.resolve(&identity).unwrap().descriptor();
+    assert_eq!(
+        file.source_selector,
+        DataModelTemplateSourceSelector::MainSource
+    );
+    assert_eq!(
+        file.operations
+            .iter()
+            .map(|operation| operation.code.as_str())
+            .collect::<Vec<_>>(),
+        ["list_records", "get_record"]
+    );
+    for (code, _, _, required) in domain::file_management::FILE_METADATA_FIELDS {
+        let field = file
+            .system_fields
+            .iter()
+            .find(|field| field.code == *code)
+            .unwrap();
+        assert_eq!(field.required, *required);
+        assert_eq!(
+            field.write_policy,
+            extension_contracts::DataModelSystemFieldWritePolicy::RuntimeManaged
+        );
+    }
+    let main = registry.compatible_templates(
+        &DataModelTemplateSource {
+            kind: DataModelSourceKind::MainSource,
+            provider: None,
+        },
+        ["records.read"],
+    );
+    assert!(main.iter().any(|template| template.identity() == &identity));
+    let external = registry.compatible_templates(
+        &DataModelTemplateSource {
+            kind: DataModelSourceKind::ExternalSource,
+            provider: None,
+        },
+        ["records.read"],
+    );
+    assert!(!external
+        .iter()
+        .any(|template| template.identity() == &identity));
+    assert!(external
+        .iter()
+        .any(|template| template.identity() == &general_template_identity()));
+}
+
 use crate::{
     data_model_template_registry::{
         DataModelTemplateCatalog, DataModelTemplateRegistry, DataModelTemplateRegistryError,

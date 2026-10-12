@@ -287,10 +287,10 @@ async fn file_management_repository_creates_default_storage_and_updates_bindings
         &UpdateFileStorageBindingInput {
             actor_user_id: actor.id,
             file_table_id: workspace_file_table_id,
-            bound_storage_id: backup_storage.id,
+            bound_storage_id: Some(backup_storage.id),
         },
     )
     .await
     .unwrap();
-    assert_eq!(updated.bound_storage_id, backup_storage.id);
+    assert_eq!(updated.bound_storage_id, Some(backup_storage.id));
 }

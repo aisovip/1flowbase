@@ -488,6 +488,7 @@ async fn repeat_install_updates_mapped_resources_and_preserves_target_only_model
     let block_id = first.id_map[&package.pages[0].tabs[0].blocks[0].block_id].clone();
     let target_only = ModelDefinitionService::new(store.clone())
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: actor.id,
             scope_kind: domain::DataModelScopeKind::Workspace,
             data_source_instance_id: None,

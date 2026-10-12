@@ -225,5 +225,21 @@
     "tab_route_segment": "Route segment",
     "tab_route_segment_required": "Enter a route segment",
     "tab_settings": "Tab settings"
+  },
+  "files": {
+    "filename": "Filename",
+    "size": "Size",
+    "mimetype": "File type",
+    "created_at": "Uploaded at",
+    "upload": "Upload files",
+    "refresh": "Refresh files",
+    "close": "Done",
+    "upload_prompt": "Click or drag files here to upload",
+    "upload_hint": "Select one or more files. Successful uploads appear in the table automatically.",
+    "empty": "No files yet. Upload files to see them here.",
+    "table_unavailable": "This file table is unavailable. Check its configuration and your access permissions.",
+    "upload_unavailable": "Unable to start uploading. Refresh the page and try again.",
+    "upload_success": "{{filename}} uploaded",
+    "upload_failed": "File upload failed. Please try again."
   }
 }

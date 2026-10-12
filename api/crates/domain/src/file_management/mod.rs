@@ -2,6 +2,49 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub const FILE_DATA_MODEL_TEMPLATE_CODE: &str = "file";
+pub const FILE_DATA_MODEL_TEMPLATE_VERSION: &str = "v1";
+
+pub fn is_file_data_model_template(provider: &str, code: &str, version: &str) -> bool {
+    provider == crate::CORE_DATA_MODEL_TEMPLATE_PROVIDER
+        && code == FILE_DATA_MODEL_TEMPLATE_CODE
+        && version == FILE_DATA_MODEL_TEMPLATE_VERSION
+}
+
+/// The object-storage service owns these fields. Ordinary record CRUD cannot write them.
+pub const FILE_METADATA_FIELDS: &[(&str, &str, crate::ModelFieldKind, bool)] = &[
+    ("title", "Title", crate::ModelFieldKind::String, false),
+    ("filename", "Filename", crate::ModelFieldKind::String, true),
+    ("extname", "Extension", crate::ModelFieldKind::String, false),
+    ("size", "Size", crate::ModelFieldKind::Number, true),
+    ("mimetype", "MIME Type", crate::ModelFieldKind::String, true),
+    ("path", "Storage Path", crate::ModelFieldKind::String, true),
+    ("meta", "Metadata", crate::ModelFieldKind::Json, true),
+    ("url", "Cached URL", crate::ModelFieldKind::String, false),
+    (
+        "storage_id",
+        "Storage ID",
+        crate::ModelFieldKind::String,
+        true,
+    ),
+];
+
+/// Produced after an object-storage driver successfully writes the object.
+#[derive(Debug, Clone, Serialize)]
+pub struct UploadedFileMetadata {
+    pub title: String,
+    pub filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extname: Option<String>,
+    pub size: u64,
+    pub mimetype: String,
+    pub path: String,
+    pub meta: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    pub storage_id: Uuid,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileStorageHealthStatus {
@@ -53,7 +96,7 @@ pub struct FileTableRecord {
     pub scope_kind: FileTableScopeKind,
     pub scope_id: Uuid,
     pub model_definition_id: Uuid,
-    pub bound_storage_id: Uuid,
+    pub bound_storage_id: Option<Uuid>,
     pub is_builtin: bool,
     pub is_default: bool,
     pub status: String,

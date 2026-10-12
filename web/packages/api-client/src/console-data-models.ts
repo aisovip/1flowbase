@@ -286,6 +286,7 @@ export interface CreateConsoleDataModelInput {
   template_provider: string;
   template_code: string;
   template_version: string;
+  bound_storage_id?: string | null;
   code: string;
   title: string;
   description?: string | null;

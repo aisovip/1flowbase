@@ -5,6 +5,20 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('file table blocks accept a table code and reject untyped storage/request options', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import { FileTableView } from '@1flowbase/files';
+const view = <FileTableView fileTableCode="file_demo" />;
+// @ts-expect-error code must be a string.
+const invalid = <FileTableView fileTableCode={123} />;
+// @ts-expect-error storage is owned by backend file-table configuration.
+const storage = <FileTableView fileTableCode="file_demo" storageId="storage-1" />;
+void view; void invalid; void storage;`
+      })
+    ).toEqual([]);
+  });
   test('type-checks the block translation facade and rejects invalid parameters', () => {
     expect(
       typeCheckSource({

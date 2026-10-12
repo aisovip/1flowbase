@@ -83,7 +83,7 @@ pub struct CreateFileStorageInput {
 pub struct UpdateFileStorageBindingInput {
     pub actor_user_id: Uuid,
     pub file_table_id: Uuid,
-    pub bound_storage_id: Uuid,
+    pub bound_storage_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +118,7 @@ pub struct CreateFileTableRegistrationInput {
     pub scope_kind: domain::FileTableScopeKind,
     pub scope_id: Uuid,
     pub model_definition_id: Uuid,
-    pub bound_storage_id: Uuid,
+    pub bound_storage_id: Option<Uuid>,
     pub is_builtin: bool,
     pub is_default: bool,
 }

@@ -818,7 +818,7 @@ fn seed_default_file_storage(repository: &InMemoryOrchestrationRuntimeRepository
         scope_kind: domain::FileTableScopeKind::System,
         scope_id: domain::SYSTEM_SCOPE_ID,
         model_definition_id: Uuid::nil(),
-        bound_storage_id: storage_id,
+        bound_storage_id: Some(storage_id),
         is_builtin: true,
         is_default: true,
         status: "active".to_string(),

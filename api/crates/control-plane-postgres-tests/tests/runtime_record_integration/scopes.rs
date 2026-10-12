@@ -18,6 +18,7 @@ async fn runtime_record_repository_scopes_dynamic_rows_without_workspace_row() {
     let model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::System,
             scope_id: domain::SYSTEM_SCOPE_ID,
@@ -210,6 +211,7 @@ async fn runtime_record_repository_uses_default_scope_id_without_workspace_row()
     let model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: DEFAULT_SCOPE_ID,

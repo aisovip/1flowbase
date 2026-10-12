@@ -81,6 +81,7 @@ pub fn core_data_model_template_registry(
                 [
                     general_template_descriptor(),
                     crate::ordered_tree_template::ordered_tree_template_descriptor(),
+                    crate::file_data_model_template::file_template_descriptor(),
                 ],
                 &CoreResolution,
             )

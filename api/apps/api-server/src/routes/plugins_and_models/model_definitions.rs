@@ -44,6 +44,7 @@ const STATE_MODEL_RESOURCE: ResourceCrudDescriptor =
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateModelDefinitionBody {
+    pub bound_storage_id: Option<Uuid>,
     pub scope_kind: String,
     pub template_provider: String,
     pub template_code: String,

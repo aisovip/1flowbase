@@ -21,6 +21,7 @@ async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expans
     let customer_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -44,6 +45,7 @@ async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expans
     let order_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -380,6 +382,7 @@ async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
     let customer_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -403,6 +406,7 @@ async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
     let order_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -584,6 +588,7 @@ async fn runtime_record_repository_enforces_owner_scope() {
     let order_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,

@@ -515,6 +515,19 @@ where
         if !compatible {
             return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
         }
+        let is_file_template = domain::file_management::is_file_data_model_template(
+            &command.template_provider,
+            &command.template_code,
+            &command.template_version,
+        );
+        if command.bound_storage_id.is_some() {
+            if !is_file_template {
+                return Err(ControlPlaneError::InvalidInput("bound_storage_id").into());
+            }
+            if !actor.is_root {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
         let external_resource_key =
             normalize_external_resource_key(source_kind, command.external_resource_key.as_deref())?;
         let external_table_id =
@@ -536,6 +549,7 @@ where
         let model = self
             .repository
             .create_model_definition(&CreateModelDefinitionInput {
+                bound_storage_id: command.bound_storage_id,
                 actor_user_id: command.actor_user_id,
                 scope_kind: command.scope_kind,
                 scope_id: grant_scope_id,

@@ -89,7 +89,7 @@ async fn inventory_reads_registered_file_tables_and_live_runtime_debug_reference
             workspace_id: workspace.id,
             code: format!("backup_files_{}", Uuid::now_v7().simple()),
             title: "Backup Files".into(),
-            default_storage_id: storage.id,
+            bound_storage_id: Some(storage.id),
         })
         .await
         .unwrap();

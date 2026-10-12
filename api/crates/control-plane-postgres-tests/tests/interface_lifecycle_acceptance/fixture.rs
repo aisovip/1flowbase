@@ -96,6 +96,7 @@ impl Fixture {
             self.actor.clone(),
             None,
             CreateInput(CreateModelDefinitionCommand {
+                bound_storage_id: None,
                 actor_user_id: self.actor.user_id,
                 scope_kind: domain::DataModelScopeKind::Workspace,
                 data_source_instance_id: None,

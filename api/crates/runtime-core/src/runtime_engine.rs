@@ -26,6 +26,9 @@ use crate::{
     runtime_record_repository::{OrderedTreeRuntimeRepository, RuntimeRecordRepository},
 };
 
+mod file_upload;
+pub use file_upload::RuntimeUploadedFileInput;
+
 pub use crate::runtime_record_repository::{RuntimeListQuery, RuntimeListResult, RuntimeSortInput};
 pub use storage_durable::runtime_model_availability::{
     ensure_runtime_model_available, RuntimeModelError,
@@ -855,6 +858,13 @@ impl RuntimeEngine {
     pub async fn create_record(&self, input: RuntimeCreateInput) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        if domain::file_management::is_file_data_model_template(
+            &metadata.template_provider,
+            &metadata.template_code,
+            &metadata.template_version,
+        ) {
+            return Err(anyhow!("file_record_requires_upload"));
+        }
         ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Create)?;
         let access_scope = resolve_access_scope(
             &input.actor,

@@ -16,6 +16,171 @@ use uuid::Uuid;
 const FILES_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 
 #[tokio::test]
+async fn file_template_model_route_provisions_readonly_metadata_and_uploads_real_file() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app.clone().oneshot(Request::builder()
+        .method("POST").uri("/api/console/settings/data-models/model-definitions")
+        .header("cookie", &cookie).header("x-csrf-token", &csrf)
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"scope_kind":"workspace", "template_provider":"core", "template_code":"file", "template_version":"v1", "code":"file_template_route", "title":"File Template", "status":"published", "bound_storage_id":null}).to_string())).unwrap()
+    ).await.unwrap();
+    let (parts, body) = response.into_parts();
+    let body = to_bytes(body, usize::MAX).await.unwrap();
+    assert_eq!(
+        parts.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let model: Value = serde_json::from_slice(&body).unwrap();
+    for (code, _, _, _) in domain::file_management::FILE_METADATA_FIELDS {
+        let field = model["data"]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["code"] == *code)
+            .unwrap();
+        assert_eq!(field["is_system"], true);
+        assert_eq!(field["is_writable"], false);
+    }
+    let tables = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/files/tables")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tables.status(), StatusCode::OK);
+    let tables = response_json(tables).await;
+    let table = tables["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|table| table["model_definition_id"] == model["data"]["id"])
+        .unwrap();
+    assert!(table["bound_storage_id"].is_null());
+    let table_id = table["id"].as_str().unwrap();
+    // Prime the same runtime list before upload; a stale CRUD cache would keep
+    // returning this empty result after the upload service commits the record.
+    let list_uri = "/api/runtime/models/file_template_route/list?page=1&page_size=20";
+    let before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(list_uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(before.status(), StatusCode::OK);
+    assert_eq!(response_json(before).await["data"]["total"], 0);
+    let boundary = "----1flowbase-file-template-route";
+    let uploaded = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/files/upload")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(build_file_upload_body(
+                    boundary,
+                    table_id,
+                    "file-template.txt",
+                    "text/plain",
+                    b"file template upload",
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (parts, body) = uploaded.into_parts();
+    let body = to_bytes(body, usize::MAX).await.unwrap();
+    assert_eq!(
+        parts.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let uploaded: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(uploaded["data"]["record"]["filename"], "file-template.txt");
+    assert_eq!(
+        uploaded["data"]["record"]["storage_id"],
+        uploaded["data"]["storage_id"]
+    );
+    let record_id = uploaded["data"]["record"]["id"].as_str().unwrap();
+    let after = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(list_uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after.status(), StatusCode::OK);
+    let listed = response_json(after).await;
+    assert_eq!(listed["data"]["total"], 1);
+    assert_eq!(listed["data"]["items"][0]["id"], record_id);
+    let content = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/files/{table_id}/records/{record_id}/content"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(content.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(content.into_body(), usize::MAX).await.unwrap(),
+        &b"file template upload"[..]
+    );
+    let forged = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/runtime/models/file_template_route/create")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename":"forged.txt", "storage_id":uploaded["data"]["storage_id"]})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        !forged.status().is_success(),
+        "generic CRUD must not fabricate file metadata"
+    );
+    assert_ne!(
+        forged.status(),
+        StatusCode::UNAUTHORIZED,
+        "negative fixture must reach the authenticated model boundary"
+    );
+}
+
+#[tokio::test]
 async fn ac_012_file_table_dto_localizes_existing_title_field_server_side() {
     let (state, _) = test_api_state_with_database_url().await;
     let workspace_id = state.bootstrap_workspace_id;
@@ -590,14 +755,8 @@ async fn file_management_routes_create_workspace_table_upload_and_read_by_storag
     assert_eq!(create_table_response.status(), StatusCode::CREATED);
     let table_payload = response_json(create_table_response).await;
     let file_table_id = table_payload["data"]["id"].as_str().unwrap().to_string();
-    assert_eq!(
-        table_payload["data"]["bound_storage_id"].as_str(),
-        Some(default_storage_id.as_str())
-    );
-    assert_eq!(
-        table_payload["data"]["bound_storage_title"].as_str(),
-        storages_payload["data"][0]["title"].as_str()
-    );
+    assert!(table_payload["data"]["bound_storage_id"].is_null());
+    assert!(table_payload["data"]["bound_storage_title"].is_null());
 
     let backup_root =
         std::env::temp_dir().join(format!("file-management-routes-{}", Uuid::now_v7()));

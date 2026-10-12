@@ -340,6 +340,7 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
     let actor_user_id = Uuid::now_v7();
     let partial_users = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::System,
             scope_id: SYSTEM_SCOPE_ID,

@@ -841,6 +841,7 @@ where
         let model = self
             .repository
             .create_model_definition(&CreateModelDefinitionInput {
+                bound_storage_id: None,
                 actor_user_id,
                 scope_kind: DataModelScopeKind::System,
                 scope_id: SYSTEM_SCOPE_ID,

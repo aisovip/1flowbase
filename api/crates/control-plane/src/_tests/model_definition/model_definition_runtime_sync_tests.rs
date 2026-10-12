@@ -44,6 +44,7 @@ async fn create_model_rebuilds_runtime_registry_once() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -70,6 +71,7 @@ async fn add_field_rebuilds_runtime_registry_once() {
     let repository = InMemoryModelDefinitionRepository::default();
     let seeded = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: Uuid::nil(),
@@ -122,6 +124,7 @@ async fn delete_model_rebuilds_runtime_registry_once() {
     let repository = InMemoryModelDefinitionRepository::default();
     let seeded = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: Uuid::nil(),
@@ -161,6 +164,7 @@ async fn batch_delete_models_rebuilds_runtime_registry_once() {
     let repository = InMemoryModelDefinitionRepository::default();
     let first = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: Uuid::nil(),
@@ -182,6 +186,7 @@ async fn batch_delete_models_rebuilds_runtime_registry_once() {
         .unwrap();
     let second = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: Uuid::nil(),

@@ -48,6 +48,10 @@ impl InterfaceContract for ModelDefinitionsInput {
                             mp::object_schema(&[("byte_count", mp::count_schema())]),
                         ),
                         ("template_code", mp::text_schema()),
+                        (
+                            "bound_storage_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
                         ("template_version", mp::text_schema()),
                         ("code", mp::text_schema()),
                         (
@@ -330,6 +334,13 @@ impl InterfaceContract for ModelDefinitionsInput {
                             )]),
                         ),
                         ("template_code", mp::text(&(_field_0).template_code)?),
+                        (
+                            "bound_storage_id",
+                            match (_field_0).bound_storage_id {
+                                Some(value) => mp::text(&value.to_string())?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
                         ("template_version", mp::text(&(_field_0).template_version)?),
                         ("code", mp::text(&(_field_0).code)?),
                         (

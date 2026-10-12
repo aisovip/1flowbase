@@ -149,6 +149,7 @@ fn mixed_package() -> Vec<u8> {
 pub(super) async fn create(store: &MainDurableStore, actor: Uuid, workspace: Uuid) {
     store
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: actor,
             scope_kind: domain::DataModelScopeKind::Workspace,
             scope_id: workspace,

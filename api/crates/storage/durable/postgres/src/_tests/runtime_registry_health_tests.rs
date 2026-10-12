@@ -110,6 +110,7 @@ async fn seed_external_runtime_model(
     let model = ModelDefinitionRepository::create_model_definition(
         store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: actor.id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace.id,
@@ -189,6 +190,7 @@ async fn list_runtime_model_metadata_marks_model_unavailable_when_table_is_missi
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -393,6 +395,7 @@ async fn list_runtime_model_metadata_preserves_data_model_status() {
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,

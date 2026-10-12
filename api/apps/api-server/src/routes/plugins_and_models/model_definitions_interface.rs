@@ -286,6 +286,7 @@ impl ModelDefinitionsAdapter {
                 let model = self
                     .mutation_service(access_control::MODEL_DEFINITIONS_CREATE_OPERATION_ID)
                     .create_model(CreateModelDefinitionCommand {
+                        bound_storage_id: body.bound_storage_id,
                         actor_user_id: user_id,
                         scope_kind: parse_scope_kind(&body.scope_kind)?,
                         data_source_instance_id: None,

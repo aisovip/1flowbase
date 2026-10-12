@@ -50,6 +50,7 @@ async fn create_main_source_model(
     ModelDefinitionRepository::create_model_definition(
         store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -353,6 +354,7 @@ async fn add_scalar_field_creates_real_postgres_column_and_unique_index() {
     let model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -454,6 +456,7 @@ async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
     let parent = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -477,6 +480,7 @@ async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
     let child = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -563,6 +567,7 @@ async fn add_many_to_many_field_creates_host_managed_join_table() {
     let left = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -586,6 +591,7 @@ async fn add_many_to_many_field_creates_host_managed_join_table() {
     let right = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -689,6 +695,7 @@ async fn create_runtime_model_table_always_uses_scope_id_column() {
     let model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,

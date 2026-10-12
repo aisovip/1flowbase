@@ -9,11 +9,14 @@ import {
   fetchConsoleFileStorages,
   fetchConsoleFileTables,
   updateConsoleFileStorage,
-  updateConsoleFileTableBinding
+  updateConsoleFileTableBinding,
+  uploadConsoleFile
 } from '../console-file-management';
 
 describe('console-file-management client', () => {
-  vi.spyOn(transport, 'apiFetch').mockImplementation(async (input) => input as never);
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
 
   test.each([
     {
@@ -28,6 +31,34 @@ describe('console-file-management client', () => {
     }
   ])('reads the $name route', async ({ request, expected }) => {
     await expect(request()).resolves.toMatchObject(expected);
+  });
+
+  test('multipart upload includes the selected table and File and preserves cancellation and CSRF', async () => {
+    const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+    const controller = new AbortController();
+    const result = (await uploadConsoleFile(
+      file,
+      'table-1',
+      'csrf-123',
+      controller.signal
+    )) as unknown as transport.ApiRequestOptions;
+    expect(result.path).toBe('/api/console/files/upload');
+    expect(result.method).toBe('POST');
+    expect(result.csrfToken).toBe('csrf-123');
+    expect(result.signal).toBe(controller.signal);
+    expect(result.contentType).toBeUndefined();
+    expect((result.rawBody as FormData).get('file')).toBe(file);
+    expect((result.rawBody as FormData).get('file_table_id')).toBe('table-1');
+  });
+
+  test('clearing a binding sends null rather than an invalid UUID', async () => {
+    await expect(
+      updateConsoleFileTableBinding(
+        'table-1',
+        { bound_storage_id: null },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({ body: { bound_storage_id: null } });
   });
 
   test.each([
@@ -117,7 +148,10 @@ describe('console-file-management client', () => {
         csrfToken: 'csrf-123'
       }
     }
-  ])('writes $name through the console file-management route', async ({ request, expected }) => {
-    await expect(request()).resolves.toMatchObject(expected);
-  });
+  ])(
+    'writes $name through the console file-management route',
+    async ({ request, expected }) => {
+      await expect(request()).resolves.toMatchObject(expected);
+    }
+  );
 });

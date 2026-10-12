@@ -36,6 +36,7 @@ use crate::{
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFileTableBody {
+    pub bound_storage_id: Option<Uuid>,
     pub code: String,
     pub title: String,
 }
@@ -64,6 +65,7 @@ impl InterfaceContract for FileTablesInput {
                 (
                     "0",
                     mp::object_schema(&[
+                        ("bound_storage_id", nullable_storage_id_schema()),
                         ("code", mp::text_schema()),
                         (
                             "title",
@@ -77,7 +79,7 @@ impl InterfaceContract for FileTablesInput {
                 ("file_table_id", mp::text_schema()),
                 (
                     "body",
-                    mp::object_schema(&[("bound_storage_id", mp::text_schema())]),
+                    mp::object_schema(&[("bound_storage_id", nullable_storage_id_schema())]),
                 ),
             ]),
             mp::object_schema(&[
@@ -97,6 +99,10 @@ impl InterfaceContract for FileTablesInput {
                 (
                     "0",
                     mp::object_value(&[
+                        (
+                            "bound_storage_id",
+                            storage_id_projection(&(_field_0).bound_storage_id)?,
+                        ),
                         ("code", mp::text(&(_field_0).code)?),
                         (
                             "title",
@@ -119,7 +125,7 @@ impl InterfaceContract for FileTablesInput {
                     "body",
                     mp::object_value(&[(
                         "bound_storage_id",
-                        mp::text(&(_field_body).bound_storage_id)?,
+                        storage_id_projection(&(_field_body).bound_storage_id)?,
                     )]),
                 ),
             ]),
@@ -151,7 +157,7 @@ impl InterfaceContract for FileTablesOutput {
                 ("variant", mp::tag_schema("List")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("model_definition_id",mp::text_schema()), ("bound_storage_id",mp::text_schema()), ("bound_storage_title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("status",mp::text_schema())])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("model_definition_id",mp::text_schema()), ("bound_storage_id",nullable_storage_id_schema()), ("bound_storage_title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("status",mp::text_schema())])}),
                 ),
             ]),
             mp::object_schema(&[
@@ -171,7 +177,7 @@ impl InterfaceContract for FileTablesOutput {
                         ),
                         ("scope_id", mp::text_schema()),
                         ("model_definition_id", mp::text_schema()),
-                        ("bound_storage_id", mp::text_schema()),
+                        ("bound_storage_id", nullable_storage_id_schema()),
                         (
                             "bound_storage_title",
                             serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
@@ -220,7 +226,10 @@ impl InterfaceContract for FileTablesOutput {
                                         "model_definition_id",
                                         mp::text(&(item).model_definition_id)?,
                                     ),
-                                    ("bound_storage_id", mp::text(&(item).bound_storage_id)?),
+                                    (
+                                        "bound_storage_id",
+                                        storage_id_projection(&(item).bound_storage_id)?,
+                                    ),
                                     (
                                         "bound_storage_title",
                                         match (item).bound_storage_title.as_ref() {
@@ -266,7 +275,10 @@ impl InterfaceContract for FileTablesOutput {
                             "model_definition_id",
                             mp::text(&(_field_0).model_definition_id)?,
                         ),
-                        ("bound_storage_id", mp::text(&(_field_0).bound_storage_id)?),
+                        (
+                            "bound_storage_id",
+                            storage_id_projection(&(_field_0).bound_storage_id)?,
+                        ),
                         (
                             "bound_storage_title",
                             match (_field_0).bound_storage_title.as_ref() {
@@ -336,6 +348,7 @@ impl FileTablesAdapter {
             FileTablesInput::Create(body) => {
                 let created = FileTableService::new(self.store.clone())
                     .create_table(CreateFileTableCommand {
+                        bound_storage_id: body.bound_storage_id,
                         actor_user_id: actor.user_id,
                         code: body.code,
                         title: body.title,
@@ -352,7 +365,7 @@ impl FileTablesAdapter {
                     .bind_storage(BindFileTableStorageCommand {
                         actor_user_id: actor.user_id,
                         file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
-                        bound_storage_id: parse_uuid(&body.bound_storage_id, "bound_storage_id")?,
+                        bound_storage_id: body.bound_storage_id,
                     })
                     .await?;
                 Ok(FileTablesOutput::Item(to_response(updated)))
@@ -387,7 +400,7 @@ impl ConsoleInterfacePort<FileTablesInput, FileTablesOutput> for FileTablesAdapt
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BindFileTableStorageBody {
-    pub bound_storage_id: String,
+    pub bound_storage_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -398,7 +411,7 @@ pub struct FileTableResponse {
     pub scope_kind: String,
     pub scope_id: String,
     pub model_definition_id: String,
-    pub bound_storage_id: String,
+    pub bound_storage_id: Option<String>,
     pub bound_storage_title: Option<String>,
     pub is_builtin: bool,
     pub is_default: bool,
@@ -422,7 +435,7 @@ fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
         },
         scope_id: record.scope_id.to_string(),
         model_definition_id: record.model_definition_id.to_string(),
-        bound_storage_id: record.bound_storage_id.to_string(),
+        bound_storage_id: record.bound_storage_id.map(|value| value.to_string()),
         bound_storage_title: result.bound_storage_title,
         is_builtin: record.is_builtin,
         is_default: record.is_default,
@@ -614,4 +627,15 @@ pub async fn delete_file_table(
         unreachable!("file table delete binding returned a different output")
     };
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn nullable_storage_id_schema() -> serde_json::Value {
+    serde_json::json!({"anyOf": [crate::extension_bus::managed_projection::text_schema(), {"type":"null"}]})
+}
+
+fn storage_id_projection<T: ToString>(value: &Option<T>) -> Option<serde_json::Value> {
+    Some(match value {
+        Some(value) => crate::extension_bus::managed_projection::text(&value.to_string())?,
+        None => serde_json::Value::Null,
+    })
 }

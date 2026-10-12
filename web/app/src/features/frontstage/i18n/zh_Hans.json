@@ -225,5 +225,21 @@
     "tab_route_segment": "访问路径",
     "tab_route_segment_required": "请输入标签页访问路径",
     "tab_settings": "标签页设置"
+  },
+  "files": {
+    "filename": "文件名",
+    "size": "大小",
+    "mimetype": "文件类型",
+    "created_at": "上传时间",
+    "upload": "上传文件",
+    "refresh": "刷新文件列表",
+    "close": "完成",
+    "upload_prompt": "点击或拖拽文件到这里上传",
+    "upload_hint": "支持同时选择多个文件，上传成功后自动更新列表。",
+    "empty": "尚无文件，上传后即可在这里查看。",
+    "table_unavailable": "文件表不可用，请检查文件表配置和访问权限。",
+    "upload_unavailable": "无法开始上传，请刷新页面后重试。",
+    "upload_success": "{{filename}} 上传成功",
+    "upload_failed": "文件上传失败，请重试。"
   }
 }

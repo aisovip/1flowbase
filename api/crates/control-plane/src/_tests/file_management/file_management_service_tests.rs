@@ -7,6 +7,34 @@ use control_plane::file_management::{
 };
 
 #[tokio::test]
+async fn file_table_create_can_inherit_without_resolving_default_but_explicit_binding_requires_root(
+) {
+    let repository = MemoryFileManagementRepository::new(memory_actor_context(false, &[]));
+    let service = FileTableService::new(repository);
+    let error = service
+        .create_table(control_plane::file_management::CreateFileTableCommand {
+            actor_user_id: Uuid::now_v7(),
+            code: "fixed_files".into(),
+            title: "Fixed".into(),
+            bound_storage_id: Some(Uuid::now_v7()),
+        })
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("permission_denied"));
+    let inherited = service
+        .create_table(control_plane::file_management::CreateFileTableCommand {
+            actor_user_id: Uuid::now_v7(),
+            code: "inherited_files".into(),
+            title: "Inherited".into(),
+            bound_storage_id: None,
+        })
+        .await
+        .unwrap();
+    assert!(inherited.table.bound_storage_id.is_none());
+    assert!(inherited.bound_storage_title.is_none());
+}
+
+#[tokio::test]
 async fn only_root_can_create_file_storage() {
     let repository = MemoryFileManagementRepository::new(memory_actor_context(false, &[]));
     let service = FileStorageService::new(repository);
@@ -37,7 +65,7 @@ async fn only_root_can_rebind_file_table_storage() {
         .bind_storage(BindFileTableStorageCommand {
             actor_user_id: Uuid::now_v7(),
             file_table_id: Uuid::now_v7(),
-            bound_storage_id: Uuid::now_v7(),
+            bound_storage_id: Some(Uuid::now_v7()),
         })
         .await
         .unwrap_err();

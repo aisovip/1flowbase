@@ -107,7 +107,11 @@ async fn bootstrap_creates_builtin_attachments_once() {
         .await
         .unwrap();
     let second = service
-        .ensure_builtin_attachments(Uuid::now_v7(), first.bound_storage_id, "attachments")
+        .ensure_builtin_attachments(
+            Uuid::now_v7(),
+            first.bound_storage_id.unwrap(),
+            "attachments",
+        )
         .await
         .unwrap();
 
@@ -258,14 +262,14 @@ async fn workspace_file_tables_create_system_model_and_workspace_grant() {
             workspace_id,
             code: "project_assets".into(),
             title: "Project Assets".into(),
-            default_storage_id,
+            bound_storage_id: Some(default_storage_id),
         })
         .await
         .unwrap();
 
     assert_eq!(created.scope_kind, FileTableScopeKind::Workspace);
     assert_eq!(created.scope_id, workspace_id);
-    assert_eq!(created.bound_storage_id, default_storage_id);
+    assert_eq!(created.bound_storage_id, Some(default_storage_id));
     assert_eq!(repository.recorded_file_tables().len(), 1);
 
     let model = ModelDefinitionRepository::get_model_definition(

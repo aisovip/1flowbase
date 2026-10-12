@@ -20,6 +20,7 @@ pub enum FileUploadTarget {
     Table(Uuid),
 }
 
+#[derive(Debug)]
 pub struct UploadedFileView {
     pub file_table_id: Uuid,
     pub record: serde_json::Value,
@@ -63,11 +64,14 @@ where
                 .await?
                 .ok_or(ControlPlaneError::NotFound("file_table"))?,
         };
-        let storage = self
-            .repository
-            .get_file_storage(file_table.bound_storage_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+        let storage = match file_table.bound_storage_id {
+            Some(storage_id) => self.repository.get_file_storage(storage_id).await?,
+            None => self.repository.get_default_file_storage().await?,
+        }
+        .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+        if !storage.enabled {
+            return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
+        }
         let model = self
             .repository
             .get_model_definition(
@@ -76,6 +80,28 @@ where
             )
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+        if model.availability_status != domain::MetadataAvailabilityStatus::Available {
+            return Err(ControlPlaneError::Conflict("model_definition_unavailable").into());
+        }
+        match model.status {
+            domain::DataModelStatus::Published => {}
+            domain::DataModelStatus::Draft => {
+                return Err(
+                    runtime_core::runtime_engine::RuntimeModelError::not_published(&model.code)
+                        .into(),
+                )
+            }
+            domain::DataModelStatus::Disabled => {
+                return Err(
+                    runtime_core::runtime_engine::RuntimeModelError::disabled(&model.code).into(),
+                )
+            }
+            domain::DataModelStatus::Broken => {
+                return Err(
+                    runtime_core::runtime_engine::RuntimeModelError::broken(&model.code).into(),
+                )
+            }
+        }
         let driver = self
             .registry
             .get(&storage.driver_type)
@@ -120,40 +146,42 @@ where
                 bytes: &command.bytes,
             })
             .await?;
-        let mut payload = serde_json::Map::from_iter([
-            (
-                "title".to_string(),
-                serde_json::Value::String(command.original_filename.clone()),
-            ),
-            (
-                "filename".to_string(),
-                serde_json::Value::String(command.original_filename),
-            ),
-            ("size".to_string(), serde_json::json!(command.bytes.len())),
-            ("mimetype".to_string(), serde_json::Value::String(mimetype)),
-            ("path".to_string(), serde_json::Value::String(stored.path)),
-            ("meta".to_string(), stored.metadata_json),
-            (
-                "storage_id".to_string(),
-                serde_json::Value::String(storage.id.to_string()),
-            ),
-        ]);
-        if !extname.is_empty() {
-            payload.insert("extname".to_string(), serde_json::Value::String(extname));
-        }
-        if let Some(url) = stored.url {
-            payload.insert("url".to_string(), serde_json::Value::String(url));
-        }
-
-        let record = self
-            .runtime_engine
-            .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
-                actor: command.actor,
-                model_code: model.code,
-                payload: serde_json::Value::Object(payload),
-                scope_grant: Some(scope_grant),
-            })
-            .await?;
+        let metadata = domain::file_management::UploadedFileMetadata {
+            title: command.original_filename.clone(),
+            filename: command.original_filename,
+            extname: (!extname.is_empty()).then_some(extname),
+            size: command.bytes.len() as u64,
+            mimetype,
+            path: stored.path,
+            meta: stored.metadata_json,
+            url: stored.url,
+            storage_id: storage.id,
+        };
+        let record = if domain::file_management::is_file_data_model_template(
+            &model.template_provider,
+            &model.template_code,
+            &model.template_version,
+        ) {
+            self.runtime_engine
+                .create_uploaded_file_record(
+                    runtime_core::runtime_engine::RuntimeUploadedFileInput {
+                        actor: command.actor,
+                        model_code: model.code,
+                        metadata,
+                        scope_grant: Some(scope_grant),
+                    },
+                )
+                .await?
+        } else {
+            self.runtime_engine
+                .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
+                    actor: command.actor,
+                    model_code: model.code,
+                    payload: serde_json::to_value(metadata)?,
+                    scope_grant: Some(scope_grant),
+                })
+                .await?
+        };
 
         Ok(UploadedFileView {
             file_table_id: file_table.id,

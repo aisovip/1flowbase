@@ -96,6 +96,14 @@ async fn create_model_definition_owned(
     input: &CreateModelDefinitionInput,
 ) -> Result<domain::ModelDefinitionRecord> {
     ensure_workspace_data_source_belongs_to_scope(store, input).await?;
+    if domain::file_management::is_file_data_model_template(
+        &input.template_provider,
+        &input.template_code,
+        &input.template_version,
+    ) && input.source_kind != domain::DataModelSourceKind::MainSource
+    {
+        return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
+    }
 
     let registered_table_name = registered_system_table_name(
         input.scope_kind,
@@ -208,6 +216,13 @@ async fn create_model_definition_owned(
                     )
                     .await?;
                 }
+                super::file_template::provision(
+                    &mut tx,
+                    &model,
+                    input.actor_user_id,
+                    input.bound_storage_id,
+                )
+                .await?;
             }
             append_change_log_tx(
                 &mut tx,
@@ -266,13 +281,17 @@ async fn create_model_definition_owned(
             Err(error) => {
                 tx.rollback().await?;
                 drop(publication);
-                insert_model_definition_after_failure(
-                    store.pool(),
-                    &model,
-                    actor_user_id,
-                    domain::MetadataAvailabilityStatus::Broken,
-                )
-                .await?;
+                // File metadata, physical table, and registration form one atomic resource.
+                // The ordinary broken-model diagnostic must not recreate a partial file model.
+                if !super::file_template::matches(&model) {
+                    insert_model_definition_after_failure(
+                        store.pool(),
+                        &model,
+                        actor_user_id,
+                        domain::MetadataAvailabilityStatus::Broken,
+                    )
+                    .await?;
+                }
                 append_change_log(
                     store.pool(),
                     &ChangeLogEntry {

@@ -242,6 +242,7 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     let model = control_plane_contracts::ports::ModelDefinitionRepository::create_model_definition(
         &store,
         &control_plane_contracts::ports::CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: actor_id,
             scope_kind: domain::DataModelScopeKind::Workspace,
             scope_id: actor.current_workspace_id,

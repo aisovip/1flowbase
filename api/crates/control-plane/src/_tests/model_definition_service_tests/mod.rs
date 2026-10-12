@@ -154,6 +154,7 @@ async fn ac_1281_model_definition_policy_only_allows_without_legacy_grant() {
         "model_definitions.create",
     )
     .create_model(CreateModelDefinitionCommand {
+        bound_storage_id: None,
         actor_user_id: actor.user_id,
         scope_kind: DataModelScopeKind::Workspace,
         data_source_instance_id: None,

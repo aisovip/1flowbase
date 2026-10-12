@@ -12,6 +12,9 @@ use extension_contracts::LifecycleContract;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
+#[path = "model_definition_repository/file_template.rs"]
+mod file_template;
+
 const BUILTIN_SYSTEM_TABLE_CONTRACT_METADATA_SQL: &str = include_str!(
     "../../migrations/20260630104000_preserve_builtin_system_table_contract_metadata.sql"
 );
@@ -175,6 +178,7 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -292,6 +296,7 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
     let system_created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::System,
             scope_id: SYSTEM_SCOPE_ID,
@@ -340,6 +345,7 @@ async fn ac_002_model_definition_repository_generates_enabled_regex_prefix() {
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -377,6 +383,7 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
         let created = ModelDefinitionRepository::create_model_definition(
             &store,
             &CreateModelDefinitionInput {
+                bound_storage_id: None,
                 actor_user_id: Uuid::nil(),
                 scope_kind: DataModelScopeKind::System,
                 scope_id: SYSTEM_SCOPE_ID,
@@ -417,6 +424,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
     let model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::System,
             scope_id: SYSTEM_SCOPE_ID,
@@ -604,6 +612,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -648,6 +657,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
     let system_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::System,
             scope_id: SYSTEM_SCOPE_ID,
@@ -722,6 +732,7 @@ async fn model_definition_repository_accepts_owner_scope_grant_for_workspace_mod
     let workspace_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -782,6 +793,7 @@ async fn model_definition_repository_rejects_cross_scope_grants_for_workspace_mo
     let workspace_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -847,6 +859,7 @@ async fn model_definition_repository_updates_owner_scope_grant_for_workspace_mod
     let workspace_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -920,6 +933,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
 
     let code = format!("orders_{}", Uuid::now_v7().simple());
     let input = CreateModelDefinitionInput {
+        bound_storage_id: None,
         actor_user_id,
         scope_kind: DataModelScopeKind::Workspace,
         scope_id: workspace_id,
@@ -964,6 +978,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
 
     let code = format!("orders_{}", Uuid::now_v7().simple());
     let input = CreateModelDefinitionInput {
+        bound_storage_id: None,
         actor_user_id: Uuid::nil(),
         scope_kind: DataModelScopeKind::Workspace,
         scope_id: workspace_id,
@@ -1021,6 +1036,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
     let first = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -1045,6 +1061,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
     let second = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -1107,6 +1124,7 @@ async fn ac_005_model_definition_repository_exhausts_regex_prefix_collisions() {
         let result = ModelDefinitionRepository::create_model_definition(
             &store,
             &CreateModelDefinitionInput {
+                bound_storage_id: None,
                 actor_user_id,
                 scope_kind: DataModelScopeKind::Workspace,
                 scope_id: workspace_id,
@@ -1159,6 +1177,7 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -1239,6 +1258,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
     let created = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,
@@ -1386,6 +1406,7 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
     let foreign_model = ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: foreign_workspace_id,

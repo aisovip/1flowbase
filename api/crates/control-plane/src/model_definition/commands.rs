@@ -2,6 +2,7 @@ use domain::DataModelScopeKind;
 use uuid::Uuid;
 
 pub struct CreateModelDefinitionCommand {
+    pub bound_storage_id: Option<Uuid>,
     pub actor_user_id: Uuid,
     pub scope_kind: DataModelScopeKind,
     pub data_source_instance_id: Option<Uuid>,

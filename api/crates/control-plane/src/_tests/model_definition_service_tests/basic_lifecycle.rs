@@ -1,10 +1,69 @@
 use super::*;
 
+fn file_create_command(actor_user_id: Uuid) -> CreateModelDefinitionCommand {
+    CreateModelDefinitionCommand {
+        actor_user_id,
+        bound_storage_id: None,
+        scope_kind: DataModelScopeKind::Workspace,
+        data_source_instance_id: None,
+        external_resource_key: None,
+        external_table_id: None,
+        external_capabilities: None,
+        template_provider: "core".into(),
+        template_code: "file".into(),
+        template_version: "v1".into(),
+        code: "workspace_files".into(),
+        title: "Files".into(),
+        description: None,
+        status: Some(DataModelStatus::Published),
+    }
+}
+
+#[tokio::test]
+async fn file_template_explicit_binding_requires_root_but_inheritance_does_not() {
+    let actor = ActorContext::scoped(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        "member",
+        ["state_model.create.all".to_owned()],
+    );
+    let repository = ScopedModelDefinitionRepository::new(actor.clone());
+    let service = ModelDefinitionService::new(repository.clone());
+    let mut bound = file_create_command(actor.user_id);
+    bound.bound_storage_id = Some(Uuid::now_v7());
+    let error = service.create_model(bound).await.unwrap_err();
+    assert!(error.to_string().contains("permission_denied"));
+    assert!(
+        repository.models.lock().unwrap().is_empty(),
+        "unauthorized selection must not create metadata"
+    );
+    let created = service
+        .create_model(file_create_command(actor.user_id))
+        .await
+        .unwrap();
+    assert_eq!(created.template_code, "file");
+}
+
+#[tokio::test]
+async fn file_template_rejects_external_source_before_model_creation() {
+    let mut command = file_create_command(Uuid::nil());
+    command.data_source_instance_id = Some(Uuid::now_v7());
+    command.external_resource_key = Some("external-files".into());
+    let error = ModelDefinitionService::for_tests()
+        .create_model(command)
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("data_model_template_incompatible"));
+}
+
 #[tokio::test]
 async fn data_model_template_update_preserves_create_only_identity_without_conversion() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -43,6 +102,7 @@ async fn add_field_returns_immediately_usable_metadata_without_publish_step() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -100,6 +160,7 @@ async fn update_field_saves_user_owned_description_metadata() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -163,6 +224,7 @@ async fn delete_model_requires_explicit_confirmation() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -256,6 +318,7 @@ async fn create_system_model_uses_fixed_system_scope_id() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::System,
             data_source_instance_id: None,
@@ -283,6 +346,7 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -353,6 +417,7 @@ async fn in_memory_repository_rejects_cross_scope_grant_for_workspace_model() {
     let service = ModelDefinitionService::new(repository.clone());
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -395,6 +460,7 @@ async fn create_model_defaults_to_main_source_published_status() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -426,6 +492,7 @@ async fn create_model_inherits_main_source_defaults() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,

@@ -80,6 +80,7 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 }
                 let created = owner
                     .create_model(CreateModelDefinitionCommand {
+                        bound_storage_id: None,
                         actor_user_id: actor.user_id,
                         scope_kind: model.scope_kind,
                         data_source_instance_id: None,

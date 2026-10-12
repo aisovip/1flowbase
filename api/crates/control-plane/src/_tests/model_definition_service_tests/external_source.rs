@@ -73,6 +73,7 @@ async fn main_source_default_status_stays_published() {
     let service = ModelDefinitionService::new(repository);
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -101,6 +102,7 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -125,6 +127,7 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
 async fn data_model_template_create_fails_closed_for_unknown_identity() {
     let error = ModelDefinitionService::for_tests()
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -156,6 +159,7 @@ async fn data_model_template_create_rejects_external_capability_mismatch() {
     );
     let error = ModelDefinitionService::new(repository)
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: Some(data_source_instance_id),
@@ -195,6 +199,7 @@ async fn create_model_inherits_data_source_defaults_when_instance_is_selected() 
 
     let created = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: Some(data_source_instance_id),
@@ -234,6 +239,7 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
 
     let missing_external_key = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: Some(data_source_instance_id),
@@ -260,6 +266,7 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
 
     let main_source_external_key = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -291,6 +298,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
     let service = ModelDefinitionService::new(repository);
     let external_model = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: Some(data_source_instance_id),
@@ -338,6 +346,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
 
     let main_model = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id: Uuid::nil(),
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: None,
@@ -398,6 +407,7 @@ async fn create_model_rejects_data_source_defaults_outside_actor_workspace() {
 
     let error = service
         .create_model(CreateModelDefinitionCommand {
+            bound_storage_id: None,
             actor_user_id,
             scope_kind: DataModelScopeKind::Workspace,
             data_source_instance_id: Some(data_source_instance_id),

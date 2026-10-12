@@ -102,6 +102,17 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  if (moduleSource === '@1flowbase/files') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/files/index.d.ts',
+      content: `declare module '@1flowbase/files' {
+  import type { ReactElement } from 'react';
+  export interface FileTableViewProps { fileTableCode: string; }
+  export function FileTableView(props: FileTableViewProps): ReactElement;
+}`
+    };
+  }
   if (moduleSource === '@1flowbase/plugin-settings') {
     return {
       source: moduleSource,

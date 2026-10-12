@@ -195,7 +195,10 @@ export function FileManagementPanel({
     });
   };
 
-  const handleUpdateBinding = async (tableId: string, storageId: string) => {
+  const handleUpdateBinding = async (
+    tableId: string,
+    storageId: string | null
+  ) => {
     await updateSettingsFileTableBinding(
       tableId,
       { bound_storage_id: storageId },
@@ -344,7 +347,7 @@ export function FileManagementPanel({
           <Tag color="orange">
             {record.bound_storage_id
               ? i18nText('settings', 'auto.unnamed_storage')
-              : i18nText('settings', 'auto.unbound')}
+              : i18nText('settings', 'auto.follow_default_storage')}
           </Tag>
         );
       }

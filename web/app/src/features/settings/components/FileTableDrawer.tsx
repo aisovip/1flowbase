@@ -17,7 +17,7 @@ interface FileTableDrawerProps {
   storages: SettingsFileStorage[];
   onClose: () => void;
   onSuccess: () => void;
-  onUpdateBinding: (tableId: string, storageId: string) => Promise<void>;
+  onUpdateBinding: (tableId: string, storageId: string | null) => Promise<void>;
 }
 
 interface TableFormValues {
@@ -66,7 +66,11 @@ export function FileTableDrawer({
       }
 
       await createSettingsFileTable(
-        { code: values.code, title: values.title },
+        {
+          code: values.code,
+          title: values.title,
+          bound_storage_id: values.bound_storage_id || null
+        },
         csrfToken
       );
 
@@ -90,7 +94,7 @@ export function FileTableDrawer({
     try {
       const values = form.getFieldsValue();
       setBindingSubmitting(true);
-      await onUpdateBinding(record.id, values.bound_storage_id || '');
+      await onUpdateBinding(record.id, values.bound_storage_id || null);
       message.success(i18nText('settings', 'auto.binding_updated'));
       onSuccess();
       onClose();
@@ -178,26 +182,23 @@ export function FileTableDrawer({
           />
         </Form.Item>
 
+        <Form.Item
+          name="bound_storage_id"
+          label={i18nText('settings', 'auto.bound_storage')}
+          extra={i18nText(
+            'settings',
+            'auto.follow_default_storage_description'
+          )}
+        >
+          <Select
+            options={storageOptions}
+            placeholder={i18nText('settings', 'auto.follow_default_storage')}
+            allowClear
+            disabled={isView}
+          />
+        </Form.Item>
         {mode !== 'create' && (
           <>
-            <Form.Item
-              name="bound_storage_id"
-              label={i18nText('settings', 'auto.bound_storage')}
-              rules={[
-                {
-                  required: true,
-                  message: i18nText('settings', 'auto.storage_required')
-                }
-              ]}
-            >
-              <Select
-                options={storageOptions}
-                placeholder={i18nText('settings', 'auto.select_storage')}
-                allowClear
-                disabled={isView}
-              />
-            </Form.Item>
-
             <Form.Item label={i18nText('settings', 'auto.scope')}>
               <Input
                 value={

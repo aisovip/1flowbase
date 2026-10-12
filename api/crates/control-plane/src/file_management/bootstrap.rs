@@ -15,7 +15,7 @@ pub struct CreateWorkspaceFileTableCommand {
     pub workspace_id: Uuid,
     pub code: String,
     pub title: String,
-    pub default_storage_id: Uuid,
+    pub bound_storage_id: Option<Uuid>,
 }
 
 pub struct FileManagementBootstrapService<R> {
@@ -36,7 +36,7 @@ struct ProvisionFileTableInput {
     title: String,
     file_table_scope_kind: FileTableScopeKind,
     file_table_scope_id: Uuid,
-    bound_storage_id: Uuid,
+    bound_storage_id: Option<Uuid>,
     is_builtin: bool,
     is_default: bool,
     protection: domain::DataModelProtection,
@@ -94,6 +94,7 @@ where
 {
     let model = repository
         .create_model_definition(&CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: input.actor_user_id,
             scope_kind: input.model_scope_kind,
             scope_id: input.model_scope_id,
@@ -265,7 +266,7 @@ where
                     scope_kind: FileTableScopeKind::System,
                     scope_id: SYSTEM_SCOPE_ID,
                     model_definition_id: existing_model.id,
-                    bound_storage_id: default_storage_id,
+                    bound_storage_id: Some(default_storage_id),
                     is_builtin: true,
                     is_default: true,
                 })
@@ -284,7 +285,7 @@ where
                 title: ATTACHMENTS_DEFAULT_TITLE.into(),
                 file_table_scope_kind: FileTableScopeKind::System,
                 file_table_scope_id: SYSTEM_SCOPE_ID,
-                bound_storage_id: default_storage_id,
+                bound_storage_id: Some(default_storage_id),
                 is_builtin: true,
                 is_default: true,
                 protection: domain::DataModelProtection {
@@ -323,7 +324,7 @@ where
                 title: command.title,
                 file_table_scope_kind: FileTableScopeKind::Workspace,
                 file_table_scope_id: command.workspace_id,
-                bound_storage_id: command.default_storage_id,
+                bound_storage_id: command.bound_storage_id,
                 is_builtin: false,
                 is_default: false,
                 protection: domain::DataModelProtection::default(),

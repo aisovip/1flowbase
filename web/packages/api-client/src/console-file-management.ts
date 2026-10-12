@@ -30,7 +30,7 @@ export interface ConsoleFileTable {
   scope_kind: 'system' | 'workspace';
   scope_id: string;
   model_definition_id: string;
-  bound_storage_id: string;
+  bound_storage_id: string | null;
   bound_storage_title: string | null;
   is_builtin: boolean;
   is_default: boolean;
@@ -40,10 +40,66 @@ export interface ConsoleFileTable {
 export interface CreateConsoleFileTableInput {
   code: string;
   title: string;
+  bound_storage_id?: string | null;
 }
 
 export interface UpdateConsoleFileTableBindingInput {
-  bound_storage_id: string;
+  bound_storage_id: string | null;
+}
+
+export interface UploadedConsoleFile {
+  file_table_id: string;
+  storage_id: string;
+  record: Record<string, unknown>;
+}
+
+export interface ConsoleFileRecord extends Record<string, unknown> {
+  id: string;
+  title: string | null;
+  filename: string;
+  size: number;
+  mimetype: string;
+  created_at: string;
+  storage_id: string;
+}
+
+export function fetchConsoleFileRecords(
+  modelCode: string,
+  page: number,
+  pageSize: number,
+  signal?: AbortSignal
+) {
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    sort: 'created_at:desc'
+  });
+  return apiFetch<{ items: ConsoleFileRecord[]; total: number }>({
+    path: `/api/runtime/models/${encodeURIComponent(modelCode)}/list?${query}`,
+    signal
+  });
+}
+
+export function consoleFileContentPath(fileTableId: string, recordId: string) {
+  return `/api/console/files/${encodeURIComponent(fileTableId)}/records/${encodeURIComponent(recordId)}/content`;
+}
+
+export function uploadConsoleFile(
+  file: File,
+  fileTableId: string,
+  csrfToken: string,
+  signal?: AbortSignal
+) {
+  const formData = new FormData();
+  formData.append('file_table_id', fileTableId);
+  formData.append('file', file);
+  return apiFetch<UploadedConsoleFile>({
+    path: '/api/console/files/upload',
+    method: 'POST',
+    rawBody: formData,
+    csrfToken,
+    signal
+  });
 }
 
 export interface UpdateConsoleFileStorageInput {

@@ -380,6 +380,7 @@ async fn root_2007_ac_006_transaction_targets() {
     // Deferred failure occurs at commit, after the real Create owner has inserted fact + targets.
     sqlx::raw_sql("create function reject_root_2007_rollback() returns trigger language plpgsql as $$ begin if new.code = 'root_2007_rollback' then raise exception 'root 2007 injected commit failure'; end if; return new; end $$; create constraint trigger root_2007_commit_failure after insert on model_definitions deferrable initially deferred for each row execute function reject_root_2007_rollback();").execute(store.pool()).await.unwrap();
     let mut input = CreateModelDefinitionInput {
+        bound_storage_id: None,
         actor_user_id: Uuid::nil(),
         scope_kind: domain::DataModelScopeKind::Workspace,
         scope_id: workspace.id,

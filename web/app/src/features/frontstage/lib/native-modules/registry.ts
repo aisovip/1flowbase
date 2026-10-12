@@ -179,9 +179,13 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
     module: await import('@1flowbase/ui')
   })),
-  registration('@1flowbase/plugin-settings', ['request', 'openStream'], async () => ({
-    module: await import('./plugin-settings/runtime')
-  })),
+  registration(
+    '@1flowbase/plugin-settings',
+    ['request', 'openStream'],
+    async () => ({
+      module: await import('./plugin-settings/runtime')
+    })
+  ),
   registration(
     '@1flowbase/data-table',
     [
@@ -217,6 +221,20 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
   })),
+  registration('@1flowbase/files', ['FileTableView'], async () => {
+    const [module, tableStyle, layoutStyle, mobileStyle] = await Promise.all([
+      import('../../components/files/FileTableView'),
+      import('../../../../shared/ui/data-table/data-table.css?inline'),
+      import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
+      import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
+    ]);
+    return {
+      module,
+      styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({
+        css: style.default
+      }))
+    };
+  }),
   registration(
     '@1flowbase/application-run-logs',
     ['ApplicationRunLogViewer', 'ApplicationLogs', 'AllAgentFlowLogs'],

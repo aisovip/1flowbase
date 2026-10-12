@@ -14,6 +14,7 @@ impl extension_contracts::LifecycleContract for ModelDefinitionCommittedFact {
 
 #[derive(Debug, Clone)]
 pub struct CreateModelDefinitionInput {
+    pub bound_storage_id: Option<Uuid>,
     pub actor_user_id: Uuid,
     pub scope_kind: DataModelScopeKind,
     pub scope_id: Uuid,

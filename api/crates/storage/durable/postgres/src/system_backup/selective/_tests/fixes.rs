@@ -30,6 +30,7 @@ async fn model_fixture(db: &PgPool, actor: Uuid) -> domain::ModelDefinitionRecor
     ModelDefinitionRepository::create_model_definition(
         &store,
         &CreateModelDefinitionInput {
+            bound_storage_id: None,
             actor_user_id: actor,
             scope_kind: domain::DataModelScopeKind::Workspace,
             scope_id: workspace,
