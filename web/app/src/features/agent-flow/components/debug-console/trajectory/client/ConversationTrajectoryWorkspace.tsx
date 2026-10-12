@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Popover, Select, Spin } from 'antd';
 import type {
   ConversationTrajectoryQuery,
+  ConversationClientTrajectoryQueryPage,
   ConversationTrajectoryIndexItem,
   ConversationClientTrajectoryStep
 } from '@1flowbase/api-client';
@@ -217,7 +218,11 @@ function CanonicalTimeline({
     initialKey,
     onVisibleKeys,
     retry
-  } = useTrajectoryWindow({
+  } = useTrajectoryWindow<
+    ConversationClientTrajectoryStep,
+    ConversationTrajectoryIndexItem,
+    ConversationClientTrajectoryQueryPage
+  >({
     queryKey: [
       'conversation-client-trajectory',
       logConversationId,

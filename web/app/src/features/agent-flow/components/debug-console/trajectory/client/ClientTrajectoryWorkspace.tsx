@@ -7,6 +7,7 @@ import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import type {
   ClientTrajectoryIndexItem,
   ClientTrajectoryStep,
+  ClientTrajectoryPage,
   ClientTrajectoryOptions
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
@@ -108,7 +109,11 @@ export function ClientTrajectoryWorkspace({
     initialKey,
     onVisibleKeys,
     retry
-  } = useTrajectoryWindow({
+  } = useTrajectoryWindow<
+    ClientTrajectoryStep,
+    ClientTrajectoryIndexItem,
+    ClientTrajectoryPage
+  >({
     queryKey: [
       'client-trajectory',
       runId,

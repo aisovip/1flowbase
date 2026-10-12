@@ -86,7 +86,11 @@ export function NativeTrajectoryWorkspace({
     initialKey,
     onVisibleKeys,
     retry
-  } = useTrajectoryWindow({
+  } = useTrajectoryWindow<
+    WorkflowTrajectoryEvent,
+    WorkflowTrajectoryIndexItem,
+    WorkflowTrajectoryPage
+  >({
     queryKey: ['workflow-trajectory', runId, filters],
     enabled: active && Boolean(loader.loadWorkflowTrajectory),
     loadPage: (focusId, indexOnly) =>

@@ -13,20 +13,18 @@ test('consumer rerenders retain the viewport observer and report current rows wi
     callback: ResizeObserverCallback;
     disconnect: ReturnType<typeof vi.fn>;
   }> = [];
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      targets: Element[] = [];
-      disconnect = vi.fn();
-      unobserve = vi.fn();
-      constructor(public callback: ResizeObserverCallback) {
-        observers.push(this);
-      }
-      observe(target: Element) {
-        this.targets.push(target);
-      }
+  const previousObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    targets: Element[] = [];
+    disconnect = vi.fn();
+    unobserve = vi.fn();
+    constructor(public callback: ResizeObserverCallback) {
+      observers.push(this);
     }
-  );
+    observe(target: Element) {
+      this.targets.push(target);
+    }
+  };
   const items = Array.from({ length: 10000 }, (_, index) => ({
     id: String(index)
   }));
@@ -74,6 +72,6 @@ test('consumer rerenders retain the viewport observer and report current rows wi
     await waitFor(() => expect(document.activeElement?.textContent).toBe('0'));
   } finally {
     rendered.unmount();
-    vi.unstubAllGlobals();
+    globalThis.ResizeObserver = previousObserver;
   }
 });
