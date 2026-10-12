@@ -28,7 +28,7 @@ function fixture() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  const hook = renderHook(
+  const view = renderHook(
     ({ scope, active }) =>
       useTrajectoryWindow({
         queryKey: ['window-fixture', scope],
@@ -39,7 +39,7 @@ function fixture() {
       }),
     { wrapper, initialProps: { scope: 'a', active: true } }
   );
-  return { ...hook, loadPage, client };
+  return { ...view, loadPage, client };
 }
 test('complete index does not drain rows; distant viewport fetches directly and cached revisits are idle', async () => {
   const { result, loadPage, unmount, client } = fixture();
@@ -103,4 +103,21 @@ test('switching scope clears extra rows and ignores a late previous-scope window
   expect(result.current.loaded.has('9000')).toBe(false);
   unmount();
   client.clear();
+});
+
+test('explicit distant focus survives an intervening viewport report', async () => {
+  const { result, loadPage, unmount, client } = fixture();
+  try {
+    await waitFor(() => expect(result.current.loaded.size).toBe(20));
+    act(() => {
+      result.current.requestFocus('9000');
+      result.current.onVisibleKeys(['0', '1']);
+    });
+    await waitFor(() => expect(result.current.loaded.has('9000')).toBe(true));
+    expect(loadPage).toHaveBeenLastCalledWith('9000', false);
+    expect(loadPage).toHaveBeenCalledTimes(3);
+  } finally {
+    unmount();
+    client.clear();
+  }
 });

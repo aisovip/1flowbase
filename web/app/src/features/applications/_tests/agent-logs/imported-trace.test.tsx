@@ -212,12 +212,12 @@ function mount(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
-  const result = render(
+  const view = render(
     <QueryClientProvider client={client}>
       <App>{ui}</App>
     </QueryClientProvider>
   );
-  return { ...result, client };
+  return { ...view, client };
 }
 test.each(['message trace', 'trajectory window'])(
   '%s resolves canonical scope and shows one flat timeline without tree reads',
@@ -252,7 +252,7 @@ test.each(['message trace', 'trajectory window'])(
     );
     expect(
       screen
-        .getByRole('button', { name: '工具调用 · main-tool' })
+        .queryByRole('button', { name: '工具调用 · main-tool' })!
         .querySelector('.conversation-trajectory__source')
     ).toBeNull();
     expect(f.loader.loadTree).not.toHaveBeenCalled();

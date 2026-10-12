@@ -254,19 +254,7 @@ pub(super) fn route_assembly(
     operation: &plugin_framework::ManagedServiceOperation,
 ) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
     use crate::routes::console_route_assembly::*;
-    let path = operation
-        .path
-        .strip_prefix("/api/console")
-        .unwrap()
-        .split('/')
-        .map(|s| {
-            s.strip_prefix('{')
-                .and_then(|s| s.strip_suffix('}'))
-                .map(|s| format!(":{s}"))
-                .unwrap_or_else(|| s.into())
-        })
-        .collect::<Vec<_>>()
-        .join("/");
+    let path = super::routes::axum_path(&operation.path);
     let owner =
         access_control::ConsoleRouteOwnership::ConsoleOperation(operation.interface_id.clone());
     let operation = Arc::new(operation.clone());

@@ -298,7 +298,10 @@ fn publish_external_endpoint_catalog(
     let mut compiler = external_endpoint_catalog::ExternalEndpointCatalogCompiler::default();
     compiler.contribute_openapi_document("api-server.openapi", openapi_document)?;
     compiler.absorb_registry("compiled-interface-registry", registry.as_ref())?;
-    compiler.contribute_managed_stream_controls(state.console_surface_registry.managed_services(), registry.as_ref())?;
+    compiler.contribute_managed_stream_controls(
+        state.console_surface_registry.managed_services(),
+        registry.as_ref(),
+    )?;
     compiler.contribute_mcp_protocol_surface(routes::mcp_protocol::MCP_INVOCATION_BINDING_ID)?;
     compiler.contribute_approved_controls(include_docs)?;
     compiler.contribute_mounted_routes(mounted)?;

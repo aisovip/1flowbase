@@ -1,9 +1,8 @@
 name: Agent Logs regression
 
 on:
-  push:
-    branches: [codex/agent-logs-reimport, codex/agent-logs-unified-query]
-    paths: ["api/**", ".github/workflows/agent-logs-regression.yml"]
+  # Full frontend/backend and foundation suites own continuous integration.
+  # This finite diagnostic batch accepts an exact candidate, independent of delivery branches.
   workflow_dispatch:
     inputs:
       source_ref:

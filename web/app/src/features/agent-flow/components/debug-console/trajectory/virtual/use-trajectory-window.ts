@@ -73,6 +73,12 @@ export function useTrajectoryWindow<
     scope,
     keys: []
   });
+  // Explicit navigation is retained independently of incidental viewport reports.
+  const [focus, setFocus] = useState<{ scope: string; key: string } | null>(null);
+  const requestFocus = useCallback(
+    (key: string) => setFocus({ scope, key }),
+    [scope]
+  );
   const inFlight = useRef<string | null>(null);
   const windowPages = windows.scope === scope ? windows.pages : [];
   const error = windows.scope === scope ? windows.error : null;
@@ -106,10 +112,15 @@ export function useTrajectoryWindow<
     },
     [scope]
   );
-  const missing =
-    viewport.scope === scope
-      ? viewport.keys.find((key) => validKeys.has(key) && !loaded.has(key))
+  const focusMissing =
+    focus?.scope === scope && validKeys.has(focus.key) && !loaded.has(focus.key)
+      ? focus.key
       : undefined;
+  const missing =
+    focusMissing ??
+    (viewport.scope === scope
+      ? viewport.keys.find((key) => validKeys.has(key) && !loaded.has(key))
+      : undefined);
   useEffect(() => {
     if (
       !enabled ||
@@ -215,6 +226,7 @@ export function useTrajectoryWindow<
       ? getRowKey(first.data.items[0])
       : undefined,
     onVisibleKeys,
+    requestFocus,
     retry
   };
 }

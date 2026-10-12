@@ -717,9 +717,9 @@ async fn run_reader(
                     }
                     MultiplexWorkerMessage::Event { await_ack, ref event_id, .. } => {
                         if await_ack {
-                            let Some(sequence) = event_id.as_ref().and_then(|id| id.parse::<u64>().ok().filter(|n| *n > call.max_event_id && n.to_string() == *id)) else { break "invalid event sequence".to_string(); };
+                            let Some((event_id, sequence)) = event_id.as_ref().and_then(|id| id.parse::<u64>().ok().filter(|n| *n > call.max_event_id && n.to_string() == *id).map(|n| (id, n))) else { break "invalid event sequence".to_string(); };
                             call.max_event_id = sequence;
-                            call.pending_acks.insert(event_id.clone().unwrap());
+                            call.pending_acks.insert(event_id.clone());
                         } else if event_id.is_some() { break "event id requires acknowledgment".to_string(); }
                         if call.cancelling_since.is_some() { continue; }
                         let permit = call.event_budget.clone().try_acquire_many_owned(frame_bytes as u32);

@@ -145,7 +145,7 @@ test('existing message UI renders backend system/question/final projection and n
       'canonical-main-session',
       expect.objectContaining({
         focus_record_id: 'record-1',
-        cursor: undefined
+        index_only: true
       })
     )
   );

@@ -410,7 +410,12 @@ impl ManagedWorkers {
                     if let Some((pool, epoch, actor)) = shared {
                         let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
                         capability_multiplex::exchange_shared(
-                            &worker, &binding, &request, lease, activity, host_calls, duplex,
+                            &worker,
+                            &binding,
+                            &request,
+                            Box::new((lease, activity)),
+                            host_calls,
+                            duplex,
                             cancel,
                         )
                         .await

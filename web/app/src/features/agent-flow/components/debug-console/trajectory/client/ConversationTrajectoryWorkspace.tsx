@@ -217,6 +217,7 @@ function CanonicalTimeline({
     items,
     initialKey,
     onVisibleKeys,
+    requestFocus,
     retry
   } = useTrajectoryWindow<
     ConversationClientTrajectoryStep,
@@ -321,11 +322,11 @@ function CanonicalTimeline({
         setSelected(id);
         setRelatedStep(null);
         setRelatedTarget(null);
-        onVisibleKeys([id]);
+        requestFocus(id);
         requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
       } else setRelatedTarget(id);
     },
-    [index, onVisibleKeys]
+    [index, requestFocus]
   );
   function changeRange(range: TrajectoryRange) {
     if (!range && preserveRangeOnSelect.current) return;

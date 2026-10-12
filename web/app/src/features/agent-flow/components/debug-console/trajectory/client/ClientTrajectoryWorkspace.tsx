@@ -108,6 +108,7 @@ export function ClientTrajectoryWorkspace({
     items,
     initialKey,
     onVisibleKeys,
+    requestFocus,
     retry
   } = useTrajectoryWindow<
     ClientTrajectoryStep,
@@ -245,7 +246,7 @@ export function ClientTrajectoryWorkspace({
       setSelected(id);
       setCategory(null);
       setSearch('');
-      onVisibleKeys([id]);
+      requestFocus(id);
       if (step)
         setCollapsed((current) => {
           const next = new Set(current);
@@ -255,16 +256,16 @@ export function ClientTrajectoryWorkspace({
         });
       requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
     },
-    [timelineItems, overview, onVisibleKeys]
+    [timelineItems, overview, requestFocus]
   );
   useEffect(() => {
     if (!active || !selected || !index.some((step) => step.id === selected))
       return;
-    onVisibleKeys([selected]);
+    requestFocus(selected);
     requestAnimationFrame(() =>
       virtualList.current?.scrollTo({ key: selected })
     );
-  }, [active, selected, overview, onVisibleKeys]);
+  }, [active, selected, overview, requestFocus]);
   const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);

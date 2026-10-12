@@ -135,6 +135,14 @@ struct Hit {
     position: Position,
     matches: Vec<RecordTrajectoryMatch>,
 }
+// Cursor direction and acquisition bounds form one scan state, independent of membership.
+struct ScanWindow<'a> {
+    position: Option<Position>,
+    previous: bool,
+    focus_time: Option<&'a str>,
+    count: usize,
+}
+
 /// Only the source scan quantum is fixed. Result size and total search scope
 /// have no arbitrary ceiling; semantic bodies are opened only when requested.
 async fn scan(
@@ -143,11 +151,14 @@ async fn scan(
     conversation: Uuid,
     query: &ConversationClientTrajectoryQuery,
     sections: &[String],
-    mut position: Option<Position>,
-    previous: bool,
-    focus_time: Option<&str>,
-    count: usize,
+    window: ScanWindow<'_>,
 ) -> Result<Vec<Hit>> {
+    let ScanWindow {
+        mut position,
+        previous,
+        focus_time,
+        count,
+    } = window;
     let fields = conversation_trajectory_query_fields();
     let comparison = if previous { "<" } else { ">" };
     let direction = if previous { "desc" } else { "asc" };
@@ -340,10 +351,12 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
         conversation,
         query,
         &sections,
-        page.map(|p| p.position).or(initial_position),
-        previous,
-        initial_focus,
-        lookahead,
+        ScanWindow {
+            position: page.map(|p| p.position).or(initial_position),
+            previous,
+            focus_time: initial_focus,
+            count: lookahead,
+        },
     )
     .await?;
     let mut reverse = previous;
@@ -357,14 +370,16 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
                 conversation,
                 query,
                 &sections,
-                Some(Position {
-                    timestamp: timestamp.into(),
-                    step_id: Uuid::nil(),
-                    record_id: Uuid::nil(),
-                }),
-                true,
-                None,
-                lookahead,
+                ScanWindow {
+                    position: Some(Position {
+                        timestamp: timestamp.into(),
+                        step_id: Uuid::nil(),
+                        record_id: Uuid::nil(),
+                    }),
+                    previous: true,
+                    focus_time: None,
+                    count: lookahead,
+                },
             )
             .await?;
             reverse = true;
@@ -378,10 +393,12 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
                 conversation,
                 query,
                 &sections,
-                Some(target),
-                true,
-                None,
-                lookahead,
+                ScanWindow {
+                    position: Some(target),
+                    previous: true,
+                    focus_time: None,
+                    count: lookahead,
+                },
             )
             .await?;
             reverse = true;
@@ -400,10 +417,12 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
             conversation,
             query,
             &sections,
-            Some(first.position.clone()),
-            true,
-            None,
-            1,
+            ScanWindow {
+                position: Some(first.position.clone()),
+                previous: true,
+                focus_time: None,
+                count: 1,
+            },
         )
         .await?
         .is_empty()
@@ -422,10 +441,12 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
             conversation,
             query,
             &sections,
-            Some(last.position.clone()),
-            false,
-            None,
-            1,
+            ScanWindow {
+                position: Some(last.position.clone()),
+                previous: false,
+                focus_time: None,
+                count: 1,
+            },
         )
         .await?
         .is_empty()

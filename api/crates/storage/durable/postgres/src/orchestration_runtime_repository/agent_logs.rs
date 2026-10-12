@@ -141,8 +141,13 @@ pub(super) async fn ingest(
     }
     if !changed_records.is_empty() {
         hierarchy::resolve(
-            &mut tx, application_id, scope_id, &batch.source_id, &batch.source_client,
-        ).await?;
+            &mut tx,
+            application_id,
+            scope_id,
+            &batch.source_id,
+            &batch.source_client,
+        )
+        .await?;
     }
     receipt.record_ids = records.into_iter().collect();
     tx.commit().await?;
@@ -338,10 +343,10 @@ async fn refresh_task(
     Ok(())
 }
 
-mod hierarchy;
 pub(super) mod conversation;
-pub(super) mod trace;
+mod hierarchy;
 pub(super) mod reads;
+pub(super) mod trace;
 pub(super) use reads::{overview, page, section};
 
 /// Project only source-declared terminals; later usage/context does not move

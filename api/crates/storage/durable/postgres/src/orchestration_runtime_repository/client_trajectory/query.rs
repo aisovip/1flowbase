@@ -36,7 +36,7 @@ impl PgControlPlaneStore {
             let cursor = query
                 .cursor
                 .map(|n| {
-                    n.checked_abs().ok_or_else(|| {
+                    n.checked_abs().ok_or({
                         control_plane_contracts::ControlPlaneContractError::InvalidInput(
                             "trajectory_cursor",
                         )
@@ -47,14 +47,16 @@ impl PgControlPlaneStore {
                 .read_client_trajectory_window(
                     run,
                     node,
-                    cursor,
-                    query.limit,
-                    TrajectorySelection {
-                        request_id: query.request_id,
-                        target_id: query.focus_step_id,
+                    ClientTrajectoryWindow {
+                        cursor,
+                        limit: query.limit,
+                        selection: TrajectorySelection {
+                            request_id: query.request_id,
+                            target_id: query.focus_step_id,
+                        },
+                        ids: None,
+                        previous,
                     },
-                    None,
-                    previous,
                 )
                 .await?;
             if let (Some(first), Some(last)) = (page.items.first(), page.items.last()) {
@@ -251,14 +253,16 @@ impl PgControlPlaneStore {
             self.read_client_trajectory_window(
                 run,
                 node,
-                first.map(|n| n - 1),
-                limit as i64,
-                TrajectorySelection {
-                    request_id: query.request_id,
-                    target_id: None,
+                ClientTrajectoryWindow {
+                    cursor: first.map(|n| n - 1),
+                    limit: limit as i64,
+                    selection: TrajectorySelection {
+                        request_id: query.request_id,
+                        target_id: None,
+                    },
+                    ids: Some(&ids),
+                    previous: false,
                 },
-                Some(&ids),
-                false,
             )
             .await?
             .items

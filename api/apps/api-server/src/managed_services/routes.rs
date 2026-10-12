@@ -29,21 +29,7 @@ pub(crate) fn route_assembly(
                 operation.interface_id.clone(),
             );
             let method = operation.method.clone();
-            // Axum 0.7 uses :parameter, canonical catalogs and manifests use {parameter}.
-            let path = operation
-                .path
-                .strip_prefix("/api/console")
-                .expect("validated managed service route")
-                .split('/')
-                .map(|s| {
-                    if s.starts_with('{') && s.ends_with('}') {
-                        format!(":{}", &s[1..s.len() - 1])
-                    } else {
-                        s.to_owned()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("/");
+            let path = axum_path(operation.path.as_str());
             let handler = move |State(state): State<Arc<ApiState>>,
                                 Path(path): Path<BTreeMap<String, String>>,
                                 Query(query): Query<BTreeMap<String, String>>,
@@ -128,4 +114,21 @@ async fn invoke(
     )
     .await?;
     Ok(Json(ApiSuccess::new(output)))
+}
+
+// Registration validates console membership before either transport is mounted.
+// Axum 0.7 uses :parameter; canonical catalogs and manifests use {parameter}.
+pub(super) fn axum_path(path: &str) -> String {
+    path.strip_prefix("/api/console")
+        .expect("validated managed service route")
+        .split('/')
+        .map(|s| {
+            if s.starts_with('{') && s.ends_with('}') {
+                format!(":{}", &s[1..s.len() - 1])
+            } else {
+                s.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }

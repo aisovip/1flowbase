@@ -138,9 +138,7 @@ test.each([false, true])(
           await vi.advanceTimersByTimeAsync(1_000);
         });
       }
-      await waitFor(() =>
-        expect(screen.getByText('Main final 8')).toBeInTheDocument()
-      );
+      expect(await screen.findByText('Main final 8')).toBeInTheDocument();
       for (let number = 1; number <= 15; number += 1) {
         expect(screen.getAllByText('Main system ' + number)).toHaveLength(1);
         expect(screen.getAllByText('Main question ' + number)).toHaveLength(1);

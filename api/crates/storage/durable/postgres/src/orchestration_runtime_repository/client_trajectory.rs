@@ -14,6 +14,15 @@ use control_plane_contracts::ports::{
     ClientTrajectorySection, ClientTrajectorySectionItem, ClientTrajectoryStep,
 };
 
+// Query acquisition details remain private to the PostgreSQL read owner.
+struct ClientTrajectoryWindow<'a> {
+    cursor: Option<i64>,
+    limit: i64,
+    selection: control_plane_contracts::ports::TrajectorySelection,
+    ids: Option<&'a [Uuid]>,
+    previous: bool,
+}
+
 #[derive(sqlx::FromRow)]
 struct FlowContentScope {
     scope_id: Uuid,
@@ -236,11 +245,13 @@ impl PgControlPlaneStore {
         self.read_client_trajectory_window(
             flow_run_id,
             node_run_id,
-            cursor,
-            limit,
-            selection,
-            None,
-            false,
+            ClientTrajectoryWindow {
+                cursor,
+                limit,
+                selection,
+                ids: None,
+                previous: false,
+            },
         )
         .await
     }
@@ -249,12 +260,15 @@ impl PgControlPlaneStore {
         &self,
         flow_run_id: Uuid,
         node_run_id: Option<Uuid>,
-        cursor: Option<i64>,
-        limit: i64,
-        selection: control_plane_contracts::ports::TrajectorySelection,
-        ids: Option<&[Uuid]>,
-        previous: bool,
+        window: ClientTrajectoryWindow<'_>,
     ) -> Result<ClientTrajectoryPage> {
+        let ClientTrajectoryWindow {
+            cursor,
+            limit,
+            selection,
+            ids,
+            previous,
+        } = window;
         let cursor = if cursor.is_none() {
             if let Some(target) = selection.target_id {
                 let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3 and ($4::uuid is null or request_id=$4)")

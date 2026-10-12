@@ -83,3 +83,14 @@ Implementation: [terminal task projection](../../api/crates/storage/durable/post
 Conversation detail obtains `log_conversation_id` independently from the run overview rather than the current list page. `around_run_id` is an inclusive task cutoff for the initial page and both paging directions: a completed task ends at its final response. Omitting the anchor still opens the latest conversation page. Continuation requests resolve to their owning task; a prewarm anchor locates the preceding business turns.
 
 Explicit `request_kind=prewarm` denotes protocol connection setup. Preserve its raw request and conversation membership, but exclude it from business turns and their pagination. Empty input, missing output, or a missing `turn_id` cannot establish prewarm classification. System context accompanies its business turn; later prewarm context must not follow the selected task.
+
+
+## Trajectory indexes and viewport acquisition
+
+Backend read models own membership, source identity, category, time and filtering. Client, Native/workflow and imported-conversation trajectories retain their source contracts; frontend layout does not define backend events or business capacity.
+
+Index reads return complete lightweight identities and statistics. Bodies are acquired by focus and viewport windows; original sections retain separate authorization. The PostgreSQL owner keeps keyset positions, direction, membership and filtering semantics. Scan quanta and page sizes bound individual reads without truncating history. Imported conversations sort by original time and UUID; focus never changes membership.
+
+`useTrajectoryWindow` owns indexes, loaded windows, visibility and scope invalidation. `TrajectoryVirtualList` uses existing Ant Design Listy for measurement, virtual rows, viewport notifications and focus. Explicit navigation remains independent of incidental viewport reports until its target is cached. Late results from an old scope cannot enter a new view. Failed reads require explicit retry; the frontend does not drain every body page in the background.
+
+The online full quality gate supplies candidate-bound frontend/backend behavior, coverage and foundation receipts. Agent Logs regression is a manual exact-candidate diagnostic batch, independent of historical Delivery branches. Green checks prove executed contracts and tests; they do not substitute for uncollected whole-site visual evidence.
