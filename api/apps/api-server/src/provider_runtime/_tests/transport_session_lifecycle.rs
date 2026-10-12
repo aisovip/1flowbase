@@ -1748,3 +1748,6 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
 
 #[path = "transport_session_lifecycle/dispatch_settlement.rs"]
 mod dispatch_settlement;
+
+#[path = "transport_session_lifecycle/target_handoff.rs"]
+mod target_handoff;

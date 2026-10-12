@@ -529,14 +529,16 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         ));
                     }
                 }
-                if registry.runtime_target_id(&fence)? != &target {
+                let bound_target = registry.runtime_target_id(&fence)?.clone();
+                let target_changed = bound_target != target;
+                if target_changed && registry.invocation_inflight(&fence)? {
                     return Err(admission_error(
-                        "transport_session_evicted",
+                        "transport_session_busy",
                         admission_details(
                             &session_id,
                             Some(&fence),
                             Some(state),
-                            None,
+                            Some(true),
                             scope_requested,
                         ),
                     ));
@@ -548,7 +550,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     if let Some(evidence) = self
                         .runtime
                         .transport_worker_exit_evidence(
-                            target_id,
+                            bound_target.as_str(),
                             fence.session_id.as_str(),
                             fence.generation.get(),
                         )
@@ -570,6 +572,24 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 {
                     return Err(transport_error("transport_invocation_deadline_exceeded"));
                 }
+                if target_changed
+                    && matches!(
+                        state,
+                        TransportSessionState::Active
+                            | TransportSessionState::WaitingTool
+                            | TransportSessionState::IdleAffinity
+                            | TransportSessionState::Orphaned
+                    )
+                {
+                    validate_fault_successor(recovery_directive.as_ref(), now)?;
+                    // Target is a physical-generation property. Retire the old
+                    // target through its existing control owner before rebinding;
+                    // never open a parallel session by adding a version to the key.
+                    registry.transition(&fence, TransportSessionState::Draining)?;
+                    drop(registry);
+                    drop(_dispatcher);
+                    continue;
+                }
                 if matches!(
                     state,
                     TransportSessionState::Faulted | TransportSessionState::IdleReleased
@@ -585,23 +605,26 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     }
                     // Only the next invocation gets a fresh physical generation.
                     // Rotation keeps the original logical deadline and sequence.
-                    let next = registry.rotate_generation(&fence).map_err(|error| {
-                        if matches!(error, RegistryError::InvalidTransition { .. }) {
-                            self.recovery_admission_error(
-                                &fence,
-                                "provider_physical_connection_close_pending",
-                            )
-                        } else {
-                            map_registry_use_error(error)
-                        }
-                    })?;
+                    let next = registry
+                        .rotate_generation_to(&fence, target.clone())
+                        .map_err(|error| {
+                            if matches!(error, RegistryError::InvalidTransition { .. }) {
+                                self.recovery_admission_error(
+                                    &fence,
+                                    "provider_physical_connection_close_pending",
+                                )
+                            } else {
+                                map_registry_use_error(error)
+                            }
+                        })?;
                     registry.activate(&next)?;
                     next
                 } else {
                     if matches!(
                         state,
                         TransportSessionState::Draining | TransportSessionState::Closing
-                    ) {
+                    ) || target_changed
+                    {
                         if self.close_task_exhausted(&fence) {
                             return Err(self.recovery_admission_error(
                                 &fence,
@@ -638,10 +661,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             termination_code(receipt.kind),
                         ));
                     }
-                    if receipt.owner_id != owner_id
-                        || receipt.provider_id != provider_id
-                        || receipt.runtime_target_id != target
-                    {
+                    if receipt.owner_id != owner_id || receipt.provider_id != provider_id {
                         return Err(admission_error(
                             "transport_session_evicted",
                             admission_details(

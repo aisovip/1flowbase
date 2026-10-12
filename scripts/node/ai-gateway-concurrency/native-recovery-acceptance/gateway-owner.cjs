@@ -16,7 +16,9 @@ const { installProvider, createPublishedApplication } = req('ai-gateway-concurre
 const { openTemporaryOwnerSession } = req('page-debug/auth.js');
 const { persistServiceLogs } = req('ai-gateway-concurrency/gateway-fixture/service-logs.js');
 
-async function createOwnedGateway({ upstreamBaseUrl, artifactRoot }) {
+async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
+  upstreamApiKey = 'fixture-openai-token', pluginPackage = PACKAGE,
+  additionalPluginPackages = [] }) {
   const upstream = new URL(upstreamBaseUrl);
   if (upstream.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(upstream.hostname)
       || upstream.username || upstream.password || upstream.search || upstream.hash || upstream.pathname !== '/') {
@@ -38,7 +40,7 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot }) {
     try {
       persistServiceLogs({ artifactRoot, services: { 'api-server': service },
         secrets: [password, masterKey, database?.url, session?.cookie, session?.csrfToken,
-          published?.api_key, 'fixture-openai-token'].filter(Boolean) });
+          published?.api_key, upstreamApiKey].filter(Boolean) });
     } catch (error) { errors.push(error); }
     try { await stopOwned(service); } catch (error) { errors.push(error); }
     if (service?.child?.exitCode === null && service.child.signalCode === null) {
@@ -60,7 +62,8 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot }) {
       API_PROVIDER_INSTALL_ROOT: path.join(scratch, 'providers'),
       API_COOKIE_NAME: account, API_COOKIE_SECURE: 'false',
       API_PROVIDER_SECRET_MASTER_KEY: masterKey,
-      API_PLUGIN_UPLOAD_MAX_BYTES: String(fs.statSync(PACKAGE).size + 4096),
+      API_PLUGIN_UPLOAD_MAX_BYTES: String(Math.max(...[pluginPackage, ...additionalPluginPackages]
+        .map(file => fs.statSync(file).size)) + 4096),
       BOOTSTRAP_WORKSPACE_NAME: 'Native409 isolated fixture',
       BOOTSTRAP_ROOT_ACCOUNT: account, BOOTSTRAP_ROOT_EMAIL: `${account}@example.invalid`,
       BOOTSTRAP_ROOT_PASSWORD: password, BOOTSTRAP_ROOT_NAME: 'Native409 fixture',
@@ -71,14 +74,14 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot }) {
     const client = new OwnerHttpClient(baseUrl);
     client.attachSession(session.cookie, session.csrfToken);
     const installation = await installProvider(client,
-      PACKAGE, 'openai');
+      pluginPackage, 'openai');
     const model = 'gpt-6-luna';
     const instance = await client.write('/api/console/settings/model-providers/instances', 'POST', {
       installation_id: installation.installation_id, display_name: account,
       configured_models: [{ model_id: model, enabled: true,
         context_window_override_tokens: null, supports_multimodal: false }],
       enabled_model_ids: [model], included_in_main: true, preview_token: null,
-      config: { base_url: `${upstream.origin}/v1`, api_key: 'fixture-openai-token',
+      config: { base_url: `${upstream.origin}/v1`, api_key: upstreamApiKey,
         validate_model: false, transport_mode: 'responses_websocket' },
     });
     if (!instance.data?.id) throw new Error('Provider instance omitted id');
