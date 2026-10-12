@@ -2,4 +2,4 @@
 .application-log-subagents__children { margin-inline-start: 12px; padding-inline-start: 12px; border-inline-start: 1px solid var(--border-default); }
 .application-log-subagents__record { padding-block: 12px; }
 .application-log-subagents__record + .application-log-subagents__record { border-block-start: 1px solid var(--border-default); }
-.application-log-subagents__message { margin-block-start: 8px; }
+.application-log-subagents__message { min-width: 0; max-width: 100%; margin-block-start: 8px; overflow-x: auto; }
