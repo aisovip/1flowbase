@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Empty, Input, Spin } from 'antd';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
@@ -25,9 +25,37 @@ import {
   TrajectoryVirtualList,
   type TrajectoryVirtualListRef
 } from '../virtual/TrajectoryVirtualList';
-import { indexLane, PendingClientRow } from './virtual-client-rows';
+import {
+  indexLane,
+  PendingClientRow,
+  clientRowKey,
+  virtualClientKey,
+  virtualClientEventKey
+} from './virtual-client-rows';
+import { appI18n } from '../../../../../../shared/i18n/app-i18n';
 import './client-trajectory.css';
 
+type Slot =
+  | {
+      key: string;
+      kind: 'request';
+      id: string;
+      root?: ClientTrajectoryIndexItem;
+    }
+  | {
+      key: string;
+      kind: 'category';
+      id: string;
+      category: string;
+      count: number;
+    }
+  | {
+      key: string;
+      kind: 'step';
+      step: ClientTrajectoryIndexItem;
+      grouped: boolean;
+    };
+const EMPTY_INDEX: ClientTrajectoryIndexItem[] = [];
 export function ClientTrajectoryWorkspace({
   runId,
   nodeRunId,
@@ -43,6 +71,7 @@ export function ClientTrajectoryWorkspace({
   options?: ClientTrajectoryOptions;
   onInternal?: (step: ClientTrajectoryStep, nodeRunId?: string) => void;
 }) {
+  const language = appI18n.resolvedLanguage ?? appI18n.language;
   const [scope, setScope] = useState(nodeRunId);
   const [selected, setSelected] = useState<string | null>(
     options?.focus_step_id ?? null
@@ -103,11 +132,11 @@ export function ClientTrajectoryWorkspace({
         requestOptions
       );
     },
-    getIndexKey: (step: ClientTrajectoryIndexItem) => step.id,
-    getRowKey: (step: ClientTrajectoryStep) => step.id
+    getIndexKey: clientRowKey,
+    getRowKey: clientRowKey
   });
   const overview = indexQuery.data?.overview;
-  const index = overview?.items ?? [];
+  const index = overview?.items ?? EMPTY_INDEX;
   const timelineItems = brushItems ?? index;
   const coordinates = useMemo(
     () =>
@@ -119,10 +148,21 @@ export function ClientTrajectoryWorkspace({
       ),
     [timelineItems, timeScale]
   );
+  const timelinePoints = useMemo(() => {
+    const labels = new Map<string, string>();
+    return timelineItems.map((step) => {
+      if (!labels.has(step.category))
+        labels.set(step.category, categoryLabel(step.category));
+      return {
+        id: step.id,
+        value: coordinates.get(step.id)!,
+        lane: indexLane(step),
+        label: `${labels.get(step.category)} #${step.sequence}`
+      };
+    });
+  }, [timelineItems, coordinates, language]);
   const selectedStep = selected ? loaded.get(selected) : undefined;
   const categories = Object.keys(overview?.category_counts ?? {});
-  const matches = (step: ClientTrajectoryIndexItem) =>
-    timeScale || inTrajectoryRange(coordinates.get(step.id)!, timeRange);
   const requestRoots = useMemo(
     () =>
       new Map(
@@ -139,77 +179,79 @@ export function ClientTrajectoryWorkspace({
     }
     return [...groups.entries()];
   }, [overview]);
-  type Slot =
-    | {
-        key: string;
-        kind: 'request';
-        id: string;
-        root?: ClientTrajectoryIndexItem;
-      }
-    | {
-        key: string;
-        kind: 'category';
-        id: string;
-        category: string;
-        count: number;
-      }
-    | {
-        key: string;
-        kind: 'step';
-        step: ClientTrajectoryIndexItem;
-        grouped: boolean;
-      };
-  const slots: Slot[] = [];
-  for (const [id, steps] of requests) {
-    const root =
-      steps.find((step) => step.category === 'request') ?? requestRoots.get(id);
-    const children = steps.filter(
-      (step) => step.category !== 'request' && matches(step)
-    );
-    if (
-      !children.length &&
-      !steps.some((step) => step.category === 'request' && matches(step))
-    )
-      continue;
-    slots.push({ key: root?.id ?? `request:${id}`, kind: 'request', id, root });
-    if (collapsed.has(id)) continue;
-    if (!groupCategories) {
-      for (const step of children)
-        slots.push({ key: step.id, kind: 'step', step, grouped: false });
-    } else {
-      for (const lane of new Set(children.map((step) => step.category))) {
-        const key = `${id}:${lane}`;
-        const laneRows = children.filter((step) => step.category === lane);
-        slots.push({
-          key: `category:${key}`,
-          kind: 'category',
-          id: key,
-          category: lane,
-          count: laneRows.length
-        });
-        if (!collapsed.has(key))
-          for (const step of laneRows)
-            slots.push({ key: step.id, kind: 'step', step, grouped: true });
+  const slots = useMemo(() => {
+    const matches = (step: ClientTrajectoryIndexItem) =>
+      timeScale || inTrajectoryRange(coordinates.get(step.id)!, timeRange);
+    const slots: Slot[] = [];
+    for (const [id, steps] of requests) {
+      const root =
+        steps.find((step) => step.category === 'request') ??
+        requestRoots.get(id);
+      const children = steps.filter(
+        (step) => step.category !== 'request' && matches(step)
+      );
+      if (
+        !children.length &&
+        !steps.some((step) => step.category === 'request' && matches(step))
+      )
+        continue;
+      slots.push({
+        key: root?.id ?? `request:${id}`,
+        kind: 'request',
+        id,
+        root
+      });
+      if (collapsed.has(id)) continue;
+      if (!groupCategories) {
+        for (const step of children)
+          slots.push({ key: step.id, kind: 'step', step, grouped: false });
+      } else {
+        for (const lane of new Set(children.map((step) => step.category))) {
+          const key = `${id}:${lane}`;
+          const laneRows = children.filter((step) => step.category === lane);
+          slots.push({
+            key: `category:${key}`,
+            kind: 'category',
+            id: key,
+            category: lane,
+            count: laneRows.length
+          });
+          if (!collapsed.has(key))
+            for (const step of laneRows)
+              slots.push({ key: step.id, kind: 'step', step, grouped: true });
+        }
       }
     }
-  }
-  function focus(id: string) {
-    const step =
-      timelineItems.find((item) => item.id === id) ??
-      overview?.request_roots?.find((item) => item.id === id);
-    setSelected(id);
-    setCategory(null);
-    setSearch('');
-    onVisibleKeys([id]);
-    if (step)
-      setCollapsed((current) => {
-        const next = new Set(current);
-        next.delete(step.request_id);
-        next.delete(`${step.request_id}:${step.category}`);
-        return next;
-      });
-    requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
-  }
+    return slots;
+  }, [
+    requests,
+    requestRoots,
+    coordinates,
+    timeScale,
+    timeRange,
+    collapsed,
+    groupCategories
+  ]);
+  const focus = useCallback(
+    (id: string) => {
+      const step =
+        timelineItems.find((item) => item.id === id) ??
+        overview?.request_roots?.find((item) => item.id === id);
+      setSelected(id);
+      setCategory(null);
+      setSearch('');
+      onVisibleKeys([id]);
+      if (step)
+        setCollapsed((current) => {
+          const next = new Set(current);
+          next.delete(step.request_id);
+          next.delete(`${step.request_id}:${step.category}`);
+          return next;
+        });
+      requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
+    },
+    [timelineItems, overview, onVisibleKeys]
+  );
   useEffect(() => {
     if (!active || !selected || !index.some((step) => step.id === selected))
       return;
@@ -218,14 +260,14 @@ export function ClientTrajectoryWorkspace({
       virtualList.current?.scrollTo({ key: selected })
     );
   }, [active, selected, overview, onVisibleKeys]);
-  function toggle(id: string) {
+  const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
   function resize(width: number) {
     setDetailWidth(
       Math.max(
@@ -234,42 +276,118 @@ export function ClientTrajectoryWorkspace({
       )
     );
   }
-  function renderStep(step: ClientTrajectoryStep) {
-    return (
-      <button
-        key={step.id}
-        type="button"
-        className="provider-trajectory__row client-trajectory__row"
-        data-lane={clientLane(step)}
-        data-selected={selected === step.id || undefined}
-        aria-label={`${categoryLabel(step.category)} · ${step.namespace ? `${step.namespace}.${step.name}` : step.name}`}
-        aria-pressed={selected === step.id}
-        onClick={() => setSelected(step.id)}
-      >
-        <span className="provider-trajectory__marker" aria-hidden="true" />
-        <span className="provider-trajectory__kind">
-          {categoryLabel(step.category)}
-        </span>
-        <span className="client-trajectory__summary">
-          <strong>
-            {step.namespace ? `${step.namespace}.${step.name}` : step.name}
-          </strong>
-          <span className="provider-trajectory__preview">
-            {step.parameters_preview ||
-              step.result_preview ||
-              step.preview ||
-              '—'}
-          </span>
-        </span>
-        <span
-          className="provider-trajectory__row-time"
-          title={formatDateTime(step.created_at)}
+  const renderStep = useCallback(
+    (step: ClientTrajectoryStep) => {
+      return (
+        <button
+          key={step.id}
+          type="button"
+          className="provider-trajectory__row client-trajectory__row"
+          data-lane={clientLane(step)}
+          data-selected={selected === step.id || undefined}
+          aria-label={`${categoryLabel(step.category)} · ${step.namespace ? `${step.namespace}.${step.name}` : step.name}`}
+          aria-pressed={selected === step.id}
+          onClick={() => setSelected(step.id)}
         >
-          #{step.sequence}
-        </span>
-      </button>
-    );
-  }
+          <span className="provider-trajectory__marker" aria-hidden="true" />
+          <span className="provider-trajectory__kind">
+            {categoryLabel(step.category)}
+          </span>
+          <span className="client-trajectory__summary">
+            <strong>
+              {step.namespace ? `${step.namespace}.${step.name}` : step.name}
+            </strong>
+            <span className="provider-trajectory__preview">
+              {step.parameters_preview ||
+                step.result_preview ||
+                step.preview ||
+                '—'}
+            </span>
+          </span>
+          <span
+            className="provider-trajectory__row-time"
+            title={formatDateTime(step.created_at)}
+          >
+            #{step.sequence}
+          </span>
+        </button>
+      );
+    },
+    [selected, language]
+  );
+  const renderSlot = useCallback(
+    (slot: Slot) => {
+      if (slot.kind === 'step') {
+        const row = loaded.get(slot.step.id);
+        const content = row ? (
+          renderStep(row)
+        ) : (
+          <PendingClientRow
+            step={slot.step}
+            selected={selected === slot.step.id}
+            onSelect={() => focus(slot.step.id)}
+          />
+        );
+        return slot.grouped ? (
+          <div className="client-trajectory__category-group">{content}</div>
+        ) : (
+          content
+        );
+      }
+      if (slot.kind === 'category')
+        return (
+          <div className="client-trajectory__category-group">
+            <button
+              className="client-trajectory__category-header"
+              type="button"
+              aria-expanded={!collapsed.has(slot.id)}
+              onClick={() => toggle(slot.id)}
+            >
+              {collapsed.has(slot.id) ? <RightOutlined /> : <DownOutlined />}
+              <span>{categoryLabel(slot.category)}</span>
+              <small>{slot.count}</small>
+            </button>
+          </div>
+        );
+      const root = slot.root
+        ? slot.root
+        : items.find(
+            (step) => step.request_id === slot.id && step.category === 'request'
+          );
+      const fullRoot = root ? loaded.get(root.id) : undefined;
+      return (
+        <div className="client-trajectory__request-header">
+          <button
+            type="button"
+            className="client-trajectory__fold"
+            aria-label={i18nText('agentFlow', 'client_trajectory.request')}
+            aria-expanded={!collapsed.has(slot.id)}
+            onClick={() => toggle(slot.id)}
+          >
+            {collapsed.has(slot.id) ? <RightOutlined /> : <DownOutlined />}
+          </button>
+          <button
+            type="button"
+            className="client-trajectory__request-select"
+            aria-pressed={selected === root?.id}
+            onClick={() => root && focus(root.id)}
+          >
+            <strong>{categoryLabel('request')}</strong>
+            <span>
+              {fullRoot?.preview || (
+                <>
+                  <Spin size="small" />{' '}
+                  {i18nText('agentFlow', 'trajectory.loading_first_page')}
+                </>
+              )}
+            </span>
+            <small>{root ? formatDateTime(root.created_at) : ''}</small>
+          </button>
+        </div>
+      );
+    },
+    [loaded, items, selected, collapsed, renderStep, focus, toggle, language]
+  );
   return (
     <div className="provider-trajectory client-trajectory">
       <div className="provider-trajectory__toolbar">
@@ -355,12 +473,7 @@ export function ClientTrajectoryWorkspace({
         />
       </div>
       <TrajectoryTimeline
-        points={timelineItems.map((step) => ({
-          id: step.id,
-          value: coordinates.get(step.id)!,
-          lane: indexLane(step),
-          label: `${categoryLabel(step.category)} #${step.sequence}`
-        }))}
+        points={timelinePoints}
         timeScale={timeScale}
         range={timeRange}
         onChange={(range) => {
@@ -443,105 +556,13 @@ export function ClientTrajectoryWorkspace({
           <TrajectoryVirtualList
             ref={virtualList}
             items={slots}
-            getKey={(slot) => slot.key}
-            getEventKey={(slot) =>
-              slot.kind === 'step'
-                ? slot.step.id
-                : slot.kind === 'request'
-                  ? slot.root?.id
-                  : undefined
-            }
+            getKey={virtualClientKey}
+            getEventKey={virtualClientEventKey}
             initialKey={initialKey}
             resetKey={`${runId}:${scope ?? 'run'}:${generation}`}
             active={active}
             onVisibleKeys={onVisibleKeys}
-            renderItem={(slot) => {
-              if (slot.kind === 'step') {
-                const row = loaded.get(slot.step.id);
-                const content = row ? (
-                  renderStep(row)
-                ) : (
-                  <PendingClientRow
-                    step={slot.step}
-                    selected={selected === slot.step.id}
-                    onSelect={() => focus(slot.step.id)}
-                  />
-                );
-                return slot.grouped ? (
-                  <div className="client-trajectory__category-group">
-                    {content}
-                  </div>
-                ) : (
-                  content
-                );
-              }
-              if (slot.kind === 'category')
-                return (
-                  <div className="client-trajectory__category-group">
-                    <button
-                      className="client-trajectory__category-header"
-                      type="button"
-                      aria-expanded={!collapsed.has(slot.id)}
-                      onClick={() => toggle(slot.id)}
-                    >
-                      {collapsed.has(slot.id) ? (
-                        <RightOutlined />
-                      ) : (
-                        <DownOutlined />
-                      )}
-                      <span>{categoryLabel(slot.category)}</span>
-                      <small>{slot.count}</small>
-                    </button>
-                  </div>
-                );
-              const root = slot.root
-                ? slot.root
-                : items.find(
-                    (step) =>
-                      step.request_id === slot.id && step.category === 'request'
-                  );
-              const fullRoot = root ? loaded.get(root.id) : undefined;
-              return (
-                <div className="client-trajectory__request-header">
-                  <button
-                    type="button"
-                    className="client-trajectory__fold"
-                    aria-label={i18nText(
-                      'agentFlow',
-                      'client_trajectory.request'
-                    )}
-                    aria-expanded={!collapsed.has(slot.id)}
-                    onClick={() => toggle(slot.id)}
-                  >
-                    {collapsed.has(slot.id) ? (
-                      <RightOutlined />
-                    ) : (
-                      <DownOutlined />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="client-trajectory__request-select"
-                    aria-pressed={selected === root?.id}
-                    onClick={() => root && focus(root.id)}
-                  >
-                    <strong>{categoryLabel('request')}</strong>
-                    <span>
-                      {fullRoot?.preview || (
-                        <>
-                          <Spin size="small" />{' '}
-                          {i18nText(
-                            'agentFlow',
-                            'trajectory.loading_first_page'
-                          )}
-                        </>
-                      )}
-                    </span>
-                    <small>{root ? formatDateTime(root.created_at) : ''}</small>
-                  </button>
-                </div>
-              );
-            }}
+            renderItem={renderSlot}
           />
         </div>
         {selectedStep ? (

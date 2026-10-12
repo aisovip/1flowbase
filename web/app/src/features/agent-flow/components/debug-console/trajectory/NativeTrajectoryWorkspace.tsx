@@ -13,6 +13,7 @@ import type {
   ProviderTrajectoryOptions
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { purposeLabel } from './trajectory-presentation';
@@ -31,6 +32,14 @@ import {
 } from './virtual/TrajectoryVirtualList';
 import './provider-trajectory.css';
 import './workflow/workflow-trajectory.css';
+
+type WorkflowSlot =
+  | { key: string; event: WorkflowTrajectoryIndexItem }
+  | { key: string; group: string; steps: WorkflowTrajectoryIndexItem[] };
+const workflowSlotKey = (slot: WorkflowSlot) => slot.key;
+const workflowSlotEventKey = (slot: WorkflowSlot) =>
+  'event' in slot ? slot.event.event_id : undefined;
+const workflowEventKey = (row: { event_id: string }) => row.event_id;
 
 export function NativeTrajectoryWorkspace({
   runId,
@@ -86,8 +95,8 @@ export function NativeTrajectoryWorkspace({
         index_only: indexOnly,
         focus_event_id: focusId ?? options?.focus_event_id
       }),
-    getRowKey: (row: WorkflowTrajectoryEvent) => row.event_id,
-    getIndexKey: (row: WorkflowTrajectoryIndexItem) => row.event_id
+    getRowKey: workflowEventKey,
+    getIndexKey: workflowEventKey
   });
   const [scopeMetadata, setScopeMetadata] = useState<{
     runId: string;
@@ -135,13 +144,10 @@ export function NativeTrajectoryWorkspace({
       list.current?.scrollTo({ key: step.event_id, align: 'auto' })
     );
   }
-  type Slot =
-    | { key: string; event: WorkflowTrajectoryIndexItem }
-    | { key: string; group: string; steps: WorkflowTrajectoryIndexItem[] };
-  const slots = useMemo<Slot[]>(
+  const slots = useMemo<WorkflowSlot[]>(
     () =>
       groupCalls
-        ? groups.flatMap(([group, steps]): Slot[] => [
+        ? groups.flatMap(([group, steps]): WorkflowSlot[] => [
             { key: `group:${group}:${steps[0].event_id}`, group, steps },
             ...(!collapsed.has(group)
               ? steps.map((event) => ({ key: event.event_id, event }))
@@ -149,6 +155,18 @@ export function NativeTrajectoryWorkspace({
           ])
         : matches.map((event) => ({ key: event.event_id, event })),
     [groupCalls, groups, collapsed, matches]
+  );
+
+  const language = appI18n.resolvedLanguage ?? appI18n.language;
+  const timelinePoints = useMemo(
+    () =>
+      matches.map((step) => ({
+        id: step.event_id,
+        value: Date.parse(step.created_at),
+        lane: workflowEventLane(step),
+        label: `${workflowNodeName(step)} · ${workflowEventLabel(step)} · ${formatDateTime(step.created_at)}`
+      })),
+    [matches, language]
   );
 
   function renderStep(step: WorkflowTrajectoryEvent) {
@@ -253,12 +271,7 @@ export function NativeTrajectoryWorkspace({
           i18nText('agentFlow', 'trajectory.task_request_lane'),
           i18nText('agentFlow', 'auto.tools')
         ]}
-        points={matches.map((step) => ({
-          id: step.event_id,
-          value: Date.parse(step.created_at),
-          lane: workflowEventLane(step),
-          label: `${workflowNodeName(step)} · ${workflowEventLabel(step)} · ${formatDateTime(step.created_at)}`
-        }))}
+        points={timelinePoints}
         range={timeRange}
         onChange={setTimeRange}
         selected={selected}
@@ -316,10 +329,8 @@ export function NativeTrajectoryWorkspace({
             <TrajectoryVirtualList
               ref={list}
               items={slots}
-              getKey={(slot) => slot.key}
-              getEventKey={(slot) =>
-                'event' in slot ? slot.event.event_id : undefined
-              }
+              getKey={workflowSlotKey}
+              getEventKey={workflowSlotEventKey}
               initialKey={initialKey}
               resetKey={JSON.stringify([runId, filters])}
               onVisibleKeys={onVisibleKeys}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Popover, Select, Spin } from 'antd';
 import type {
@@ -21,7 +21,14 @@ import {
   TrajectoryVirtualList,
   type TrajectoryVirtualListRef
 } from '../virtual/TrajectoryVirtualList';
-import { indexLane, PendingClientRow } from './virtual-client-rows';
+import {
+  indexLane,
+  PendingClientRow,
+  clientRowKey,
+  virtualClientKey,
+  virtualClientEventKey
+} from './virtual-client-rows';
+import { appI18n } from '../../../../../../shared/i18n/app-i18n';
 import { integrityLabel } from '../trajectory-presentation';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane, sectionLabel } from './presentation';
@@ -69,6 +76,10 @@ const text = (key: string) =>
     }) as Record<string, string>
   )[key];
 /** Canonical identity comes from the server; a record is only an initial focus. */
+type Slot =
+  | { key: string; kind: 'step'; step: ConversationTrajectoryIndexItem }
+  | { key: string; kind: 'category'; category: string; count: number };
+const EMPTY_INDEX: ConversationTrajectoryIndexItem[] = [];
 export function ConversationTrajectoryWorkspace({
   loader,
   recordId,
@@ -131,6 +142,7 @@ function CanonicalTimeline({
   focusRecordId: string;
   active: boolean;
 }) {
+  const language = appI18n.resolvedLanguage ?? appI18n.language;
   const [category, setCategory] = useState<string>();
   const [timeScale, setTimeScale] = useState(true);
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
@@ -222,12 +234,12 @@ function CanonicalTimeline({
         focus_step_id: focusId,
         index_only: indexOnly
       }),
-    getIndexKey: (step: ConversationTrajectoryIndexItem) => step.id,
-    getRowKey: (step: ConversationClientTrajectoryStep) => step.id
+    getIndexKey: clientRowKey,
+    getRowKey: clientRowKey
   });
   // Preserve server full-precision order, including duplicate timestamps.
   const scopeOverview = indexQuery.data?.overview;
-  const index = scopeOverview?.items ?? [];
+  const index = scopeOverview?.items ?? EMPTY_INDEX;
   const matchesByStep = useMemo(() => {
     const matches = new Map<
       string,
@@ -240,7 +252,7 @@ function CanonicalTimeline({
         matches.set(match.step_id, entries);
       }
     return matches;
-  }, [pages.data]);
+  }, [pages.data?.pages]);
   const related = useQuery({
     queryKey: [
       'conversation-trajectory-related',
@@ -266,12 +278,29 @@ function CanonicalTimeline({
   const selectedStep =
     relatedStep ?? (selected ? loaded.get(selected) : undefined);
   const timelineItems = brushItems ?? index;
-  const coordinates = new Map(
-    timelineItems.map((step, index) => [
-      step.id,
-      timeScale ? Date.parse(step.created_at) : index
-    ])
+  const coordinates = useMemo(
+    () =>
+      new Map(
+        timelineItems.map((step, index) => [
+          step.id,
+          timeScale ? Date.parse(step.created_at) : index
+        ])
+      ),
+    [timelineItems, timeScale]
   );
+  const timelinePoints = useMemo(() => {
+    const labels = new Map<string, string>();
+    return timelineItems.map((step) => {
+      if (!labels.has(step.category))
+        labels.set(step.category, categoryLabel(step.category));
+      return {
+        id: step.id,
+        value: coordinates.get(step.id)!,
+        lane: indexLane(step),
+        label: `${labels.get(step.category)} #${step.sequence}`
+      };
+    });
+  }, [timelineItems, coordinates, language]);
   useEffect(() => {
     setSeenCategories((current) => [
       ...new Set([
@@ -280,16 +309,19 @@ function CanonicalTimeline({
       ])
     ]);
   }, [scopeOverview]);
-  function select(id: string) {
-    preserveRangeOnSelect.current = false;
-    if (index.some((step) => step.id === id)) {
-      setSelected(id);
-      setRelatedStep(null);
-      setRelatedTarget(null);
-      onVisibleKeys([id]);
-      requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
-    } else setRelatedTarget(id);
-  }
+  const select = useCallback(
+    (id: string) => {
+      preserveRangeOnSelect.current = false;
+      if (index.some((step) => step.id === id)) {
+        setSelected(id);
+        setRelatedStep(null);
+        setRelatedTarget(null);
+        onVisibleKeys([id]);
+        requestAnimationFrame(() => virtualList.current?.scrollTo({ key: id }));
+      } else setRelatedTarget(id);
+    },
+    [index, onVisibleKeys]
+  );
   function changeRange(range: TrajectoryRange) {
     if (!range && preserveRangeOnSelect.current) return;
     setTimeRange(range);
@@ -358,76 +390,113 @@ function CanonicalTimeline({
     setBrushItems(null);
     setGeneration((value) => value + 1);
   }
-  function renderStep(step: ConversationClientTrajectoryStep) {
-    const matches = matchesByStep.get(step.id) ?? [];
-    const identity = `${step.is_subagent ? text('subagent') : text('main')} · ${step.source_client ?? step.source_kind} · ${step.source_session_id ?? '—'} · ${step.source_task_id ?? '—'} · ${step.source_id ?? '—'} · ${step.record_id}`;
-    return (
-      <button
-        key={`${step.record_id}:${step.id}`}
-        type="button"
-        className="provider-trajectory__row client-trajectory__row conversation-trajectory__row"
-        data-lane={clientLane(step)}
-        data-selected={selectedStep?.id === step.id || undefined}
-        aria-pressed={selectedStep?.id === step.id}
-        aria-label={`${categoryLabel(step.category)} · ${step.name}`}
-        onClick={() => select(step.id)}
-      >
-        <span className="provider-trajectory__marker" aria-hidden="true" />
-        <span className="provider-trajectory__kind">
-          {categoryLabel(step.category)}
-        </span>
-        <span className="client-trajectory__summary">
-          <strong>
-            {step.namespace ? `${step.namespace}.${step.name}` : step.name}
-          </strong>
-          <span
-            className="provider-trajectory__preview"
-            title={
-              matches
-                .map(
-                  (match) => `${sectionLabel(match.section)} · ${match.snippet}`
-                )
-                .join('\n') || step.preview
-            }
-          >
-            {step.parameters_preview ||
-              step.result_preview ||
-              step.preview ||
-              '—'}
-          </span>
-          {step.is_subagent ? (
-            <small className="conversation-trajectory__source" title={identity}>
-              {text('subagent_marker')}
-            </small>
-          ) : null}
-        </span>
-        <span
-          className="provider-trajectory__row-time"
-          title={`${formatDateTime(step.created_at)} · ${step.created_at} · ${identity}`}
+  const renderStep = useCallback(
+    (step: ConversationClientTrajectoryStep) => {
+      const matches = matchesByStep.get(step.id) ?? [];
+      const identity = `${step.is_subagent ? text('subagent') : text('main')} · ${step.source_client ?? step.source_kind} · ${step.source_session_id ?? '—'} · ${step.source_task_id ?? '—'} · ${step.source_id ?? '—'} · ${step.record_id}`;
+      return (
+        <button
+          key={`${step.record_id}:${step.id}`}
+          type="button"
+          className="provider-trajectory__row client-trajectory__row conversation-trajectory__row"
+          data-lane={clientLane(step)}
+          data-selected={selectedStep?.id === step.id || undefined}
+          aria-pressed={selectedStep?.id === step.id}
+          aria-label={`${categoryLabel(step.category)} · ${step.name}`}
+          onClick={() => select(step.id)}
         >
-          #{step.sequence}
-        </span>
-      </button>
-    );
-  }
-  type Slot =
-    | { key: string; kind: 'step'; step: ConversationTrajectoryIndexItem }
-    | { key: string; kind: 'category'; category: string; count: number };
-  const slots: Slot[] = [];
-  if (!groupCategories)
-    for (const step of index) slots.push({ key: step.id, kind: 'step', step });
-  else
-    for (const key of new Set(index.map((step) => step.category))) {
-      const categoryRows = index.filter((step) => step.category === key);
-      slots.push({
-        key: `category:${key}`,
-        kind: 'category',
-        category: key,
-        count: categoryRows.length
-      });
-      for (const step of categoryRows)
+          <span className="provider-trajectory__marker" aria-hidden="true" />
+          <span className="provider-trajectory__kind">
+            {categoryLabel(step.category)}
+          </span>
+          <span className="client-trajectory__summary">
+            <strong>
+              {step.namespace ? `${step.namespace}.${step.name}` : step.name}
+            </strong>
+            <span
+              className="provider-trajectory__preview"
+              title={
+                matches
+                  .map(
+                    (match) =>
+                      `${sectionLabel(match.section)} · ${match.snippet}`
+                  )
+                  .join('\n') || step.preview
+              }
+            >
+              {step.parameters_preview ||
+                step.result_preview ||
+                step.preview ||
+                '—'}
+            </span>
+            {step.is_subagent ? (
+              <small
+                className="conversation-trajectory__source"
+                title={identity}
+              >
+                {text('subagent_marker')}
+              </small>
+            ) : null}
+          </span>
+          <span
+            className="provider-trajectory__row-time"
+            title={`${formatDateTime(step.created_at)} · ${step.created_at} · ${identity}`}
+          >
+            #{step.sequence}
+          </span>
+        </button>
+      );
+    },
+    [matchesByStep, selectedStep?.id, select, language]
+  );
+  const slots = useMemo(() => {
+    const slots: Slot[] = [];
+    if (!groupCategories)
+      for (const step of index)
         slots.push({ key: step.id, kind: 'step', step });
-    }
+    else
+      for (const key of new Set(index.map((step) => step.category))) {
+        const categoryRows = index.filter((step) => step.category === key);
+        slots.push({
+          key: `category:${key}`,
+          kind: 'category',
+          category: key,
+          count: categoryRows.length
+        });
+        for (const step of categoryRows)
+          slots.push({ key: step.id, kind: 'step', step });
+      }
+    return slots;
+  }, [index, groupCategories]);
+  const renderSlot = useCallback(
+    (slot: Slot) => {
+      if (slot.kind === 'category')
+        return (
+          <div className="client-trajectory__category-group">
+            <div className="client-trajectory__category-header">
+              <span>{categoryLabel(slot.category)}</span>
+              <small>{slot.count}</small>
+            </div>
+          </div>
+        );
+      const row = loaded.get(slot.step.id);
+      const content = row ? (
+        renderStep(row)
+      ) : (
+        <PendingClientRow
+          step={slot.step}
+          selected={selected === slot.step.id}
+          onSelect={() => select(slot.step.id)}
+        />
+      );
+      return groupCategories ? (
+        <div className="client-trajectory__category-group">{content}</div>
+      ) : (
+        content
+      );
+    },
+    [loaded, selected, groupCategories, renderStep, select, language]
+  );
   const detailLoader = useMemo<ConversationLogTraceLoader>(
     () => ({
       loadClientTrajectorySection: (
@@ -634,12 +703,7 @@ function CanonicalTimeline({
         }}
       >
         <TrajectoryTimeline
-          points={timelineItems.map((step) => ({
-            id: step.id,
-            value: coordinates.get(step.id)!,
-            lane: indexLane(step),
-            label: `${categoryLabel(step.category)} #${step.sequence}`
-          }))}
+          points={timelinePoints}
           timeScale={timeScale}
           range={timeRange}
           onChange={changeRange}
@@ -745,42 +809,13 @@ function CanonicalTimeline({
           <TrajectoryVirtualList
             ref={virtualList}
             items={slots}
-            getKey={(slot) => slot.key}
-            getEventKey={(slot) =>
-              slot.kind === 'step' ? slot.step.id : undefined
-            }
+            getKey={virtualClientKey}
+            getEventKey={virtualClientEventKey}
             initialKey={initialKey}
             resetKey={`${logConversationId}:${generation}`}
             active={active && !invalidTime}
             onVisibleKeys={onVisibleKeys}
-            renderItem={(slot) => {
-              if (slot.kind === 'category')
-                return (
-                  <div className="client-trajectory__category-group">
-                    <div className="client-trajectory__category-header">
-                      <span>{categoryLabel(slot.category)}</span>
-                      <small>{slot.count}</small>
-                    </div>
-                  </div>
-                );
-              const row = loaded.get(slot.step.id);
-              const content = row ? (
-                renderStep(row)
-              ) : (
-                <PendingClientRow
-                  step={slot.step}
-                  selected={selected === slot.step.id}
-                  onSelect={() => select(slot.step.id)}
-                />
-              );
-              return groupCategories ? (
-                <div className="client-trajectory__category-group">
-                  {content}
-                </div>
-              ) : (
-                content
-              );
-            }}
+            renderItem={renderSlot}
           />
         </div>
         {selectedStep ? (

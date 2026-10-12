@@ -86,13 +86,18 @@ function VirtualList<T>(
       }
     }
   }, [active, items, getKey, getEventKey, onVisibleKeys]);
+  // Observer lifetime follows the viewport, not inline consumer callbacks.
+  const latestReport = useRef(report);
+  useLayoutEffect(() => {
+    latestReport.current = report;
+  }, [report]);
   const schedule = useCallback(() => {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      report();
+      latestReport.current();
     });
-  }, [report]);
+  }, []);
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;

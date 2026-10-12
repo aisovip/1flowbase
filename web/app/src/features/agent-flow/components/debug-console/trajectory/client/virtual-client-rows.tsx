@@ -52,3 +52,16 @@ export function PendingClientRow({
     </button>
   );
 }
+
+export const clientRowKey = (row: { id: string }) => row.id;
+export const virtualClientKey = (slot: { key: string }) => slot.key;
+export const virtualClientEventKey = (slot: {
+  kind: string;
+  step?: { id: string };
+  root?: { id: string };
+}) =>
+  slot.kind === 'step'
+    ? slot.step?.id
+    : slot.kind === 'request'
+      ? slot.root?.id
+      : undefined;

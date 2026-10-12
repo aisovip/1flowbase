@@ -595,6 +595,8 @@ test('a large single request stays virtual and a timeline jump loads the target 
     loadClientTrajectory.mock.calls.filter((call) => !call[3]?.index_only)
       .length
   ).toBeLessThan(5);
+  const canvasPaints = vi.mocked(HTMLCanvasElement.prototype.getContext).mock
+    .calls.length;
   // Full index keeps the last event keyboard-addressable while its row is absent.
   const axis = view.container.querySelector('.provider-trajectory__lanes')!;
   fireEvent.keyDown(axis, { key: 'End' });
@@ -616,4 +618,7 @@ test('a large single request stays virtual and a timeline jump loads the target 
   expect(
     view.container.querySelectorAll('.client-trajectory__row').length
   ).toBeLessThan(150);
+  expect(
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.length
+  ).toBe(canvasPaints);
 });
