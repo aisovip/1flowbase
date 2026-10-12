@@ -864,6 +864,11 @@
     "loaded": "Loaded events",
     "search": "Search entire conversation",
     "invalid_time": "Enter a valid start and end time.",
-    "related_unloaded": "The related event is unavailable in this conversation."
+    "related_unloaded": "The related event is unavailable in this conversation.",
+    "filters": "Trajectory filters",
+    "loaded_categories": "Categories · counts in loaded pages",
+    "loaded_positions": "Loaded positions map to a time range; events sharing boundary timestamps are included.",
+    "main_marker": "M",
+    "subagent_marker": "S"
   }
 }
