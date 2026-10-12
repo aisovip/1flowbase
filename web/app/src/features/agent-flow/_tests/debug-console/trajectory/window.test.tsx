@@ -121,3 +121,30 @@ test('explicit distant focus survives an intervening viewport report', async () 
     client.clear();
   }
 });
+
+test('a late previous-scope refresh does not discard the current viewport window', async () => {
+  const { result, loadPage, rerender, unmount, client } = fixture();
+  try {
+    await waitFor(() => expect(result.current.loaded.size).toBe(20));
+    let finish!: (page: Awaited<ReturnType<typeof loadPage>>) => void;
+    loadPage.mockImplementationOnce(
+      () => new Promise((resolve) => { finish = resolve; })
+    );
+    let refresh!: Promise<void>;
+    act(() => { refresh = result.current.pages.refetch(); });
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(4));
+    rerender({ scope: 'b', active: true });
+    await waitFor(() => expect(result.current.loaded.size).toBe(20));
+    act(() => result.current.onVisibleKeys(['9000']));
+    await waitFor(() => expect(result.current.loaded.has('9000')).toBe(true));
+    await act(async () => {
+      finish({ items: [], overview: undefined });
+      await refresh;
+    });
+    expect(result.current.loaded.has('9000')).toBe(true);
+    expect(result.current.loaded.size).toBe(40);
+  } finally {
+    unmount();
+    client.clear();
+  }
+});

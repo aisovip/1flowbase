@@ -246,19 +246,20 @@ function CanonicalTimeline({
   // Preserve server full-precision order, including duplicate timestamps.
   const scopeOverview = indexQuery.data?.overview;
   const index = scopeOverview?.items ?? EMPTY_INDEX;
+  const pageData = pages.data?.pages;
   const matchesByStep = useMemo(() => {
     const matches = new Map<
       string,
-      NonNullable<typeof pages.data>['pages'][number]['matches']
+      NonNullable<typeof pageData>[number]['matches']
     >();
-    for (const page of pages.data?.pages ?? [])
+    for (const page of pageData ?? [])
       for (const match of page.matches) {
         const entries = matches.get(match.step_id) ?? [];
         entries.push(match);
         matches.set(match.step_id, entries);
       }
     return matches;
-  }, [pages.data?.pages]);
+  }, [pageData]);
   const related = useQuery({
     queryKey: [
       'conversation-trajectory-related',

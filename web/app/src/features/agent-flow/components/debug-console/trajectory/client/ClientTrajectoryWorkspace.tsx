@@ -184,7 +184,7 @@ export function ClientTrajectoryWorkspace({
       groups.set(step.request_id, group);
     }
     return [...groups.entries()];
-  }, [overview]);
+  }, [index]);
   const slots = useMemo(() => {
     const matches = (step: ClientTrajectoryIndexItem) =>
       timeScale || inTrajectoryRange(coordinates.get(step.id)!, timeRange);
@@ -265,7 +265,7 @@ export function ClientTrajectoryWorkspace({
     requestAnimationFrame(() =>
       virtualList.current?.scrollTo({ key: selected })
     );
-  }, [active, selected, overview, requestFocus]);
+  }, [active, selected, index, requestFocus]);
   const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);

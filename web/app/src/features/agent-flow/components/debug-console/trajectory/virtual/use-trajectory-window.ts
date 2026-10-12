@@ -80,7 +80,10 @@ export function useTrajectoryWindow<
     [scope]
   );
   const inFlight = useRef<string | null>(null);
-  const windowPages = windows.scope === scope ? windows.pages : [];
+  const windowPages = useMemo(
+    () => (windows.scope === scope ? windows.pages : []),
+    [windows, scope]
+  );
   const error = windows.scope === scope ? windows.error : null;
   const allPages = useMemo(
     () => (first.data ? [first.data, ...windowPages] : windowPages),
@@ -204,7 +207,8 @@ export function useTrajectoryWindow<
   }, [scope, first.isError, first.refetch, overview.isError, overview.refetch]);
   const refetch = useCallback(async () => {
     await Promise.all([overview.refetch(), first.refetch()]);
-    setWindows({ scope, pages: [], fetching: false, error: null });
+    if (currentScope.current === scope)
+      setWindows({ scope, pages: [], fetching: false, error: null });
   }, [overview.refetch, first.refetch, scope]);
   return {
     overview,

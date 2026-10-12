@@ -1323,7 +1323,25 @@ test('AI protocol concurrency separates caller workflows and candidate sources',
 test('agent log focused gate independently rejects every empty Cargo selector', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/agent-logs-regression.yml'), 'utf8');
   const commands = [...workflow.matchAll(/cargo test[^\n]+> (tmp\/test-governance\/[^ ]+\.log)/gu)];
-  assert.equal(commands.length, 9);
+  const requiredSelectors = [
+    '-p control-plane-contracts agent_logs',
+    '-p control-plane-contracts log_query',
+    '-p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::agent_logs',
+    '-p api-server agent_logs_delete',
+    '-p api-server agent_logs_unified_query',
+    '-p api-server routes::settings_group::mcp_management::debug_execute',
+    '-p api-server console_route_assembly',
+    '-p api-server console_policy_migration',
+    '-p control-plane-postgres-tests --test orchestration_runtime_integration storage_foundation',
+    '-p storage-durable-postgres client_trajectory',
+    '-p storage-durable-postgres workflow_',
+    '-p api-server application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy_and_authorized',
+    '-p api-server workflow_trajectory_routes_preserve_authorization_filters_and_selected_body_scope'
+  ];
+  for (const selector of requiredSelectors) {
+    assert.equal(commands.filter((command) => command[0].includes(`${selector} > `)).length, 1, selector);
+  }
+  assert.equal(new Set(commands.map((command) => command[1])).size, commands.length, 'each selector needs its own execution receipt');
   for (const command of commands) {
     const log = command[1];
     // Validation follows the command in the same fail-fast shell step.
