@@ -23,11 +23,13 @@ struct Entry {
 #[derive(Debug, Default)]
 struct State {
     epoch: u64,
+    resetting: bool,
     entries: BTreeMap<String, Arc<Entry>>,
 }
 #[derive(Debug)]
 pub(crate) struct ServiceWorkers {
     state: Mutex<State>,
+    retirement: tokio::sync::Mutex<()>,
     idle: Duration,
     budget: Arc<tokio::sync::Semaphore>,
 }
@@ -46,6 +48,7 @@ impl ServiceWorkers {
     pub(super) fn new(idle_ms: u64, budget: Arc<tokio::sync::Semaphore>) -> Arc<Self> {
         let pool = Arc::new(Self {
             state: Mutex::new(State::default()),
+            retirement: tokio::sync::Mutex::new(()),
             idle: Duration::from_millis(idle_ms),
             budget,
         });
@@ -56,11 +59,14 @@ impl ServiceWorkers {
         pool
     }
     pub(super) fn epoch(&self) -> FrameworkResult<u64> {
-        Ok(self
+        let state = self
             .state
             .lock()
-            .map_err(|_| invalid("service worker registry unavailable"))?
-            .epoch)
+            .map_err(|_| invalid("service worker registry unavailable"))?;
+        if state.resetting {
+            return Err(invalid("service worker reset in progress"));
+        }
+        Ok(state.epoch)
     }
     pub(super) fn acquire(
         &self,
@@ -72,7 +78,7 @@ impl ServiceWorkers {
             .state
             .lock()
             .map_err(|_| invalid("service worker registry unavailable"))?;
-        if state.epoch != epoch {
+        if state.resetting || state.epoch != epoch {
             return Err(invalid("service worker generation retired"));
         }
         let entry = if let Some(entry) = state.entries.get(actor) {
@@ -118,6 +124,7 @@ impl ServiceWorkers {
     }
     /// Fence admitted but unpolled calls before terminating and observing every child exit.
     pub(crate) async fn retire_all(&self) -> FrameworkResult<()> {
+        let _retirement = self.retirement.lock().await;
         let entries = {
             let mut state = self
                 .state
@@ -127,6 +134,7 @@ impl ServiceWorkers {
                 .epoch
                 .checked_add(1)
                 .ok_or_else(|| invalid("service worker generation exhausted"))?;
+            state.resetting = true;
             for entry in state.entries.values() {
                 entry
                     .activity
@@ -136,8 +144,15 @@ impl ServiceWorkers {
             }
             state.entries.values().cloned().collect::<Vec<_>>()
         };
+        let mut failure = None;
         for entry in &entries {
-            Self::reap(entry).await?;
+            if let Err(error) = Self::reap(entry).await {
+                failure.get_or_insert(error);
+            }
+        }
+        if let Some(error) = failure {
+            // Fail closed until a subsequent retirement confirms all old processes exited.
+            return Err(error);
         }
         let mut state = self
             .state
@@ -146,6 +161,7 @@ impl ServiceWorkers {
         state
             .entries
             .retain(|_, entry| !entries.iter().any(|old| Arc::ptr_eq(old, entry)));
+        state.resetting = false;
         Ok(())
     }
     async fn reap(entry: &Entry) -> FrameworkResult<()> {

@@ -197,14 +197,57 @@ fn actor_scope_worker_lifetime_is_explicit_and_bounded_by_idle_policy() {
 fn duplex_operations_require_authorized_multiplex_marker_and_self_contained_schemas() {
     let mut value = fixture();
     value["managed_service"]["operations"][0]["method"] = json!("POST");
-    value["managed_service"]["operations"][0]["stream"] = json!({"input_schema":{"type":"object"},"event_schema":{"type":"object"}});
+    value["managed_service"]["operations"][0]["stream"] =
+        json!({"input_schema":{"type":"object"},"event_schema":{"type":"object"}});
     assert!(parse(&value).is_err());
-    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] = json!(["runtime_duplex/v1"]);
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!(["runtime_duplex/v1"]);
     let parsed = parse(&value).unwrap();
     assert!(!parsed.managed_service.unwrap().operations[0].invalidates_streams);
-    value["managed_service"]["operations"][0]["stream"]["event_schema"] = json!({"$ref":"https://attacker.invalid/schema"});
+    value["managed_service"]["operations"][0]["stream"]["event_schema"] =
+        json!({"$ref":"https://attacker.invalid/schema"});
     assert!(parse(&value).is_err());
     value["managed_service"]["operations"][0]["stream"]["event_schema"] = json!({"type":"object"});
     value["managed_service"]["operations"][0]["method"] = json!("GET");
     assert!(parse(&value).is_err());
+}
+
+#[test]
+fn operation_concurrency_defaults_to_serialized_and_parallel_is_explicit() {
+    use crate::ManagedServiceExecutionConcurrency;
+    let mut value = fixture();
+    value["managed_service"]["operations"][0]["method"] = json!("POST");
+    let default = parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .operations
+        .remove(0);
+    assert_eq!(
+        default.execution_concurrency,
+        ManagedServiceExecutionConcurrency::Serialized
+    );
+    assert!(default.requires_mutation_lock());
+    assert!(!default.invalidates_workers);
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("parallel");
+    value["managed_service"]["operations"][0]["invalidates_workers"] = json!(true);
+    let parallel = parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .operations
+        .remove(0);
+    assert!(!parallel.requires_mutation_lock());
+    assert!(parallel.invalidates_workers);
+    assert_eq!(parallel.method, "POST");
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("unrestricted");
+    assert!(
+        parse(&value).is_err(),
+        "unknown concurrency must fail closed"
+    );
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("serialized");
+    value["managed_service"]["operations"][0]["method"] = json!("GET");
+    assert!(
+        !parse(&value).unwrap().managed_service.unwrap().operations[0].requires_mutation_lock()
+    );
 }

@@ -689,6 +689,14 @@ impl ManagedExtensionComposition {
         .await
     }
 
+    /// Reset the exact pool that executed the successful mutation, preserving its mounts.
+    pub(crate) async fn reset_service_workers(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<()> {
+        Ok(self.backend.reset_managed_service_workers(handle).await?)
+    }
+
     pub(crate) async fn execute_snapshot(
         &self,
         snapshot: Arc<ManagedWorkspaceSnapshot>,

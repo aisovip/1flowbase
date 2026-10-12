@@ -93,7 +93,7 @@ impl Adapter {
             .checked_add(i64::try_from(timeout_ms).map_err(|_| Error::InvalidInput("timeout_ms"))?)
             .ok_or(Error::InvalidInput("timeout_ms"))?;
         let result = tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async {
-            let _mutation = if op.declaration.method != "GET" {
+            let _mutation = if op.declaration.requires_mutation_lock() {
                 Some(
                     state
                         .store
@@ -148,6 +148,9 @@ impl Adapter {
             }
             if op.declaration.invalidates_streams {
                 super::stream::revoke_installation(self.registration.installation_id);
+            }
+            if op.declaration.invalidates_workers {
+                composition.reset_service_workers(&binding.handle).await?;
             }
             Ok::<_, anyhow::Error>(ManagedServiceOutput(output))
         })

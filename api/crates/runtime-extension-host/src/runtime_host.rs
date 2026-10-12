@@ -952,6 +952,26 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         Ok(())
     }
 
+    async fn reset_managed_service_workers(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        let pool = self
+            .managed_workers
+            .read()
+            .await
+            .service_pool_for_handle(handle)?;
+        if let Some(pool) = pool {
+            // Cleanup keeps its owner even if the HTTP deadline drops the awaiting adapter.
+            tokio::spawn(async move { pool.retire_all().await })
+                .await
+                .map_err(|_| {
+                    RuntimeBackendError::InvalidRequest("service worker reset task failed".into())
+                })??;
+        }
+        Ok(())
+    }
+
     async fn admit_managed_capability_execute(
         &self,
         request: RuntimeManagedCapabilityRequest,

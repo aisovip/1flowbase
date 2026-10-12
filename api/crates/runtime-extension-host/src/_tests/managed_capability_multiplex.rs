@@ -693,3 +693,106 @@ async fn managed_duplex_lifetime_ignores_provider_limits_and_retains_explicit_de
         .await
         .unwrap();
 }
+
+#[tokio::test]
+#[cfg(unix)]
+async fn actor_scope_reset_fences_unpolled_and_active_calls_across_actors_without_unmount() {
+    let (fixture, executable) = service_fixture();
+    let mut workers = ManagedWorkers::default();
+    let open = mount_service(&mut workers, &executable, "service.open", Some(1800000));
+    let execute = mount_service(&mut workers, &executable, "service.execute", Some(1800000));
+    let alice = workers
+        .execute(service_request(
+            &open,
+            Some("alice"),
+            serde_json::json!({"set":"alice-session"}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    let bob = workers
+        .execute(service_request(
+            &open,
+            Some("bob"),
+            serde_json::json!({"set":"bob-session"}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    let old_alice = workers
+        .execute(service_request(
+            &execute,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap();
+    // An admitted actor that has never spawned must also be fenced by the reset epoch.
+    let old_carol = workers
+        .execute(service_request(
+            &execute,
+            Some("carol"),
+            serde_json::json!({"set":"stale-session"}),
+        ))
+        .unwrap();
+    let ready = fixture.0.join("reset-waiting");
+    let active = tokio::spawn(
+        workers
+            .execute(service_request(
+                &execute,
+                Some("bob"),
+                serde_json::json!({"wait_file":ready}),
+            ))
+            .unwrap(),
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while !ready.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let pool = workers.service_pool_for_handle(&open).unwrap().unwrap();
+    pool.retire_all().await.unwrap();
+    assert!(!process_exists(alice["pid"].as_i64().unwrap()));
+    assert!(!process_exists(bob["pid"].as_i64().unwrap()));
+    assert!(old_alice.await.is_err());
+    assert!(old_carol.await.is_err());
+    assert!(active.await.unwrap().is_err());
+    for actor in ["alice", "bob", "carol"] {
+        let fresh = workers
+            .execute(service_request(
+                &execute,
+                Some(actor),
+                serde_json::json!({}),
+            ))
+            .unwrap()
+            .await
+            .unwrap();
+        assert!(
+            fresh["value"].is_null(),
+            "{actor} must receive fresh process state"
+        );
+        let via_open = workers
+            .execute(service_request(&open, Some(actor), serde_json::json!({})))
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(
+            fresh, via_open,
+            "both contributions remain mounted and share the new actor pool"
+        );
+    }
+    pool.retire_all().await.unwrap();
+    let after_second = workers
+        .execute(service_request(
+            &execute,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(after_second["value"].is_null());
+    reap_service(&mut workers, &open).await;
+    reap_service(&mut workers, &execute).await;
+}

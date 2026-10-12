@@ -54,8 +54,28 @@ pub struct ManagedServiceOperation {
     pub stream: Option<ManagedServiceStream>,
     #[serde(default)]
     pub invalidates_streams: bool,
+    /// Successful execution retires shared actor workers without unmounting contributions.
+    #[serde(default)]
+    pub invalidates_workers: bool,
+    #[serde(default)]
+    pub execution_concurrency: ManagedServiceExecutionConcurrency,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<ManagedServiceMcpDeclaration>,
+}
+
+/// Mutation serialization is independent of authorization and HTTP mutability.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedServiceExecutionConcurrency {
+    #[default]
+    Serialized,
+    Parallel,
+}
+impl ManagedServiceOperation {
+    pub fn requires_mutation_lock(&self) -> bool {
+        self.method != "GET"
+            && self.execution_concurrency == ManagedServiceExecutionConcurrency::Serialized
+    }
 }
 
 /// Carrier lifetime only: every operation retains its own deadline and authority.

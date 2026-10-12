@@ -341,6 +341,12 @@ impl CapabilityRuntimePort for CompleteFakeBackend {
     ) -> Result<(), RuntimeBackendError> {
         unreachable!("compile fixture is not executed")
     }
+    async fn reset_managed_service_workers(
+        &self,
+        _handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
     async fn admit_managed_capability_execute(
         &self,
         _request: crate::runtime_backend::RuntimeManagedCapabilityRequest,

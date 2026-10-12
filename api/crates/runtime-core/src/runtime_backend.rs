@@ -593,6 +593,12 @@ pub trait CapabilityRuntimePort: Send + Sync {
         &self,
         handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
     ) -> Result<(), RuntimeBackendError>;
+    /// Fence old admissions and await every actor worker exit for this handle's shared pool.
+    /// Contributions remain mounted; calls admitted after return use fresh workers.
+    async fn reset_managed_service_workers(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError>;
     /// Returns only after validating the handle/deadline and acquiring its execution scope lease.
     /// The caller holds its current authority lease until this returns, then releases it before
     /// awaiting the worker. This must not merely wrap a not-yet-admitted async call.
