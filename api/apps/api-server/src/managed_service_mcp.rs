@@ -123,7 +123,7 @@ fn identity(kind: &str, owner: &str, key: &str) -> Uuid {
     id.copy_from_slice(&digest[..16]);
     Uuid::from_bytes(id)
 }
-fn append_service(
+pub(crate) fn append_service(
     catalog: &mut McpCatalogSnapshot,
     instance: &McpInstanceRecord,
     service: &ManagedServiceRegistration,
@@ -207,7 +207,7 @@ fn append_service(
             execution_target: domain::McpToolExecutionTarget::InterfaceWrapper {
                 interface_id: operation.interface_id.clone(),
             },
-            parameter_schema: operation.input_schema.clone(),
+            parameter_schema: parameter_schema(&operation.input_schema),
             result_schema: media_result_schema(
                 &operation.output_schema,
                 mcp.output_mapping.as_ref(),
@@ -252,6 +252,33 @@ fn append_service(
     }
     Ok(())
 }
+// Managed MCP arguments share DTO field names, without HTTP transport containers.
+fn parameter_schema(schema: &Value) -> Value {
+    let mut properties = serde_json::Map::new();
+    let mut required = Vec::new();
+    for location in ["path", "query", "body"] {
+        let Some(location_schema) = schema.pointer(&format!("/properties/{location}")) else {
+            continue;
+        };
+        let Some(fields) = location_schema.get("properties").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, field_schema) in fields {
+            // Intake rejects duplicate field names across locations.
+            properties.insert(name.clone(), field_schema.clone());
+            if location == "path"
+                || location_schema
+                    .get("required")
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| items.iter().any(|value| value.as_str() == Some(name)))
+            {
+                required.push(Value::String(name.clone()));
+            }
+        }
+    }
+    json!({"type":"object", "properties":properties, "required":required, "additionalProperties":false})
+}
+
 fn input_mapping(schema: &Value) -> Value {
     let mut mappings = Vec::new();
     for location in ["path", "query", "body"] {

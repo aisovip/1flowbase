@@ -666,3 +666,62 @@ async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unc
         .iter()
         .all(|item| item["type"] == "text"));
 }
+
+#[test]
+fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_contract() {
+    let declaration: plugin_framework::ManagedServiceManifest = serde_json::from_value(json!({
+        "scope":"system","feature":{"feature_id":"ssh.settings","label":"SSH","description":"SSH settings","route_id":"ssh","path":"/settings/ssh"},
+        "operations":[{"interface_id":"ssh.image","contribution_id":"ssh.image","method":"POST","path":"/api/console/managed-services/ssh/hosts/{host_id}/image",
+            "summary":"Read image","description":"Read image",
+            "input_schema":{"type":"object","properties":{
+                "path":{"type":"object","properties":{"host_id":{"type":"string"}},"required":["host_id"]},
+                "query":{"type":"object","properties":{"page":{"type":"integer","default":1}}},
+                "body":{"type":"object","properties":{"path":{"type":"string"},"query":{"type":"string","default":"status"},"body":{"type":"string"},"command":{"type":"string"}},"required":["path","body","command"]}
+            }},"output_schema":{},"mcp":{"name":"image.read","description":"Read remote image"}
+        }]
+    })).unwrap();
+    let service = crate::managed_services::ManagedServiceRegistration {
+        installation_id: uuid::Uuid::nil(),
+        plugin_code: "ssh".into(),
+        plugin_version: "1".into(),
+        pages: vec![],
+        declaration,
+    };
+    let input_schema = service.declaration.operations[0].input_schema.clone();
+    let mut catalog = catalog_with_server_bound_workspace();
+    let instance = catalog.instances[0].clone();
+    crate::managed_service_mcp::append_service(
+        &mut catalog,
+        &instance,
+        &service,
+        &[&service.declaration.operations[0]],
+        uuid::Uuid::nil(),
+    )
+    .unwrap();
+    let scope = VirtualMcpScope::single("selected".into());
+    let VirtualToolOutcome::Success(result) = get(
+        &catalog,
+        &scope,
+        &json!({"tool_id":"plugin.ssh.image.read"}),
+        false,
+    ) else {
+        panic!("managed image tool should be visible");
+    };
+    let advertised = &result["structuredContent"]["input_schema"];
+    for name in ["host_id", "path", "query", "body", "command"] {
+        assert_eq!(advertised["properties"][name]["type"], "string", "{name}");
+    }
+    assert_eq!(
+        advertised["properties"]["page"],
+        json!({"type":"integer","default":1})
+    );
+    assert_eq!(advertised["properties"]["query"]["default"], "status");
+    let required = advertised["required"].as_array().unwrap();
+    for name in ["host_id", "path", "body", "command"] {
+        assert!(required.contains(&json!(name)));
+    }
+    for name in ["page", "query"] {
+        assert!(!required.contains(&json!(name)));
+    }
+    assert_eq!(service.declaration.operations[0].input_schema, input_schema);
+}

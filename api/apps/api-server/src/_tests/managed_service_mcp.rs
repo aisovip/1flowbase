@@ -330,3 +330,69 @@ fn managed_media_projection_preserves_mapping_and_advertises_metadata_schema() {
         .get("data")
         .is_none());
 }
+
+#[test]
+fn managed_mcp_parameter_schema_flattens_dto_fields_named_like_transport_containers() {
+    let mut service = registration();
+    let operation = &mut service.declaration.operations[0];
+    operation.input_schema["properties"]["body"]["properties"]["path"] =
+        json!({"type":"string","description":"Absolute remote image path"});
+    operation.input_schema["properties"]["body"]["properties"]["query"] =
+        json!({"type":"string","default":"status"});
+    operation.input_schema["properties"]["body"]["properties"]["body"] = json!({"type":"string"});
+    operation.input_schema["properties"]["body"]["required"] = json!(["command", "path", "body"]);
+    let business_schema = operation.input_schema.clone();
+    let mut catalog = base_catalog();
+    let instance = catalog.instances[0].clone();
+    append_service(
+        &mut catalog,
+        &instance,
+        &service,
+        &[&service.declaration.operations[0]],
+        Uuid::nil(),
+    )
+    .unwrap();
+    let tool = &catalog.tools[0];
+    for name in ["host_id", "command", "path", "query", "body"] {
+        assert_eq!(
+            tool.parameter_schema["properties"][name]["type"], "string",
+            "{name}"
+        );
+    }
+    assert_eq!(
+        tool.parameter_schema["properties"]["page"],
+        json!({"type":"integer","default":1})
+    );
+    assert_eq!(
+        tool.parameter_schema["properties"]["query"]["default"],
+        "status"
+    );
+    assert_eq!(
+        tool.parameter_schema["properties"]["path"]["description"],
+        "Absolute remote image path"
+    );
+    assert_eq!(
+        tool.parameter_schema["required"],
+        json!(["host_id", "command", "path", "body"])
+    );
+    assert_eq!(
+        service.declaration.operations[0].input_schema,
+        business_schema
+    );
+    let mappings = tool.input_mapping["mappings"].as_array().unwrap();
+    for name in ["host_id", "command", "path", "query", "body", "page"] {
+        let mapping = mappings
+            .iter()
+            .find(|mapping| mapping["interface_param"] == name)
+            .unwrap();
+        assert_eq!(mapping["mcp_param"], name);
+        assert_eq!(mapping["source"]["path"], name);
+    }
+    assert_eq!(
+        mappings
+            .iter()
+            .find(|mapping| mapping["interface_param"] == "query")
+            .unwrap()["default_value"],
+        "status"
+    );
+}

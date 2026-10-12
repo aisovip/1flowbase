@@ -421,7 +421,8 @@ fn bounded_jsonrpc_response(
     status: StatusCode,
     response: JsonRpcResponse,
 ) -> (StatusCode, Json<JsonRpcResponse>) {
-    if serde_json::to_vec(&response).is_ok_and(|bytes| bytes.len() <= JSON_RPC_RESPONSE_MAX_BYTES) {
+    if response_envelope_bytes(&response).is_some_and(|bytes| bytes <= JSON_RPC_RESPONSE_MAX_BYTES)
+    {
         return (status, Json(response));
     }
     (
@@ -441,6 +442,79 @@ fn bounded_jsonrpc_response(
         }),
     )
 }
+
+// Count the serialized envelope without allocating a second copy of native media.
+// Only validated image.data bytes are exempt: MIME, keys, annotations, text and metadata count.
+fn response_envelope_bytes(response: &JsonRpcResponse) -> Option<usize> {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(bytes.len())
+                .ok_or_else(|| std::io::Error::other("response size overflow"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, response).ok()?;
+    let mut media_bytes = 0usize;
+    if let Some(content) = response
+        .result
+        .as_ref()
+        .and_then(|result| result.get("content"))
+        .and_then(Value::as_array)
+    {
+        for item in content {
+            if item.get("type").and_then(Value::as_str) != Some("image") {
+                continue;
+            }
+            let valid_mime = item
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .is_some_and(|mime| {
+                    matches!(
+                        mime,
+                        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+                    )
+                });
+            if let Some(data) = item
+                .get("data")
+                .and_then(Value::as_str)
+                .filter(|data| valid_mime && valid_image_base64(data))
+            {
+                media_bytes = media_bytes.checked_add(data.len())?;
+            }
+        }
+    }
+    counter.0.checked_sub(media_bytes)
+}
+
+fn valid_image_base64(data: &str) -> bool {
+    use base64::Engine;
+    if data.is_empty()
+        || data
+            .bytes()
+            .enumerate()
+            .any(|(index, byte)| byte == b'=' && index < data.len().saturating_sub(2))
+    {
+        return false;
+    }
+    // Each full chunk ends on a base64 quartet; only the final chunk may be padded.
+    let mut decoded = [0u8; 3072];
+    data.as_bytes().chunks(4096).all(|chunk| {
+        base64::engine::general_purpose::STANDARD
+            .decode_slice(chunk, &mut decoded)
+            .is_ok()
+    })
+}
+
+#[cfg(test)]
+#[path = "mcp_protocol/_tests/native_response.rs"]
+mod native_response_tests;
 
 #[cfg(test)]
 mod issue_1246_tests {
