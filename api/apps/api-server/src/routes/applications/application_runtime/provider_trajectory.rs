@@ -207,15 +207,25 @@ pub async fn get_client_trajectory_section(
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordConversationScope {
+    #[default]
+    Session,
+    Children,
+}
+
+#[derive(Debug, Default, Deserialize)]
 pub struct RecordConversationQuery {
+    #[serde(default)]
+    pub scope: RecordConversationScope,
     pub before: Option<Uuid>,
     pub after: Option<Uuid>,
     pub limit: Option<i64>,
 }
 
 /// List source-neutral business turns around a selected log record.
-/// Returns projected system, user and final messages with opaque record cursors isolated to the application and source session. The initial page includes the selected turn and four older turns.
-#[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/conversation/messages",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("before"=Option<Uuid>,Query),("after"=Option<Uuid>,Query),("limit"=Option<i64>,Query)),responses((status=200,body=super::log_query::schemas::RecordConversationPageSchema)))]
+/// Returns projected system, user and final messages with opaque record cursors isolated to the application and source session. The initial page includes the selected turn and four older root turns. scope=children returns the newest direct children by default, with independent paging.
+#[utoipa::path(get,path="/api/console/applications/{id}/logs/records/{record_id}/conversation/messages",params(("id"=Uuid,Path),("record_id"=Uuid,Path),("before"=Option<Uuid>,Query),("after"=Option<Uuid>,Query),("limit"=Option<i64>,Query),("scope"=Option<String>,Query,description="session (default) or children")),responses((status=200,body=super::log_query::schemas::RecordConversationPageSchema)))]
 pub async fn list_record_conversation_messages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

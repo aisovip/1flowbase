@@ -76,7 +76,7 @@ fn query_fields_schema() -> Value {
 }
 fn record_overview_schema() -> Value {
     object(json!({
-        "record_id":uuid(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
+        "record_id":uuid(),"parent_task_run_id":nullable(uuid()),"child_task_count":integer(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
         "source_session_id":nullable(text()),"source_task_id":nullable(text()),"native_run_id":nullable(uuid()),
         "started_at":timestamp(),"finished_at":nullable(timestamp()),"requested_model_id":nullable(text()),"reasoning_effort":nullable(text()),
         "status":text(),"title":text(),"outcome":text(),"projection_output":nullable(text()),

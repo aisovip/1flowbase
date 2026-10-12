@@ -11,12 +11,13 @@ import type { AgentFlowDebugSessionStatus } from '../../hooks/runtime/useAgentFl
 import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
 import type { RuntimeDebugArtifactBatchLoader } from '../detail/last-run/runtime-debug-payload';
 import { ConversationLogPanel } from './ConversationLogPanel';
-import { DebugConversationPane } from './conversation/DebugConversationPane';
+import { type ConversationSupplement, DebugConversationPane } from './conversation/DebugConversationPane';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export function AgentFlowDebugConsole({
   assistantMessageActions,
   assistantMessageMainRender,
+  conversationSupplements,
   ariaLabel,
   closeLabel,
   composerHeader,
@@ -46,6 +47,7 @@ export function AgentFlowDebugConsole({
 }: {
   assistantMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
   assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
+  conversationSupplements?: ConversationSupplement[];
   ariaLabel?: string;
   closeLabel?: string;
   composerHeader?: ReactNode;
@@ -129,6 +131,7 @@ export function AgentFlowDebugConsole({
         <DebugConversationPane
           assistantMessageActions={assistantMessageActions}
           assistantMessageMainRender={assistantMessageMainRender}
+          conversationSupplements={conversationSupplements}
           composerUiOnly={composerUiOnly}
           composerHeader={composerHeader}
           composerFooterActions={composerFooterActions}

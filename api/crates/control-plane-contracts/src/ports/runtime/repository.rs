@@ -111,6 +111,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<ApplicationLogRecordConversationPage> {
         anyhow::bail!("application_log_record_conversation_page not implemented")
     }
+    async fn application_log_record_children_page(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+        _before: Option<Uuid>,
+        _after: Option<Uuid>,
+        _limit: i64,
+    ) -> anyhow::Result<ApplicationLogRecordConversationPage> {
+        anyhow::bail!("application_log_record_children_page not implemented")
+    }
     async fn application_log_record(
         &self,
         _application_id: Uuid,

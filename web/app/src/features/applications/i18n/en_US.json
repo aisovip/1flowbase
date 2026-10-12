@@ -1,5 +1,10 @@
 {
   "auto": {
+    "subagents": "Subagents ({{count}})",
+    "subagent_no_messages": "No conversation messages recorded",
+    "subagents_older": "Earlier subagents",
+    "subagents_newer": "Later subagents",
+    "subagents_empty": "No subagents recorded",
     "view_execution_trace": "View execution trace",
     "close": "Close",
     "total_cost": "Cost",
