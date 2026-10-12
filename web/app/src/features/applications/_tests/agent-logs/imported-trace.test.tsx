@@ -1,12 +1,19 @@
 import '../../../../test/fixtures/rc-util-unique-ids';
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type {
   ConversationClientTrajectoryStep,
-  ConversationTrajectoryQuery
+  ConversationTrajectoryQuery,
+  ConversationClientTrajectoryQueryPage
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import { ConversationLogPanel } from '../../../agent-flow/components/debug-console/ConversationLogPanel';
@@ -87,7 +94,7 @@ function fixture() {
           : [],
         previous_cursor: query.cursor ? null : 'before',
         next_cursor: query.cursor ? null : 'after',
-        search_sections: query.search_sections,
+        search_sections: query.search_sections ?? [],
         integrity: 'complete'
       })
     );
@@ -149,7 +156,7 @@ test.each(['message trace', 'trajectory window'])(
       entry === 'message trace' ? (
         <ConversationLogPanel
           activeTab="trace"
-          defaultToolsExpanded
+          defaultTraceToolsExpanded
           message={buildApplicationRunTraceMessage('main-round')}
           traceLoader={f.loader}
         />
@@ -197,7 +204,7 @@ test('previous and next are on demand, retain scope and server ordering, refresh
   for (const [, query] of f.queryConversationClientTrajectory.mock.calls)
     expect(query.focus_record_id).toBe('main-round');
   f.refresh();
-  fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+  fireEvent.click(screen.getByRole('button', { name: /刷\s*新/ }));
   await screen.findByRole('button', { name: '工具调用 · late-backdated' });
   expect(
     screen.queryByRole('button', { name: '工具调用 · grandchild-tool' })
@@ -237,7 +244,7 @@ test('category, provenance, time and semantic keyword are sent to the server wit
   );
   // A main row returned by the fixture remains visible: filtering truth belongs to the backend.
   expect(
-    screen.getByRole('button', { name: '工具调用 · main-tool' })
+    await screen.findByRole('button', { name: '工具调用 · main-tool' })
   ).toBeInTheDocument();
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '分类' }));
   fireEvent.click(
@@ -251,7 +258,7 @@ test('category, provenance, time and semantic keyword are sent to the server wit
   fireEvent.change(screen.getByLabelText('结束时间'), {
     target: { value: '2026-10-12T02:00:00' }
   });
-  const search = screen.getByRole('textbox', { name: '搜索完整会话' });
+  const search = screen.getByRole('searchbox', { name: '搜索完整会话' });
   fireEvent.change(search, { target: { value: 'unread-result' } });
   fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
   await waitFor(() =>
@@ -334,22 +341,95 @@ test('assistant explicit canonical identity avoids a lookup and unresolved ident
   expect(f.queryConversationClientTrajectory).not.toHaveBeenCalled();
 });
 
-test('unloaded related event keeps its inspector and offers explicit paging', async () => {
+test('related event outside the category and page opens through a separate canonical lookup', async () => {
   const f = fixture();
-  mount(
+  let resolveRelated!: (value: ConversationClientTrajectoryQueryPage) => void;
+  const pendingRelated = new Promise<ConversationClientTrajectoryQueryPage>(
+    (resolve) => {
+      resolveRelated = resolve;
+    }
+  );
+  f.queryConversationClientTrajectory.mockImplementation(
+    async (_canonical: string, query: ConversationTrajectoryQuery) => {
+      if (query.filter?.id) return pendingRelated;
+      return {
+        log_conversation_id: 'canonical',
+        items: [
+          {
+            ...step('main-tool', 'main-round'),
+            category: 'tool_result',
+            related_step_id: 'related-call'
+          }
+        ],
+        matches: [],
+        previous_cursor: null,
+        next_cursor: null,
+        search_sections: query.search_sections ?? [],
+        integrity: 'complete'
+      };
+    }
+  );
+  const { container } = mount(
     <ConversationTrajectoryWorkspace
       recordId="main-round"
       logConversationId="canonical"
       loader={f.loader}
     />
   );
+  await screen.findByRole('button', { name: '工具结果 · main-tool' });
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '分类' }));
   fireEvent.click(
-    await screen.findByRole('button', { name: '工具调用 · main-tool' })
+    await screen.findByText('工具结果', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: '工具结果 · main-tool' })
   );
   fireEvent.click(screen.getByRole('button', { name: '定位关联调用' }));
-  await screen.findByText('关联事件尚未加载，请加载更早或更新事件后查看。');
+  await waitFor(() =>
+    expect(f.queryConversationClientTrajectory).toHaveBeenLastCalledWith(
+      'canonical',
+      { filter: { id: { $eq: 'related-call' } }, limit: 1 }
+    )
+  );
   expect(
-    screen.getByRole('complementary', { name: '步骤检查器' })
-  ).toBeInTheDocument();
-  expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
+    container.querySelector('.provider-trajectory__inspector-header strong')
+  ).toHaveTextContent('main-tool');
+  await act(async () =>
+    resolveRelated({
+      log_conversation_id: 'canonical',
+      items: [step('related-call', 'child', true)],
+      matches: [],
+      previous_cursor: null,
+      next_cursor: null,
+      search_sections: [],
+      integrity: 'complete'
+    })
+  );
+  await waitFor(() =>
+    expect(
+      container.querySelector('.provider-trajectory__inspector-header strong')
+    ).toHaveTextContent('related-call')
+  );
+  expect(
+    screen.queryByRole('button', { name: '工具调用 · related-call' })
+  ).not.toBeInTheDocument();
+  expect(
+    [...container.querySelectorAll('.conversation-trajectory__row strong')].map(
+      (node) => node.textContent
+    )
+  ).toEqual(['main-tool']);
+  expect(f.queryConversationClientTrajectory).toHaveBeenCalledWith(
+    'canonical',
+    expect.objectContaining({ filter: { category: { $eq: 'tool_result' } } })
+  );
+  await waitFor(() =>
+    expect(f.loadConversationClientTrajectorySection).toHaveBeenCalledWith(
+      'canonical',
+      'related-call',
+      'parameters',
+      undefined
+    )
+  );
 });

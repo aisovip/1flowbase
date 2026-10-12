@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useInfiniteQuery,
   useQuery,
   useQueryClient
 } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Select, Spin } from 'antd';
-import type { ConversationTrajectoryQuery } from '@1flowbase/api-client';
+import type {
+  ConversationTrajectoryQuery,
+  ConversationClientTrajectoryStep
+} from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../../shared/i18n/format';
@@ -133,6 +136,8 @@ function CanonicalTimeline({
   const [selected, setSelected] = useState<string | null>(null);
   const [generation, setGeneration] = useState(0);
   const [relatedTarget, setRelatedTarget] = useState<string | null>(null);
+  const [relatedStep, setRelatedStep] =
+    useState<ConversationClientTrajectoryStep | null>(null);
   const fromTimestamp = timestamp(from);
   const toTimestamp = timestamp(to);
   const invalidTime = Boolean((from && !fromTimestamp) || (to && !toTimestamp));
@@ -181,7 +186,30 @@ function CanonicalTimeline({
   });
   // Preserve server full-precision order, including duplicate timestamps.
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
-  const selectedStep = items.find((step) => step.id === selected);
+  const related = useQuery({
+    queryKey: [
+      'conversation-trajectory-related',
+      logConversationId,
+      relatedTarget,
+      generation
+    ],
+    enabled:
+      active &&
+      Boolean(relatedTarget && loader.queryConversationClientTrajectory),
+    queryFn: () =>
+      loader.queryConversationClientTrajectory!(logConversationId, {
+        filter: { id: { $eq: relatedTarget } },
+        limit: 1
+      }),
+    retry: false,
+    refetchOnWindowFocus: false
+  });
+  useEffect(() => {
+    if (relatedTarget && related.data?.items[0])
+      setRelatedStep(related.data.items[0]);
+  }, [relatedTarget, related.data]);
+  const selectedStep =
+    relatedStep ?? items.find((step) => step.id === selected);
   const detailLoader = useMemo<ConversationLogTraceLoader>(
     () => ({
       loadClientTrajectorySection: (
@@ -260,6 +288,7 @@ function CanonicalTimeline({
               });
               setSelected(null);
               setRelatedTarget(null);
+              setRelatedStep(null);
               setGeneration((value) => value + 1);
             }}
             loading={pages.isFetching}
@@ -341,12 +370,13 @@ function CanonicalTimeline({
               type="button"
               className="provider-trajectory__row client-trajectory__row conversation-trajectory__row"
               data-lane={clientLane(step)}
-              data-selected={selected === step.id || undefined}
-              aria-pressed={selected === step.id}
+              data-selected={selectedStep?.id === step.id || undefined}
+              aria-pressed={selectedStep?.id === step.id}
               aria-label={`${categoryLabel(step.category)} · ${step.name}`}
               onClick={() => {
                 setSelected(step.id);
                 setRelatedTarget(null);
+                setRelatedStep(null);
               }}
             >
               <span
@@ -417,46 +447,37 @@ function CanonicalTimeline({
           >
             <div className="provider-trajectory__inspector-header">
               <strong>{selectedStep.name}</strong>
-              <Button onClick={() => setSelected(null)}>
+              <Button
+                onClick={() => {
+                  setSelected(null);
+                  setRelatedTarget(null);
+                  setRelatedStep(null);
+                }}
+              >
                 {i18nText('agentFlow', 'client_trajectory.close')}
               </Button>
             </div>
-            {relatedTarget ? (
+            {relatedTarget && related.isFetching ? (
+              <div role="status">
+                <Spin />
+                {i18nText('agentFlow', 'trajectory.loading_first_page')}
+              </div>
+            ) : null}
+            {relatedTarget && related.isError ? (
               <Alert
-                type="info"
-                title={text('related_unloaded')}
+                type="error"
+                title={i18nText('agentFlow', 'auto.loading_failed')}
                 action={
-                  items.some((step) => step.id === relatedTarget) ? (
-                    <Button
-                      onClick={() => {
-                        setSelected(relatedTarget);
-                        setRelatedTarget(null);
-                      }}
-                    >
-                      {i18nText('agentFlow', 'client_trajectory.related')}
-                    </Button>
-                  ) : (
-                    <div>
-                      {pages.hasPreviousPage ? (
-                        <Button
-                          disabled={pages.isFetching}
-                          onClick={() => void pages.fetchPreviousPage()}
-                        >
-                          {text('previous')}
-                        </Button>
-                      ) : null}
-                      {pages.hasNextPage ? (
-                        <Button
-                          disabled={pages.isFetching}
-                          onClick={() => void pages.fetchNextPage()}
-                        >
-                          {text('next')}
-                        </Button>
-                      ) : null}
-                    </div>
-                  )
+                  <Button onClick={() => void related.refetch()}>
+                    {i18nText('agentFlow', 'auto.retry')}
+                  </Button>
                 }
               />
+            ) : null}
+            {relatedTarget &&
+            related.isSuccess &&
+            !related.data.items.length ? (
+              <Alert type="warning" title={text('related_unloaded')} />
             ) : null}
             <ClientTrajectoryDetail
               key={`${generation}:${selectedStep.id}`}
@@ -467,6 +488,7 @@ function CanonicalTimeline({
                 if (items.some((step) => step.id === id)) {
                   setSelected(id);
                   setRelatedTarget(null);
+                  setRelatedStep(null);
                 } else setRelatedTarget(id);
               }}
             />

@@ -864,6 +864,6 @@
     "loaded": "Loaded events",
     "search": "Search entire conversation",
     "invalid_time": "Enter a valid start and end time.",
-    "related_unloaded": "The related event is outside the loaded pages. Load earlier or later events to open it."
+    "related_unloaded": "The related event is unavailable in this conversation."
   }
 }
