@@ -7,6 +7,9 @@ import {
   getConsoleApplicationLogRecord,
   getConsoleApplicationLogRecordClientTrajectory,
   getConsoleApplicationLogRecordClientTrajectorySection,
+  queryConsoleConversationClientTrajectory,
+  getConsoleConversationClientTrajectorySection,
+  type ConversationTrajectoryQuery,
   getConsoleWorkflowTrajectory,
   getConsoleWorkflowTrajectoryBody,
   type WorkflowTrajectoryOptions,
@@ -188,6 +191,35 @@ export function fetchApplicationLogRecordTraceChildren(
     traceNodeId,
     cursor,
     20,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchConversationClientTrajectory(
+  applicationId: string,
+  logConversationId: string,
+  input: ConversationTrajectoryQuery
+) {
+  return queryConsoleConversationClientTrajectory(
+    applicationId,
+    logConversationId,
+    input,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchConversationClientTrajectorySection(
+  applicationId: string,
+  logConversationId: string,
+  stepId: string,
+  section: string,
+  cursor?: number
+) {
+  return getConsoleConversationClientTrajectorySection(
+    applicationId,
+    logConversationId,
+    stepId,
+    section,
+    cursor,
     getApplicationsApiBaseUrl()
   );
 }

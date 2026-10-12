@@ -849,5 +849,21 @@
     "close": "关闭详情",
     "group_categories": "按分类归纳",
     "encoding": "原文编码"
+  },
+  "conversation_trajectory": {
+    "missing_identity": "无法获取规范会话标识。",
+    "provenance": "来源",
+    "all_sources": "全部来源",
+    "main": "主 Agent",
+    "subagent": "子 Agent",
+    "from": "开始时间",
+    "to": "结束时间",
+    "search_sections": "搜索内容",
+    "previous": "加载更早事件",
+    "next": "加载更新事件",
+    "loaded": "已加载事件",
+    "search": "搜索完整会话",
+    "invalid_time": "请输入有效的开始和结束时间。",
+    "related_unloaded": "关联事件尚未加载，请加载更早或更新事件后查看。"
   }
 }

@@ -208,6 +208,34 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::ApplicationLogRecordsPage> {
         log_query::records(self, scope_id, application_ids, query).await
     }
+    async fn query_conversation_client_trajectory(
+        &self,
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        query: &control_plane_contracts::ports::ConversationClientTrajectoryQuery,
+    ) -> Result<control_plane_contracts::ports::ConversationClientTrajectoryQueryPage> {
+        log_query::conversation_trajectory(self, application_id, log_conversation_id, query).await
+    }
+    async fn read_conversation_client_trajectory_section(
+        &self,
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        step_id: Uuid,
+        section: &str,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {
+        log_query::conversation_section(
+            self,
+            application_id,
+            log_conversation_id,
+            step_id,
+            section,
+            cursor,
+            limit,
+        )
+        .await
+    }
     async fn query_record_client_trajectory(
         &self,
         application_id: Uuid,

@@ -51,6 +51,17 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     QueryRecords {
         query: log_query::LogRecordsQuery,
     },
+    QueryConversationTrajectory {
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        query: log_query::conversation_trajectory::ConversationTrajectoryQuery,
+    },
+    ConversationTrajectorySection {
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        step_id: Uuid,
+        query: log_query::conversation_trajectory::ConversationTrajectorySectionQuery,
+    },
     QueryRecordTrajectory {
         application_id: Uuid,
         record_id: Uuid,
@@ -186,6 +197,7 @@ pub(crate) enum ApplicationRuntimeReadsOutput {
     RecordTraceChildren(control_plane::ports::ApplicationLogRecordTraceChildren),
     Records(control_plane::ports::ApplicationLogRecordsPage),
     RecordTrajectoryQuery(control_plane::ports::RecordClientTrajectoryQueryPage),
+    ConversationTrajectoryQuery(control_plane::ports::ConversationClientTrajectoryQueryPage),
     RecordClientTrajectoryPage(control_plane::ports::RecordClientTrajectoryPage),
     Record(control_plane::ports::ApplicationLogRecordOverview),
     RecordConversationPage(control_plane::ports::ApplicationLogRecordConversationPage),
@@ -928,6 +940,34 @@ impl ApplicationRuntimeReadsAdapter {
             ApplicationRuntimeReadsInput::QueryRecords { query } => Ok(
                 ApplicationRuntimeReadsOutput::Records(self.query_log_records(actor, query).await?),
             ),
+            ApplicationRuntimeReadsInput::QueryConversationTrajectory {
+                application_id,
+                log_conversation_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ConversationTrajectoryQuery(
+                self.query_conversation_trajectory(
+                    actor,
+                    application_id,
+                    log_conversation_id,
+                    query,
+                )
+                .await?,
+            )),
+            ApplicationRuntimeReadsInput::ConversationTrajectorySection {
+                application_id,
+                log_conversation_id,
+                step_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(
+                self.conversation_trajectory_section(
+                    actor,
+                    application_id,
+                    log_conversation_id,
+                    step_id,
+                    query,
+                )
+                .await?,
+            )),
             ApplicationRuntimeReadsInput::QueryRecordTrajectory {
                 application_id,
                 record_id,
@@ -1204,6 +1244,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.trace-tree.children.list", binding_id:"http.console.applications.runtime.record.trace-tree.children.list.v1", method:"GET", path:"/api/console/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", mutating:false },
 
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.current-context.get", binding_id:"http.console.applications.runtime.current-context.get.v1", method:"GET", path:"/api/console/applications/logs/current-context", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.conversation-trajectory.query", binding_id:"http.console.applications.runtime.conversation-trajectory.query.v1", method:"POST", path:"/api/console/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/query", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.conversation-trajectory.section", binding_id:"http.console.applications.runtime.conversation-trajectory.section.v1", method:"GET", path:"/api/console/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/:step_id", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query-fields", binding_id:"http.console.applications.runtime.records.query-fields.v1", method:"GET", path:"/api/console/applications/logs/query-fields", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query", binding_id:"http.console.applications.runtime.records.query.v1", method:"POST", path:"/api/console/applications/logs/records/query", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.client-trajectory.query", binding_id:"http.console.applications.runtime.record.client-trajectory.query.v1", method:"POST", path:"/api/console/applications/:id/logs/records/:record_id/client-trajectory/query", mutating:false },

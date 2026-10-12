@@ -137,3 +137,25 @@ pub fn record_trajectory_query_fields() -> Vec<LogQueryField> {
     }
     fields
 }
+
+pub fn conversation_trajectory_query_fields() -> Vec<LogQueryField> {
+    use LogQueryValueType::*;
+    let mut fields = record_trajectory_query_fields();
+    for (name, kind) in [
+        ("record_id", Uuid),
+        ("log_conversation_id", Uuid),
+        ("parent_task_run_id", Uuid),
+        ("is_subagent", Boolean),
+        ("source_kind", String),
+        ("source_id", String),
+        ("source_client", String),
+        ("source_session_id", String),
+        ("source_task_id", String),
+    ] {
+        fields.push(field(name, kind));
+    }
+    for field in &mut fields {
+        field.sortable = false;
+    }
+    fields
+}

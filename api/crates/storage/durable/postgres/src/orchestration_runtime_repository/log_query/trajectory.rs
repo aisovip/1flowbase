@@ -143,7 +143,7 @@ pub(in crate::orchestration_runtime_repository) async fn trajectory(
         integrity,
     })
 }
-fn semantic_snippet(value: &Value, keyword: &str) -> Option<String> {
+pub(super) fn semantic_snippet(value: &Value, keyword: &str) -> Option<String> {
     match value {
         Value::String(text) => log_query_snippet(text, keyword),
         Value::Array(items) => items.iter().find_map(|v| semantic_snippet(v, keyword)),

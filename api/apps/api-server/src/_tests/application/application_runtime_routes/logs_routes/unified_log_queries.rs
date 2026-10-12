@@ -44,6 +44,8 @@ async fn replace_log_read_policy(app: &axum::Router, cookie: &str, csrf: &str, s
         "get_log_record",
         "list_record_conversation_messages",
         "query_record_trajectory",
+        "query_conversation_trajectory",
+        "get_conversation_trajectory_section",
         "list_record_client_trajectory",
         "get_record_client_trajectory_section",
     ]
@@ -99,6 +101,11 @@ async fn agent_logs_unified_query_console_auth_readonly_discovery_and_validation
         "/api/console/applications/logs/query-fields".into(),
     )
     .await;
+    assert!(fields["data"]["conversation_trajectory_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["field"] == "is_subagent" && field["value_type"] == "boolean"));
     for (field, kind, sortable) in [
         ("application_id", "uuid", false),
         ("total_cost", "number", false),
@@ -778,6 +785,62 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
         own_overview["data"]["messages"][0]["content"],
         "owned secret"
     );
+    let canonical = own_overview["data"]["log_conversation_id"]
+        .as_str()
+        .unwrap();
+    let timeline_uri = format!(
+        "/api/console/applications/{}/logs/conversations/{canonical}/client-trajectory/query",
+        fixtures[0].0
+    );
+    assert_eq!(
+        query_request(&app, &timeline_uri, None, None, json!({}))
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let timeline = response_json(
+        query_request(
+            &app,
+            &timeline_uri,
+            Some(&cookie),
+            None,
+            json!({"keyword":"owned secret","search_sections":["result"],"limit":1,
+            "focus_record_id":fixtures[0].1}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(timeline["data"]["log_conversation_id"], canonical);
+    assert_eq!(timeline["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        timeline["data"]["items"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    assert_eq!(timeline["data"]["items"][0]["is_subagent"], false);
+    for other in [1, 2] {
+        let denied = format!(
+            "/api/console/applications/{}/logs/conversations/{canonical}/client-trajectory/query",
+            fixtures[other].0
+        );
+        assert_eq!(
+            query_request(&app, &denied, Some(&cookie), None, json!({}))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            query_request(
+                &app,
+                &timeline_uri,
+                Some(&cookie),
+                None,
+                json!({"focus_record_id":fixtures[other].1})
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
     let own_steps = get_console_json(
         &app,
         &cookie,
@@ -794,6 +857,31 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
         format!("/api/console/applications/{}/logs/records/{}/client-trajectory/{own_step}?section=result", fixtures[0].0, fixtures[0].1),
     ).await;
     assert_eq!(own_section["data"]["items"][0]["value"], "owned secret");
+    let canonical_section_uri = format!(
+        "/api/console/applications/{}/logs/conversations/{canonical}/client-trajectory/{own_step}?section=result",
+        fixtures[0].0
+    );
+    let canonical_section = get_console_json(&app, &cookie, canonical_section_uri).await;
+    assert_eq!(canonical_section["data"], own_section["data"]);
+    let foreign_section_uri = format!(
+        "/api/console/applications/{}/logs/conversations/{}/client-trajectory/{own_step}?section=result",
+        fixtures[0].0, Uuid::new_v4()
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri(foreign_section_uri)
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+
     let wrong_record = format!(
         "/api/console/applications/{}/logs/records/{}/client-trajectory/query",
         fixtures[0].0, fixtures[1].1

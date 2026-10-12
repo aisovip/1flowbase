@@ -1224,3 +1224,6 @@ async fn enable_reception_fixture(store: &PgControlPlaneStore, scope: Uuid, appl
         .await
         .unwrap();
 }
+
+#[path = "agent_logs/conversation_timeline.rs"]
+mod conversation_timeline;

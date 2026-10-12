@@ -691,6 +691,8 @@ pub(crate) fn production_interface_contributions(
                 "applications.runtime.records.query-fields",
                 "applications.runtime.records.query",
                 "applications.runtime.conversations.query",
+                "applications.runtime.conversation-trajectory.query",
+                "applications.runtime.conversation-trajectory.section",
                 "applications.runtime.record.trace-tree.get",
                 "applications.runtime.record.trace-tree.children.list",
                 "applications.runtime.record.client-trajectory.query",

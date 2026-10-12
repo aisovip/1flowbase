@@ -450,6 +450,8 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.view",
             ),
             ("POST", "/api/console/applications/logs/conversations/query", "applications.view"),
+            ("POST", "/api/console/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/query", "applications.view"),
+            ("GET", "/api/console/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/:step_id", "applications.view"),
             ("GET", "/api/console/applications/:id/logs/records/:record_id/trace-tree", "applications.view"),
             ("GET", "/api/console/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", "applications.view"),
             (

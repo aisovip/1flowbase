@@ -50,3 +50,26 @@ pub fn validate_log_query_cursor_binding(
     }
     Ok(())
 }
+
+pub fn conversation_trajectory_query_fingerprint(
+    application_id: Uuid,
+    scope_id: Uuid,
+    log_conversation_id: Uuid,
+    source_id: &str,
+    source_client: &str,
+    query: &ConversationClientTrajectoryQuery,
+    sections: &[String],
+) -> String {
+    fingerprint((
+        "conversation_trajectory",
+        application_id,
+        scope_id,
+        log_conversation_id,
+        source_id,
+        source_client,
+        &query.filter,
+        &query.keyword,
+        sections,
+        query.focus_record_id,
+    ))
+}

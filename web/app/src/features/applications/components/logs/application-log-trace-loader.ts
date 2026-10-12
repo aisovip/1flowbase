@@ -1,6 +1,9 @@
 import type { AgentFlowDebugMessage } from '../../../agent-flow/api/runtime';
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
+  fetchApplicationLogRecord,
+  fetchConversationClientTrajectory,
+  fetchConversationClientTrajectorySection,
   fetchApplicationLogRecordTraceTree,
   fetchApplicationLogRecordTraceChildren,
   fetchApplicationLogRecordClientTrajectory,
@@ -44,6 +47,27 @@ export function createApplicationLogTraceLoader(
   if (sourceKind === 'imported') {
     return {
       sourceKind,
+      loadRecordOverviewForTrajectory: (recordId) =>
+        fetchApplicationLogRecord(applicationId, recordId),
+      queryConversationClientTrajectory: (logConversationId, query) =>
+        fetchConversationClientTrajectory(
+          applicationId,
+          logConversationId,
+          query
+        ),
+      loadConversationClientTrajectorySection: (
+        logConversationId,
+        stepId,
+        section,
+        cursor
+      ) =>
+        fetchConversationClientTrajectorySection(
+          applicationId,
+          logConversationId,
+          stepId,
+          section,
+          cursor
+        ),
       loadTree: (recordId) =>
         fetchApplicationLogRecordTraceTree(applicationId, recordId),
       loadChildren: (recordId, traceNodeId, cursor) =>

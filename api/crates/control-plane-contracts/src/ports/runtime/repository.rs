@@ -93,6 +93,25 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<ApplicationLogRecordsPage> {
         anyhow::bail!("query_application_log_records not implemented")
     }
+    async fn query_conversation_client_trajectory(
+        &self,
+        _application_id: Uuid,
+        _log_conversation_id: Uuid,
+        _query: &ConversationClientTrajectoryQuery,
+    ) -> anyhow::Result<ConversationClientTrajectoryQueryPage> {
+        anyhow::bail!("query_conversation_client_trajectory not implemented")
+    }
+    async fn read_conversation_client_trajectory_section(
+        &self,
+        _application_id: Uuid,
+        _log_conversation_id: Uuid,
+        _step_id: Uuid,
+        _section: &str,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<Option<ClientTrajectorySection>> {
+        anyhow::bail!("read_conversation_client_trajectory_section not implemented")
+    }
     async fn query_record_client_trajectory(
         &self,
         _application_id: Uuid,

@@ -11,3 +11,5 @@ export * from './trajectory';
 export * from './client-trajectory';
 
 export * from './records';
+
+export * from './conversation-trajectory';

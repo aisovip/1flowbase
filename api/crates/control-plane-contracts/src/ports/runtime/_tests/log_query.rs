@@ -301,3 +301,51 @@ fn record_trace_contract_is_explicit_metadata_with_record_locator() {
     let roundtrip: ApplicationLogRecordTraceChildren = serde_json::from_value(value).unwrap();
     assert_eq!(roundtrip.items[0].trace_node_id, child);
 }
+
+#[test]
+fn conversation_trajectory_provenance_filter_and_fingerprint_contract() {
+    let fields = conversation_trajectory_query_fields();
+    for (name, kind) in [
+        ("is_subagent", LogQueryValueType::Boolean),
+        ("record_id", LogQueryValueType::Uuid),
+        ("parent_task_run_id", LogQueryValueType::Uuid),
+        ("source_session_id", LogQueryValueType::String),
+    ] {
+        assert!(fields
+            .iter()
+            .any(|field| field.field == name && field.value_type == kind));
+    }
+    let app = Uuid::from_u128(1);
+    let scope = Uuid::from_u128(2);
+    let conversation = Uuid::from_u128(3);
+    let mut query = ConversationClientTrajectoryQuery {
+        filter: domain::ResourceFilterExpr::All(vec![]),
+        cursor: None,
+        limit: 1,
+        keyword: None,
+        search_sections: vec![],
+        focus_record_id: None,
+    };
+    let fingerprint = |query: &ConversationClientTrajectoryQuery, scope, source| {
+        conversation_trajectory_query_fingerprint(
+            app,
+            scope,
+            conversation,
+            source,
+            "codex",
+            query,
+            &[],
+        )
+    };
+    let initial = fingerprint(&query, scope, "collector");
+    query.limit = 500;
+    query.cursor = Some("opaque".into());
+    assert_eq!(initial, fingerprint(&query, scope, "collector"));
+    assert_ne!(
+        initial,
+        fingerprint(&query, Uuid::from_u128(4), "collector")
+    );
+    assert_ne!(initial, fingerprint(&query, scope, "foreign"));
+    query.focus_record_id = Some(Uuid::from_u128(5));
+    assert_ne!(initial, fingerprint(&query, scope, "collector"));
+}

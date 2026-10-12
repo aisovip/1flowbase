@@ -90,10 +90,34 @@ fn trajectory_query_page_schema() -> Value {
         "next_cursor":nullable(text()),"search_sections":strings(),"integrity":text()
     }))
 }
+fn conversation_trajectory_query_page_schema() -> Value {
+    let mut step = step_schema();
+    let properties = step["properties"]
+        .as_object_mut()
+        .expect("step schema properties");
+    properties.extend(
+        json!({
+            "record_id":uuid(),"log_conversation_id":uuid(),
+            "parent_task_run_id":nullable(uuid()),"is_subagent":{"type":"boolean"},
+            "source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
+            "source_session_id":nullable(text()),"source_task_id":nullable(text())
+        })
+        .as_object()
+        .expect("provenance properties")
+        .clone(),
+    );
+    let step = object(Value::Object(properties.clone()));
+    object(json!({
+        "log_conversation_id":uuid(),"items":{"type":"array","items":step},
+        "matches":{"type":"array","items":object(json!({"step_id":uuid(),"section":text(),"sequence":integer(),"snippet":text()}))},
+        "previous_cursor":nullable(text()),"next_cursor":nullable(text()),
+        "search_sections":strings(),"integrity":text()
+    }))
+}
 fn query_fields_schema() -> Value {
     let fields = json!({"type":"array","items":object(json!({"field":text(),"value_type":{"type":"string","enum":["string","uuid","number","boolean","datetime"]},"operators":strings(),"sortable":{"type":"boolean"}}))});
     object(json!({
-        "record_fields":fields,"trajectory_fields":fields,"logical_operators":strings(),
+        "record_fields":fields,"trajectory_fields":fields,"conversation_trajectory_fields":fields,"logical_operators":strings(),
         "record_keyword_fields":strings(),"trajectory_search_sections":strings(),
         "record_contains_semantics":text(),"trajectory_keyword_semantics":text(),"pagination":text()
     }))
@@ -142,6 +166,10 @@ projection!(RecordTraceTreeSchema, record_trace_tree_schema);
 projection!(RecordTraceChildrenSchema, record_trace_children_schema);
 projection!(TrajectoryQueryPageSchema, trajectory_query_page_schema);
 projection!(QueryFieldsSchema, query_fields_schema);
+projection!(
+    ConversationTrajectoryQueryPageSchema,
+    conversation_trajectory_query_page_schema
+);
 
 projection!(RecordOverviewSchema, record_overview_schema);
 projection!(

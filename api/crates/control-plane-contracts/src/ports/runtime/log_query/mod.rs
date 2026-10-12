@@ -110,3 +110,39 @@ pub struct ApplicationLogConversationsPage {
     pub page: i64,
     pub page_size: i64,
 }
+
+/// One globally ordered canonical imported conversation, with source provenance.
+#[derive(Debug, Clone)]
+pub struct ConversationClientTrajectoryQuery {
+    pub filter: ResourceFilterExpr,
+    pub cursor: Option<String>,
+    pub limit: i64,
+    pub keyword: Option<String>,
+    pub search_sections: Vec<String>,
+    /// Initial position only; never restricts canonical membership.
+    pub focus_record_id: Option<Uuid>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationClientTrajectoryStep {
+    #[serde(flatten)]
+    pub step: ClientTrajectoryStep,
+    pub record_id: Uuid,
+    pub log_conversation_id: Uuid,
+    pub parent_task_run_id: Option<Uuid>,
+    pub is_subagent: bool,
+    pub source_kind: String,
+    pub source_id: Option<String>,
+    pub source_client: Option<String>,
+    pub source_session_id: Option<String>,
+    pub source_task_id: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationClientTrajectoryQueryPage {
+    pub log_conversation_id: Uuid,
+    pub items: Vec<ConversationClientTrajectoryStep>,
+    pub matches: Vec<RecordTrajectoryMatch>,
+    pub previous_cursor: Option<String>,
+    pub next_cursor: Option<String>,
+    pub search_sections: Vec<String>,
+    pub integrity: String,
+}

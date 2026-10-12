@@ -1,4 +1,5 @@
 import type { ConsoleApplicationLogRecordOverview } from '@1flowbase/api-client';
+import { ConversationTrajectoryWorkspace } from './trajectory/client/ConversationTrajectoryWorkspace';
 import { ClientTrajectoryWorkspace } from './trajectory/client/ClientTrajectoryWorkspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -371,6 +372,14 @@ function ConversationTrace({
 }) {
   const traceRunId = message.detailRunId ?? message.runId;
 
+  if (traceLoader?.sourceKind === 'imported' && traceRunId) {
+    return (
+      <ConversationTrajectoryWorkspace
+        recordId={traceRunId}
+        loader={traceLoader}
+      />
+    );
+  }
   if (
     (traceLoader?.loadRecordClientTrajectory ||
       traceLoader?.loadClientTrajectory) &&

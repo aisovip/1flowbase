@@ -3,6 +3,7 @@ use super::*;
 use control_plane::ports::{
     ApplicationLogRecordsPage, LogQueryField, RecordClientTrajectoryQueryPage,
 };
+pub(crate) mod conversation_trajectory;
 pub(crate) mod current_context;
 pub(super) mod schemas;
 use schemas::{
@@ -78,6 +79,7 @@ pub struct TrajectoryQuery {
 pub struct QueryFields {
     pub record_fields: Vec<LogQueryField>,
     pub trajectory_fields: Vec<LogQueryField>,
+    pub conversation_trajectory_fields: Vec<LogQueryField>,
     pub logical_operators: Vec<String>,
     pub record_keyword_fields: Vec<String>,
     pub trajectory_search_sections: Vec<String>,
@@ -90,6 +92,7 @@ impl Default for QueryFields {
         Self {
             record_fields: control_plane::ports::application_log_query_fields(),
             trajectory_fields: control_plane::ports::record_trajectory_query_fields(),
+            conversation_trajectory_fields: control_plane::ports::conversation_trajectory_query_fields(),
             logical_operators: vec!["$and".into(), "$or".into()],
             record_keyword_fields: vec!["title".into(), "user_input".into(), "final_output".into()],
             trajectory_search_sections: vec!["overview".into(), "parameters".into(), "result".into()],

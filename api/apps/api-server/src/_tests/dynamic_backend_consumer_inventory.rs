@@ -123,6 +123,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "applications.logs.delete.jobs.stop"
                     | "applications.logs.delete.preview"
                     | "query_record_trajectory"
+                    | "query_conversation_trajectory"
+                    | "get_conversation_trajectory_section"
                     | "departments.create"
                     | "members.departments.replace"
                     | "list_client_trajectory"

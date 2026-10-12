@@ -1,6 +1,57 @@
 use super::*;
 
 impl ApplicationRuntimeReadsAdapter {
+    pub(super) async fn query_conversation_trajectory(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        query: log_query::conversation_trajectory::ConversationTrajectoryQuery,
+    ) -> Result<control_plane::ports::ConversationClientTrajectoryQueryPage, ApiError> {
+        self.visible_log_application(actor, application_id, "query_conversation_trajectory")
+            .await?;
+        let query = control_plane::ports::ConversationClientTrajectoryQuery {
+            filter: control_plane::resource_crud::parse_resource_filter_expr(
+                query.filter.as_ref().unwrap_or(&serde_json::json!({})),
+            )?,
+            cursor: query.cursor,
+            limit: query.limit.unwrap_or(50),
+            keyword: query.keyword,
+            search_sections: query.search_sections.unwrap_or_default(),
+            focus_record_id: query.focus_record_id,
+        };
+        Ok(self
+            .store
+            .query_conversation_client_trajectory(application_id, log_conversation_id, &query)
+            .await?)
+    }
+
+    pub(super) async fn conversation_trajectory_section(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        log_conversation_id: Uuid,
+        step_id: Uuid,
+        query: log_query::conversation_trajectory::ConversationTrajectorySectionQuery,
+    ) -> Result<control_plane::ports::ClientTrajectorySection, ApiError> {
+        self.visible_log_application(actor, application_id, "get_conversation_trajectory_section")
+            .await?;
+        let limit = query.limit.unwrap_or(8);
+        control_plane::ports::log_query_page_lookahead(limit)?;
+        Ok(self
+            .store
+            .read_conversation_client_trajectory_section(
+                application_id,
+                log_conversation_id,
+                step_id,
+                query.section.as_deref().unwrap_or("overview"),
+                query.cursor,
+                limit,
+            )
+            .await?
+            .ok_or(ControlPlaneError::NotFound("client_trajectory_section"))?)
+    }
+
     pub(super) async fn current_run_context(
         &self,
         actor: &domain::ActorContext,

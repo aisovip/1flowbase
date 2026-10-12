@@ -14,6 +14,8 @@ import {
 } from '../../components/logs/application-log-trace-loader';
 
 const api = vi.hoisted(() => ({
+  fetchConversationClientTrajectory: vi.fn(),
+  fetchConversationClientTrajectorySection: vi.fn(),
   fetchApplicationLogRecordTraceTree: vi.fn(),
   fetchApplicationLogRecordTraceChildren: vi.fn(),
   fetchApplicationLogRecord: vi.fn(),
@@ -110,9 +112,13 @@ beforeEach(async () => {
       }
     })
   );
-  api.fetchApplicationLogRecordClientTrajectory.mockResolvedValue({
+  api.fetchConversationClientTrajectory.mockResolvedValue({
+    log_conversation_id: 'canonical-main-session',
     items: [],
+    matches: [],
+    previous_cursor: null,
     next_cursor: null,
+    search_sections: [],
     integrity: 'complete'
   });
 });
@@ -133,17 +139,18 @@ test('existing message UI renders backend system/question/final projection and n
   expect(api.fetchApplicationLogRecordClientTrajectory).not.toHaveBeenCalled();
   expect(screen.queryByText('Intermediate reasoning')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: /Imported task root/ })
-  );
   await waitFor(() =>
-    expect(api.fetchApplicationLogRecordClientTrajectory).toHaveBeenCalledWith(
+    expect(api.fetchConversationClientTrajectory).toHaveBeenCalledWith(
       'app-1',
-      'record-1',
-      undefined,
-      undefined
+      'canonical-main-session',
+      expect.objectContaining({
+        focus_record_id: 'record-1',
+        cursor: undefined
+      })
     )
   );
+  expect(api.fetchApplicationLogRecordTraceTree).not.toHaveBeenCalled();
+  expect(api.fetchApplicationLogRecordClientTrajectory).not.toHaveBeenCalled();
   expect(screen.queryByText('内部调用')).not.toBeInTheDocument();
 });
 test('original detail panel shows zero fee with existing formatting and uses record overview', async () => {

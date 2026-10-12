@@ -849,5 +849,21 @@
     "close": "Close details",
     "group_categories": "Group categories",
     "encoding": "Capture encoding"
+  },
+  "conversation_trajectory": {
+    "missing_identity": "The canonical conversation identity is unavailable.",
+    "provenance": "Source",
+    "all_sources": "All sources",
+    "main": "Main agent",
+    "subagent": "Subagent",
+    "from": "From",
+    "to": "To",
+    "search_sections": "Search sections",
+    "previous": "Load earlier events",
+    "next": "Load later events",
+    "loaded": "Loaded events",
+    "search": "Search entire conversation",
+    "invalid_time": "Enter a valid start and end time.",
+    "related_unloaded": "The related event is outside the loaded pages. Load earlier or later events to open it."
   }
 }

@@ -103,6 +103,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route("/applications/:id/logs/records/:record_id/trace-tree", console_get(record_trace::get_record_trace_tree, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", console_get(record_trace::list_record_trace_children, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/records/query", console_post(log_query::query_log_records, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/query", console_post(log_query::conversation_trajectory::query_conversation_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/conversations/:log_conversation_id/client-trajectory/:step_id", console_get(log_query::conversation_trajectory::get_conversation_trajectory_section, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory/query", console_post(log_query::query_record_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/deletion-preview", console_post(logs_delete::jobs::preview, ConsoleOperation("applications.logs.delete.preview".to_string())))
         .route("/applications/:id/logs/deletion-jobs", console_post(logs_delete::jobs::create, ConsoleOperation("applications.logs.delete.jobs.create".to_string())))

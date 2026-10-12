@@ -683,6 +683,15 @@ function RunConversation({
                 key={message.detailRunId ?? message.runId}
                 runId={(message.detailRunId ?? message.runId)!}
                 loader={traceLoader}
+                logConversationId={
+                  recordId
+                    ? recordConversationItems.find(
+                        (record) =>
+                          record.record_id ===
+                          (message.detailRunId ?? message.runId)
+                      )?.log_conversation_id
+                    : undefined
+                }
                 buttonType="default"
               />
             ) : null}

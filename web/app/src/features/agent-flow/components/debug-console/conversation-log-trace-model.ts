@@ -1,4 +1,6 @@
 import type {
+  ConversationTrajectoryQuery,
+  ConversationClientTrajectoryQueryPage,
   WorkflowTrajectoryPage,
   WorkflowTrajectoryBody,
   WorkflowTrajectoryOptions,
@@ -122,6 +124,19 @@ export interface ConversationLogRunOverview {
 
 export interface ConversationLogTraceLoader {
   sourceKind?: 'native' | 'imported';
+  loadRecordOverviewForTrajectory?: (
+    recordId: string
+  ) => Promise<ConsoleApplicationLogRecordOverview>;
+  queryConversationClientTrajectory?: (
+    logConversationId: string,
+    query: ConversationTrajectoryQuery
+  ) => Promise<ConversationClientTrajectoryQueryPage>;
+  loadConversationClientTrajectorySection?: (
+    logConversationId: string,
+    stepId: string,
+    section: string,
+    cursor?: number
+  ) => Promise<ClientTrajectorySection>;
   loadWorkflowTrajectory?: (
     runId: string,
     cursor?: string,

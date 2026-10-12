@@ -164,3 +164,47 @@
     max-width: 100%;
   }
 }
+
+.conversation-trajectory__row {
+  grid-template-columns: 10px 88px minmax(0, 1fr) 150px;
+}
+.conversation-trajectory__row .client-trajectory__summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.conversation-trajectory__source,
+.conversation-trajectory__match {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.conversation-trajectory__search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conversation-trajectory__search > * {
+  min-width: 220px;
+  flex: 1;
+}
+.conversation-trajectory__time {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.conversation-trajectory__time input {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+}
+@media (max-width: 760px) {
+  .conversation-trajectory__row {
+    grid-template-columns: 10px 76px minmax(0, 1fr);
+  }
+  .conversation-trajectory__row time {
+    grid-column: 3;
+    justify-self: start;
+  }
+}

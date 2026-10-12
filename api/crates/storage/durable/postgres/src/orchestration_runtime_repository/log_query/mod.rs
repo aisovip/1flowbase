@@ -3,8 +3,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use control_plane_contracts::ports::*;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
-mod records;
 mod conversations;
+mod records;
 pub(super) use conversations::conversations;
 mod trajectory;
 pub(super) use records::records;
@@ -48,3 +48,6 @@ fn optional_timestamp(row: &sqlx::postgres::PgRow, name: &str) -> Result<Option<
         .map(|t| t.format(&Rfc3339).map_err(Into::into))
         .transpose()
 }
+
+mod conversation_trajectory;
+pub(super) use conversation_trajectory::{conversation_section, conversation_trajectory};

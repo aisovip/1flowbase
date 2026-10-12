@@ -40,6 +40,8 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::record_trace::get_record_trace_tree,
         crate::routes::application_runtime::record_trace::list_record_trace_children,
         crate::routes::application_runtime::log_query::query_record_trajectory,
+        crate::routes::application_runtime::log_query::conversation_trajectory::query_conversation_trajectory,
+        crate::routes::application_runtime::log_query::conversation_trajectory::get_conversation_trajectory_section,
         crate::routes::application_runtime::provider_trajectory::get_log_record,
         crate::routes::application_runtime::provider_trajectory::list_record_conversation_messages,
         crate::routes::application_runtime::provider_trajectory::list_record_client_trajectory,
