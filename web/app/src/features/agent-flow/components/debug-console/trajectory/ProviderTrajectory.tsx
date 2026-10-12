@@ -14,6 +14,7 @@ import {
   useWindowWorkspaceOverlayZIndex
 } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { NativeTrajectoryWorkspace } from './NativeTrajectoryWorkspace';
+import { LazyConversationTrace } from '../LazyConversationTrace';
 import { ClientTrajectoryWorkspace } from './client/ClientTrajectoryWorkspace';
 import './provider-trajectory.css';
 type View = {
@@ -170,7 +171,13 @@ export function ProviderTrajectory({
                       key={index}
                       hidden={index !== active}
                     >
-                      {view.source === 'client' ? (
+                      {loader.sourceKind === 'imported' && loader.loadTree ? (
+                        <LazyConversationTrace
+                          defaultToolsExpanded={false}
+                          runId={view.runId}
+                          traceLoader={loader}
+                        />
+                      ) : view.source === 'client' ? (
                         <ClientTrajectoryWorkspace
                           active={index === active}
                           runId={view.runId}

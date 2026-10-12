@@ -2,11 +2,15 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type PropsWithChildren } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { fetchApplicationRuns } from '../../../../api/runtime';
+import {
+  fetchApplicationRuns,
+  fetchApplicationLogConversations
+} from '../../../../api/runtime';
 import { useApplicationRunsQuery } from '../use-application-runs-query';
 
 vi.mock('../../../../api/runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../api/runtime')>()),
+  fetchApplicationLogConversations: vi.fn(),
   fetchApplicationRuns: vi.fn()
 }));
 const fetchRuns = vi.mocked(fetchApplicationRuns);
@@ -105,4 +109,45 @@ test('uses ordinary page data when switching to desktop', async () => {
   rerender({ search: '', mobile: false });
   await waitFor(() => expect(result.current.data?.items).toHaveLength(2));
   expect(result.current.mobileList).toBeUndefined();
+});
+
+test('Agent Logs consumes server conversation totals/pages without regrouping and native requests stay separate', async () => {
+  vi.mocked(fetchApplicationLogConversations).mockResolvedValue({
+    ...page(['latest-main-a', 'latest-main-b'], 10),
+    page: 2,
+    page_size: 2
+  });
+  const canonicalClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={canonicalClient}>
+      {children}
+    </QueryClientProvider>
+  );
+  const { result } = renderHook(
+    () =>
+      useApplicationRunsQuery(
+        ['app-a', 'app-b'],
+        { page: 2, pageSize: 2, sortBy: 'total_tokens', sortOrder: 'asc' },
+        false,
+        true
+      ),
+    { wrapper }
+  );
+  await waitFor(() => expect(result.current.data?.total).toBe(10));
+  expect(result.current.data?.items.map((item) => item.id)).toEqual([
+    'latest-main-a',
+    'latest-main-b'
+  ]);
+  expect(fetchApplicationLogConversations).toHaveBeenCalledWith(
+    ['app-a', 'app-b'],
+    expect.objectContaining({
+      page: 2,
+      pageSize: 2,
+      sortBy: 'total_tokens',
+      sortOrder: 'asc'
+    })
+  );
+  expect(fetchApplicationRuns).not.toHaveBeenCalled();
 });

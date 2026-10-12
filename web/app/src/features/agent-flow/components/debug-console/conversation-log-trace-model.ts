@@ -14,6 +14,7 @@ import type { AgentFlowTraceItem } from '../../api/runtime';
 
 export interface ConversationLogTraceNodeSummary {
   trace_node_id: string;
+  record_id?: string;
   stable_locator?: string;
   parent_trace_node_id?: string | null;
   node_kind: string;

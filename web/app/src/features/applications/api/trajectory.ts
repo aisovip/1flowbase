@@ -1,4 +1,6 @@
 import {
+  getConsoleApplicationLogRecordTraceTree,
+  getConsoleApplicationLogRecordTraceChildren,
   type RecordClientTrajectoryCursor,
   type ApplicationLogRecordConversationQuery,
   getConsoleApplicationLogRecordConversationMessages,
@@ -160,6 +162,32 @@ export function fetchApplicationLogRecordClientTrajectorySection(
     stepId,
     section,
     cursor,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchApplicationLogRecordTraceTree(
+  applicationId: string,
+  recordId: string
+) {
+  return getConsoleApplicationLogRecordTraceTree(
+    applicationId,
+    recordId,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchApplicationLogRecordTraceChildren(
+  applicationId: string,
+  recordId: string,
+  traceNodeId: string,
+  cursor?: string
+) {
+  return getConsoleApplicationLogRecordTraceChildren(
+    applicationId,
+    recordId,
+    traceNodeId,
+    cursor,
+    20,
     getApplicationsApiBaseUrl()
   );
 }

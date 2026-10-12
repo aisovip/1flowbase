@@ -14,6 +14,8 @@ import {
 } from '../../components/logs/application-log-trace-loader';
 
 const api = vi.hoisted(() => ({
+  fetchApplicationLogRecordTraceTree: vi.fn(),
+  fetchApplicationLogRecordTraceChildren: vi.fn(),
   fetchApplicationLogRecord: vi.fn(),
   fetchApplicationLogRecordConversationMessages: vi.fn(),
   fetchApplicationLogRecordClientTrajectory: vi.fn(),
@@ -21,7 +23,8 @@ const api = vi.hoisted(() => ({
 }));
 const native = vi.hoisted(() => ({
   fetchApplicationRunConversationMessages: vi.fn(),
-  fetchApplicationRuns: vi.fn()
+  fetchApplicationRuns: vi.fn(),
+  fetchApplicationLogConversations: vi.fn()
 }));
 vi.mock('../../api/trajectory', async (original) => ({
   ...(await original<typeof import('../../api/trajectory')>()),
@@ -35,6 +38,7 @@ const record = {
   parent_task_run_id: null,
   child_task_count: 0,
   record_id: 'record-1',
+  log_conversation_id: 'canonical-main-session',
   status: 'succeeded',
   source_id: 'source-1',
   started_at: '2026-10-12T00:00:00Z',
@@ -75,6 +79,25 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await appI18n.changeLanguage('zh_Hans');
   api.fetchApplicationLogRecord.mockResolvedValue(record);
+  api.fetchApplicationLogRecordTraceTree.mockResolvedValue({
+    nodes: [
+      {
+        trace_node_id: 'record-1',
+        record_id: 'record-1',
+        parent_trace_node_id: null,
+        node_kind: 'task_round',
+        node_alias: 'Imported task root',
+        status: 'succeeded',
+        started_at: record.started_at,
+        finished_at: null,
+        duration_ms: null,
+        metrics_payload: {},
+        has_children: false,
+        child_count: 0,
+        has_content: true
+      }
+    ]
+  });
   api.fetchApplicationLogRecordConversationMessages.mockImplementation(
     async (appId, recordId) => ({
       items: [await api.fetchApplicationLogRecord(appId, recordId)],
@@ -110,6 +133,9 @@ test('existing message UI renders backend system/question/final projection and n
   expect(api.fetchApplicationLogRecordClientTrajectory).not.toHaveBeenCalled();
   expect(screen.queryByText('Intermediate reasoning')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Imported task root/ })
+  );
   await waitFor(() =>
     expect(api.fetchApplicationLogRecordClientTrajectory).toHaveBeenCalledWith(
       'app-1',
@@ -177,27 +203,35 @@ test('record loading stays in the original detail panel without fetching native 
 });
 
 test('first-layer existing log table opens the original record conversation and third-layer trajectory', async () => {
-  native.fetchApplicationRuns.mockResolvedValue({
+  native.fetchApplicationLogConversations.mockResolvedValue({
     items: [
       {
         id: 'record-1',
+        record_id: 'record-1',
         application_id: 'app-1',
         source_kind: 'imported',
+        source_id: 'source-1',
         source_client: 'codex',
+        source_session_id: 'session-1',
+        source_task_id: 'turn-1',
+        native_run_id: null,
+        log_conversation_id: 'canonical-main-session',
         title: 'Question',
         status: 'succeeded',
         total_cost: 0,
+        cost_breakdown: { total_cost: '0' },
         total_tokens: 0,
         input_tokens: 0,
         output_tokens: 0,
+        input_cache_hit_tokens: 0,
         started_at: '2026-10-07T08:00:00Z',
+        finished_at: null,
+        created_at: '2026-10-07T08:00:00Z',
+        updated_at: '2026-10-07T08:00:00Z',
         requested_model_id: null,
         reasoning_effort: null,
-        log_conversation_id: null,
-        invocation_count: 0,
-        compaction_count: 0,
-        parent_run_id: null,
-        outcome: 'final_answer_observed'
+        outcome: 'final_answer_observed',
+        available_views: ['conversation', 'client_trajectory']
       }
     ],
     total: 1,
@@ -212,6 +246,8 @@ test('first-layer existing log table opens the original record conversation and 
     />
   );
   expect(await screen.findByText('0 $')).toBeInTheDocument();
+  expect(native.fetchApplicationLogConversations).toHaveBeenCalled();
+  expect(native.fetchApplicationRuns).not.toHaveBeenCalled();
   expect(screen.getByText('codex')).toBeInTheDocument();
   expect(
     screen

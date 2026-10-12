@@ -7,6 +7,7 @@ import type {
 
 export interface ConsoleApplicationLogRecordOverview {
   record_id: string;
+  log_conversation_id: string | null;
   parent_task_run_id: string | null;
   child_task_count: number;
   status: string;
@@ -41,7 +42,6 @@ export interface ApplicationLogRecordConversationPage {
   };
 }
 export interface ApplicationLogRecordConversationQuery {
-  scope?: 'session' | 'children';
   before?: string;
   after?: string;
   limit?: number;
@@ -53,7 +53,6 @@ export function getConsoleApplicationLogRecordConversationMessages(
   baseUrl?: string
 ) {
   const query = new URLSearchParams();
-  if (input.scope) query.set('scope', input.scope);
   if (input.before) query.set('before', input.before);
   if (input.after) query.set('after', input.after);
   if (input.limit !== undefined) query.set('limit', String(input.limit));
@@ -212,6 +211,114 @@ export function stopConsoleApplicationLogDeletionJob(
     path: `${deletionPath(applicationId)}/deletion-jobs/${jobId}/stop`,
     method: 'POST',
     csrfToken,
+    baseUrl
+  });
+}
+
+export interface ApplicationLogRecordTraceNode {
+  trace_node_id: string;
+  record_id: string;
+  parent_trace_node_id: string | null;
+  node_kind: string;
+  node_alias: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  metrics_payload: Record<string, unknown>;
+  has_children: boolean;
+  child_count: number;
+  has_content: boolean;
+  source_client?: string | null;
+  source_session_id?: string | null;
+  source_task_id?: string | null;
+}
+export interface ApplicationLogRecordTraceTree {
+  nodes: ApplicationLogRecordTraceNode[];
+}
+export interface ApplicationLogRecordTraceChildren {
+  items: ApplicationLogRecordTraceNode[];
+  page_info: {
+    has_more: boolean;
+    next_cursor: string | null;
+    page_size: number;
+  };
+}
+export function getConsoleApplicationLogRecordTraceTree(
+  applicationId: string,
+  recordId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ApplicationLogRecordTraceTree>({
+    path: `${recordPath(applicationId, recordId)}/trace-tree`,
+    baseUrl
+  });
+}
+export function getConsoleApplicationLogRecordTraceChildren(
+  applicationId: string,
+  recordId: string,
+  traceNodeId: string,
+  cursor?: string,
+  pageSize = 20,
+  baseUrl?: string
+) {
+  const query = new URLSearchParams({ page_size: String(pageSize) });
+  if (cursor) query.set('cursor', cursor);
+  return apiFetch<ApplicationLogRecordTraceChildren>({
+    path: `${recordPath(applicationId, recordId)}/trace-tree/${traceNodeId}/children?${query}`,
+    baseUrl
+  });
+}
+export interface ApplicationLogRecordSummary {
+  record_id: string;
+  application_id: string;
+  source_kind: 'native' | 'imported';
+  source_id: string | null;
+  source_client: string | null;
+  source_session_id: string | null;
+  source_task_id: string | null;
+  native_run_id: string | null;
+  log_conversation_id: string | null;
+  requested_model_id: string | null;
+  reasoning_effort: string | null;
+  status: string;
+  outcome: string;
+  title: string;
+  total_tokens: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  input_cache_hit_tokens: number | null;
+  total_cost: string | null;
+  cost_breakdown: { total_cost: string | null };
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+  available_views: Array<'conversation' | 'client_trajectory'>;
+}
+export interface ApplicationLogConversationsQuery {
+  application_ids?: string[];
+  filter?: Record<string, unknown>;
+  keyword?: string;
+  sort_field?: string;
+  descending?: boolean;
+  page?: number;
+  page_size?: number;
+}
+export interface ApplicationLogConversationsPage {
+  items: ApplicationLogRecordSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+export function queryConsoleApplicationLogConversations(
+  input: ApplicationLogConversationsQuery,
+  baseUrl?: string
+) {
+  return apiFetch<ApplicationLogConversationsPage>({
+    path: '/api/console/applications/logs/conversations/query',
+    method: 'POST',
+    body: input,
     baseUrl
   });
 }

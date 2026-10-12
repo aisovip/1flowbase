@@ -16,6 +16,9 @@ const traceProjectionStatus = vi.hoisted(() => ({
 }));
 
 vi.mock('@1flowbase/api-client', () => ({
+  queryConsoleApplicationLogConversations: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
   completeConsoleCallbackTask: vi.fn().mockResolvedValue(undefined),
   completeConsoleRunArchiveUploadSession: vi.fn().mockResolvedValue({
     job_id: 'job-1',
@@ -258,6 +261,7 @@ import {
   completeConsoleCallbackTask,
   completeConsoleRunArchiveUploadSession,
   createConsoleRunArchiveUploadSession,
+  queryConsoleApplicationLogConversations,
   fetchConsoleRuntimeModelRecords,
   getConsoleApplicationRunMonitoringReport,
   getConsoleApplicationRunResumeTimelineSummary,
@@ -296,6 +300,7 @@ import {
   fetchApplicationRunTraceNodeDetail,
   fetchApplicationRunTraceTree,
   fetchApplicationRuntimeActivity,
+  fetchApplicationLogConversations,
   fetchApplicationRuns,
   exportApplicationRunTraceDump,
   exportSelectedApplicationRunsTraceDumpZip,
@@ -852,4 +857,80 @@ describe('applications runtime api', () => {
       'http://127.0.0.1:7800'
     );
   });
+});
+
+test('canonical Agent Logs paging preserves server grouping and main record anchors at the table boundary', async () => {
+  vi.mocked(queryConsoleApplicationLogConversations).mockResolvedValueOnce({
+    items: ['latest-main-a', 'latest-main-b'].map((record_id) => ({
+      record_id,
+      application_id: 'app-logs',
+      source_kind: 'imported',
+      source_id: 'collector',
+      source_client: 'codex',
+      source_session_id: 'same-source-session',
+      source_task_id: record_id,
+      native_run_id: null,
+      log_conversation_id: 'conversation-' + record_id,
+      requested_model_id: null,
+      reasoning_effort: null,
+      status: 'succeeded',
+      outcome: 'final_answer_observed',
+      title: 'Main turn',
+      total_tokens: 123,
+      input_tokens: 100,
+      output_tokens: 23,
+      input_cache_hit_tokens: 10,
+      total_cost: '0.0001',
+      cost_breakdown: { total_cost: '0.0001' },
+      started_at: '2026-10-12T00:00:00Z',
+      finished_at: null,
+      created_at: '2026-10-12T00:00:00Z',
+      updated_at: '2026-10-12T00:00:00Z',
+      available_views: ['conversation', 'client_trajectory']
+    })),
+    total: 10,
+    page: 2,
+    page_size: 2
+  });
+  const page = await fetchApplicationLogConversations('app-logs', {
+    page: 2,
+    pageSize: 2,
+    sortBy: 'total_tokens',
+    sortOrder: 'asc',
+    titleIncludes: 'Main'
+  });
+  expect(queryConsoleApplicationLogConversations).toHaveBeenLastCalledWith(
+    {
+      application_ids: ['app-logs'],
+      filter: {
+        application_id: { $eq: 'app-logs' },
+        title: { $includes: 'Main' }
+      },
+      page: 2,
+      page_size: 2,
+      sort_field: 'total_tokens',
+      descending: false
+    },
+    'http://127.0.0.1:7800'
+  );
+  expect(page).toMatchObject({ total: 10, page: 2, page_size: 2 });
+  expect(page.items.map((item) => item.id)).toEqual([
+    'latest-main-a',
+    'latest-main-b'
+  ]);
+  expect(page.items.map((item) => item.log_conversation_id)).toEqual([
+    'conversation-latest-main-a',
+    'conversation-latest-main-b'
+  ]);
+  expect(page.items.map((item) => item.total_tokens)).toEqual([123, 123]);
+  for (const item of page.items) {
+    expect(item).not.toHaveProperty('scope_id');
+    expect(item).not.toHaveProperty('principal');
+    expect(item).not.toHaveProperty('invocation_count');
+    expect(item).not.toHaveProperty('member_run_ids');
+    expect(item).not.toHaveProperty('log_task_run_id');
+    expect(item.total_cost).toBe(0.0001);
+    expect(item.requested_model_id).toBeNull();
+    expect(item.started_at).toBe('2026-10-12T00:00:00Z');
+  }
 });

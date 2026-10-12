@@ -1,6 +1,10 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { apiFetch } from '../../../transport';
 import {
+  getConsoleApplicationLogRecordTraceTree,
+  getConsoleApplicationLogRecordTraceChildren,
+  getConsoleApplicationLogRecordConversationMessages,
+  queryConsoleApplicationLogConversations,
   getConsoleApplicationLogRecord,
   getConsoleApplicationLogRecordClientTrajectory,
   getConsoleApplicationLogRecordClientTrajectorySection
@@ -85,5 +89,73 @@ test('record API passes opaque same-sequence paging tokens unchanged while nativ
   expect(apiFetch).toHaveBeenLastCalledWith({
     path: '/api/console/applications/app/logs/records/record/client-trajectory/step?limit=8&section=raw&cursor=10',
     baseUrl: undefined
+  });
+});
+
+test('imported trace metadata and nested children use record routes with bound opaque cursors', async () => {
+  await getConsoleApplicationLogRecordTraceTree(
+    'app',
+    'main-record',
+    'https://api.example'
+  );
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/records/main-record/trace-tree',
+    baseUrl: 'https://api.example'
+  });
+  await getConsoleApplicationLogRecordTraceChildren(
+    'app',
+    'main-record',
+    'child-record',
+    'opaque:child+page',
+    20
+  );
+  const request = vi.mocked(apiFetch).mock.calls.at(-1)![0];
+  const url = new URL(request.path, 'https://example.test');
+  expect(url.pathname).toBe(
+    '/api/console/applications/app/logs/records/main-record/trace-tree/child-record/children'
+  );
+  expect(url.searchParams.get('cursor')).toBe('opaque:child+page');
+  expect(url.searchParams.get('page_size')).toBe('20');
+});
+test('main transcript paging has no child scope and conversations query retains canonical page fields', async () => {
+  await getConsoleApplicationLogRecordConversationMessages(
+    'app',
+    'child-anchor',
+    { before: 'main-turn-cursor', limit: 5 }
+  );
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/records/child-anchor/conversation/messages?before=main-turn-cursor&limit=5',
+    baseUrl: undefined
+  });
+  const response = {
+    items: [
+      {
+        record_id: 'latest-main',
+        log_conversation_id: 'canonical',
+        total_tokens: 123
+      }
+    ],
+    total: 8,
+    page: 2,
+    page_size: 5
+  };
+  vi.mocked(apiFetch).mockResolvedValueOnce(response);
+  const input = {
+    application_ids: ['app'],
+    filter: { title: { $includes: 'main' } },
+    keyword: 'question',
+    sort_field: 'total_tokens',
+    descending: false,
+    page: 2,
+    page_size: 5
+  };
+  expect(
+    await queryConsoleApplicationLogConversations(input, 'https://api.example')
+  ).toBe(response);
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/logs/conversations/query',
+    method: 'POST',
+    body: input,
+    baseUrl: 'https://api.example'
   });
 });

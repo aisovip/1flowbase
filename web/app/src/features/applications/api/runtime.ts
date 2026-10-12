@@ -1,5 +1,7 @@
 import type { StatisticsLogFilters } from '../lib/statistics-log-filters';
 import {
+  type ApplicationLogRecordSummary,
+  queryConsoleApplicationLogConversations,
   completeConsoleCallbackTask,
   completeConsoleRunArchiveUploadSession,
   getConsoleApplicationConversationMessages,
@@ -64,30 +66,30 @@ export type ApplicationRunSummary = {
   source_task_id?: string | null;
   native_run_id?: string | null;
   log_conversation_id: string | null;
-  log_task_run_id: string | null;
-  parent_run_id: string | null;
-  caused_by_run_id: string | null;
-  call_kind: string;
-  invocation_count: number;
-  compaction_count: number;
-  member_run_ids: string[];
-  parent_task_run_id: string | null;
+  log_task_run_id?: string | null;
+  parent_run_id?: string | null;
+  caused_by_run_id?: string | null;
+  call_kind?: string;
+  invocation_count?: number;
+  compaction_count?: number;
+  member_run_ids?: string[];
+  parent_task_run_id?: string | null;
   outcome: string;
-  user_input: string | null;
-  final_output: string | null;
+  user_input?: string | null;
+  final_output?: string | null;
   id: string;
   application_id: string;
-  scope_id: string;
-  run_mode: ConsoleApplicationRunSummary['run_mode'] | 'imported';
-  execution_stage:
+  scope_id?: string;
+  run_mode?: ConsoleApplicationRunSummary['run_mode'] | 'imported';
+  execution_stage?:
     | ConsoleApplicationRunSummary['execution_stage']
     | 'collected';
-  invocation_source:
+  invocation_source?:
     | ConsoleApplicationRunSummary['invocation_source']
     | 'client_collector';
-  principal: ConsoleApplicationRunSummary['principal'];
+  principal?: ConsoleApplicationRunSummary['principal'];
   status: string;
-  target_node_id: string | null;
+  target_node_id?: string | null;
   title: string;
   expand_id?: string | null;
   external_user?: string | null;
@@ -105,11 +107,11 @@ export type ApplicationRunSummary = {
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
-  count_tokens_input_tokens: number | null;
+  count_tokens_input_tokens?: number | null;
   input_cache_hit_tokens: number | null;
-  input_cache_hit_rate: number | null;
-  unique_node_count: number;
-  tool_callback_count: number;
+  input_cache_hit_rate?: number | null;
+  unique_node_count?: number;
+  tool_callback_count?: number;
   started_at: string;
   finished_at: string | null;
   created_at: string;
@@ -225,7 +227,9 @@ export type ApplicationRunSortField =
   | 'created_at'
   | 'started_at'
   | 'finished_at'
-  | 'updated_at';
+  | 'updated_at'
+  | 'total_cost'
+  | 'total_tokens';
 export type ApplicationRunSortOrder = 'asc' | 'desc';
 export type ApplicationRunCacheMode = 'default' | 'refresh';
 
@@ -498,6 +502,42 @@ export function fetchApplicationRuns(
     page,
     page_size: pageSize
   }));
+}
+
+/** Agent Logs consumes canonical backend conversations; native run lists keep their own reader. */
+export function fetchApplicationLogConversations(
+  applicationId: string | string[],
+  input: FetchApplicationRunsInput = {}
+) {
+  const filter = applicationRunLogTaskFilter(applicationId, input);
+  delete filter.is_root;
+  return queryConsoleApplicationLogConversations(
+    {
+      application_ids:
+        typeof applicationId === 'string' ? [applicationId] : applicationId,
+      filter,
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 20,
+      sort_field: input.sortBy ?? 'started_at',
+      descending: (input.sortOrder ?? 'desc') === 'desc'
+    },
+    getApplicationsApiBaseUrl()
+  ).then((page) => ({
+    ...page,
+    items: page.items.map(toApplicationLogConversationTableRow)
+  }));
+}
+
+/** Canonical DTO -> shared table row. Native-only facts remain absent. */
+function toApplicationLogConversationTableRow(
+  record: ApplicationLogRecordSummary
+): ApplicationRunSummary {
+  return {
+    ...record,
+    // The shared table's existing row key locates the actual main task record.
+    id: record.record_id,
+    total_cost: record.total_cost === null ? null : Number(record.total_cost)
+  };
 }
 
 export function fetchApplicationRunMonitoringReport(

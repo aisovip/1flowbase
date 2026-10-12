@@ -1,10 +1,6 @@
 {
   "auto": {
     "subagents": "子代理（{{count}}）",
-    "subagent_no_messages": "尚无对话消息记录",
-    "subagents_older": "更早的子代理",
-    "subagents_newer": "更晚的子代理",
-    "subagents_empty": "尚无子代理记录",
     "view_execution_trace": "查看执行轨迹",
     "close": "关闭",
     "total_cost": "费用",

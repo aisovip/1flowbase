@@ -507,7 +507,12 @@ export function ApplicationLogsWorkspace({
   );
   const screens = Grid.useBreakpoint();
   const mobileListEnabled = screens.md === undefined ? undefined : !screens.md;
-  const runsQuery = useApplicationRunsQuery(runsScope, runsInput, mobileListEnabled);
+  const runsQuery = useApplicationRunsQuery(
+    runsScope,
+    runsInput,
+    mobileListEnabled,
+    applicationType === 'agent_logs'
+  );
   const runsPage = runsQuery.data;
   const runs = useMemo(() => runsPage?.items ?? [], [runsPage?.items]);
   const total = runsPage?.total ?? 0;
@@ -1137,7 +1142,7 @@ export function ApplicationLogsWorkspace({
           aria-label={t('auto.more_log_controls')}
           aria-expanded={mobileFiltersExpanded}
           icon={<MoreOutlined />}
-          onClick={() => setMobileFiltersExpanded(value => !value)}
+          onClick={() => setMobileFiltersExpanded((value) => !value)}
         />
         <div className="application-logs-page__filter-actions">
           {applicationType !== 'agent_logs' ? (
@@ -1261,10 +1266,14 @@ export function ApplicationLogsWorkspace({
       ) : (
         <ApplicationRunsTable
           loading={runsQuery.isFetching}
-          mobileList={runsQuery.mobileList ? {
-            ...runsQuery.mobileList,
-            showSelectAll: mobileFiltersExpanded
-          } : undefined}
+          mobileList={
+            runsQuery.mobileList
+              ? {
+                  ...runsQuery.mobileList,
+                  showSelectAll: mobileFiltersExpanded
+                }
+              : undefined
+          }
           page={page}
           pageSize={PAGE_SIZE}
           total={total}

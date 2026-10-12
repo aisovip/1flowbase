@@ -1,10 +1,9 @@
-import { ApplicationLogSubagents } from './subagents/ApplicationLogSubagents';
 import { ProviderTrajectory } from '../../../agent-flow/components/debug-console/trajectory/ProviderTrajectory';
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Alert, App, Button, Empty, Spin, Tooltip, theme } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -27,7 +26,7 @@ import {
   type ApplicationRunConversationMessagesPage,
   type ApplicationRunConversationOutputState
 } from '../../api/runtime';
-import { fetchApplicationLogRecordConversationMessages } from '../../api/trajectory';
+import { useApplicationLogRecordConversation } from '../../hooks/useApplicationLogRecordConversation';
 import { isActiveRunStatus } from '../../lib/run-status';
 import './application-run-detail-panel.css';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -415,39 +414,11 @@ function RunConversation({
   const loadingPreviousConversationRef = useRef(false);
   const conversationScopeGeneration = useRef(0);
   const observedNewestCursorRef = useRef<string | null>(null);
-  const recordQuery = useInfiniteQuery({
-    queryKey: ['application-log-record-conversation', applicationId, recordId],
-    enabled: Boolean(recordId),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      fetchApplicationLogRecordConversationMessages(applicationId, recordId!, {
-        before: pageParam,
-        limit: RUN_CONVERSATION_PAGE_LIMIT
-      }),
-    getNextPageParam: (page) =>
-      page.page.has_before ? (page.page.before_cursor ?? undefined) : undefined,
-    refetchInterval: (query) =>
-      query.state.data?.pages.some((page) =>
-        page.items.some((record) =>
-          isConversationRefreshableStatus(record.status)
-        )
-      )
-        ? ACTIVE_CONVERSATION_REFETCH_INTERVAL_MS
-        : false,
-    refetchOnWindowFocus: false
-  });
-  const recordConversationItems = useMemo(() => {
-    // The backend orders each page by business turn. Prepend older pages and
-    // deduplicate overlaps by canonical record identity, never by source text.
-    const records = new Map<
-      string,
-      NonNullable<typeof recordQuery.data>['pages'][number]['items'][number]
-    >();
-    for (const page of [...(recordQuery.data?.pages ?? [])].reverse()) {
-      for (const record of page.items) records.set(record.record_id, record);
-    }
-    return [...records.values()];
-  }, [recordQuery.data]);
+  const recordQuery = useApplicationLogRecordConversation(
+    applicationId,
+    recordId
+  );
+  const recordConversationItems = recordQuery.records;
   const overviewQuery = useQuery({
     queryKey: applicationRunOverviewQueryKey(applicationId, runId),
     enabled: !recordId,
@@ -521,22 +492,6 @@ function RunConversation({
         : buildConversationMessages(conversationItems, outputState),
     [conversationItems, outputState, recordId, recordConversationItems]
   );
-  const conversationSupplements = useMemo(() => {
-    let afterMessageId: string | null = null;
-    return recordConversationItems.flatMap((record) => {
-      const lastMessage = record.messages.at(-1);
-      if (lastMessage) afterMessageId = 'record-' + record.record_id + '-' + lastMessage.sequence;
-      if (record.child_task_count === 0) return [];
-      return [{
-        key: record.record_id,
-        afterMessageId,
-        content: (
-          <ApplicationLogSubagents applicationId={applicationId} record={record}
-            onOpenMessageLog={onOpenMessageLog} />
-        )
-      }];
-    });
-  }, [applicationId, recordConversationItems, onOpenMessageLog]);
   const refreshable =
     !recordId && conversationRefreshable(conversationItems, outputState);
   // The scope switch is a conversation-level action: it belongs to the last
@@ -704,7 +659,7 @@ function RunConversation({
           title={i18nText('agentFlow', 'auto.loading_failed')}
         />
       ) : null}
-      {recordId && recordQuery.isSuccess && messages.length === 0 && conversationSupplements.length === 0 ? (
+      {recordId && recordQuery.isSuccess && messages.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : null}
       {initialConversationQuery.isSuccess &&
@@ -759,7 +714,6 @@ function RunConversation({
             ) : null}
           </>
         )}
-        conversationSupplements={recordId ? conversationSupplements : undefined}
         composerUiOnly
         messages={messages}
         runContext={runConversationContext}

@@ -7,31 +7,36 @@ import { useMemo, useState } from 'react';
 import {
   applicationRunsQueryKey,
   fetchApplicationRuns,
+  fetchApplicationLogConversations,
   type FetchApplicationRunsInput
 } from '../../../api/runtime';
 
 export function useApplicationRunsQuery(
   scope: string | string[],
   input: FetchApplicationRunsInput,
-  mobile: boolean | undefined
+  mobile: boolean | undefined,
+  canonicalConversations = false
 ) {
   const client = useQueryClient();
+  const fetchPage = canonicalConversations
+    ? fetchApplicationLogConversations
+    : fetchApplicationRuns;
+  const queryKey = (value: FetchApplicationRunsInput) =>
+    canonicalConversations
+      ? [...applicationRunsQueryKey(scope, value), 'canonical-conversations']
+      : applicationRunsQueryKey(scope, value);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const firstInput = { ...input, page: 1 };
-  const mobileKey = [
-    ...applicationRunsQueryKey(scope, firstInput),
-    'mobile-list'
-  ];
+  const mobileKey = [...queryKey(firstInput), 'mobile-list'];
   const desktop = useQuery({
-    queryKey: applicationRunsQueryKey(scope, input),
-    queryFn: () => fetchApplicationRuns(scope, input),
+    queryKey: queryKey(input),
+    queryFn: () => fetchPage(scope, input),
     enabled: mobile === false
   });
   const infinite = useInfiniteQuery({
     queryKey: mobileKey,
     initialPageParam: 1,
-    queryFn: ({ pageParam }) =>
-      fetchApplicationRuns(scope, { ...input, page: pageParam }),
+    queryFn: ({ pageParam }) => fetchPage(scope, { ...input, page: pageParam }),
     getNextPageParam: (last, pages) =>
       pages.reduce((count, page) => count + page.items.length, 0) <
         last.total && last.items.length > 0
@@ -39,16 +44,13 @@ export function useApplicationRunsQuery(
         : undefined,
     enabled: mobile === true
   });
-  const mobileItems = useMemo(
-    () => [
-      ...new Map(
-        (infinite.data?.pages.flatMap((page) => page.items) ?? []).map(
-          (item) => [item.id, item]
-        )
-      ).values()
-    ],
-    [infinite.data]
-  );
+  const mobileItems = useMemo(() => {
+    const items = infinite.data?.pages.flatMap((page) => page.items) ?? [];
+    // Canonical pages already contain server-owned conversation rows.
+    return canonicalConversations
+      ? items
+      : [...new Map(items.map((item) => [item.id, item])).values()];
+  }, [canonicalConversations, infinite.data]);
   const query = mobile ? infinite : desktop;
   return {
     ...query,
@@ -70,7 +72,7 @@ export function useApplicationRunsQuery(
         }
       : undefined,
     async refresh() {
-      const refreshed = await fetchApplicationRuns(scope, {
+      const refreshed = await fetchPage(scope, {
         ...(mobile ? firstInput : input),
         cacheMode: 'refresh'
       });
@@ -79,7 +81,7 @@ export function useApplicationRunsQuery(
         setRefreshVersion((version) => version + 1);
         client.setQueryData(mobileKey, { pages: [refreshed], pageParams: [1] });
       } else {
-        client.setQueryData(applicationRunsQueryKey(scope, input), refreshed);
+        client.setQueryData(queryKey(input), refreshed);
       }
     }
   };

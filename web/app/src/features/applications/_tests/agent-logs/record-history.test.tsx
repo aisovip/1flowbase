@@ -46,6 +46,7 @@ vi.mock(
 const turn = (number: number): ConsoleApplicationLogRecordOverview => ({
   parent_task_run_id: null,
   child_task_count: 0,
+  log_conversation_id: 'canonical-main-session',
   record_id: 'record-' + number,
   status: 'succeeded',
   source_id: 'source-1',
@@ -56,7 +57,7 @@ const turn = (number: number): ConsoleApplicationLogRecordOverview => ({
   native_run_id: null,
   title: 'question ' + number,
   outcome: 'final_answer_observed',
-  started_at: '2026-10-12T00:00:0' + number + 'Z',
+  started_at: new Date(Date.UTC(2026, 9, 12, 0, 0, number)).toISOString(),
   finished_at: null,
   requested_model_id: 'gpt-6-luna',
   reasoning_effort: 'max',
@@ -105,9 +106,10 @@ beforeEach(async () => {
   await appI18n.changeLanguage('zh_Hans');
 });
 test('five backend business turns prepend older history and each answer opens its own record', async () => {
-  api.fetchApplicationLogRecordConversationMessages
-    .mockResolvedValueOnce(page([3, 4, 5, 6, 7], true))
-    .mockResolvedValueOnce(page([1, 2, 3], false));
+  api.fetchApplicationLogRecordConversationMessages.mockImplementation(
+    async (_app, _record, input) =>
+      input.before ? page([1, 2, 3], false) : page([3, 4, 5, 6, 7], true)
+  );
   const open = vi.fn();
   mount(open);
   expect(await screen.findByText('answer 7')).toBeInTheDocument();
@@ -149,13 +151,18 @@ test('five backend business turns prepend older history and each answer opens it
   );
   fireEvent.click(screen.getByRole('button', { name: 'older turns' }));
   expect(
-    api.fetchApplicationLogRecordConversationMessages
-  ).toHaveBeenCalledTimes(2);
+    api.fetchApplicationLogRecordConversationMessages.mock.calls.filter(
+      (call) => call[2].before
+    )
+  ).toHaveLength(1);
 });
 test('older-page failure stays visible without losing already loaded conversation', async () => {
-  api.fetchApplicationLogRecordConversationMessages
-    .mockResolvedValueOnce(page([3, 4, 5, 6, 7], true))
-    .mockRejectedValueOnce(new Error('history unavailable'));
+  api.fetchApplicationLogRecordConversationMessages.mockImplementation(
+    async (_app, _record, input) => {
+      if (input.before) throw new Error('history unavailable');
+      return page([3, 4, 5, 6, 7], true);
+    }
+  );
   mount();
   expect(await screen.findByText('answer 7')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'older turns' }));

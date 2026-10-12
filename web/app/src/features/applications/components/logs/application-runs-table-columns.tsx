@@ -37,9 +37,7 @@ function renderRunTokenCount(value: number | null | undefined) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
 
   return (
-    <span title={formatNumber(value)}>
-      {tokenCountFormatter.format(value)}
-    </span>
+    <span title={formatNumber(value)}>{tokenCountFormatter.format(value)}</span>
   );
 }
 
@@ -57,6 +55,7 @@ function executionStageLabel(
   value: ApplicationRunSummary['execution_stage'],
   t: TFunction<'applications'>
 ) {
+  if (value === undefined) return '—';
   if (value === 'collected') return t('agent_logs.collected');
   return value === 'published'
     ? t('auto.publication_published')
@@ -80,11 +79,13 @@ function invocationSourceLabel(
       return t('auto.invocation_source_workflow_schedule');
     case 'debug':
       return t('auto.invocation_source_debug');
+    default:
+      return '—';
   }
 }
 
 function principalKindLabel(
-  value: ApplicationRunSummary['principal']['kind'],
+  value: NonNullable<ApplicationRunSummary['principal']>['kind'],
   t: TFunction<'applications'>
 ) {
   switch (value) {
@@ -127,20 +128,22 @@ export function getApplicationRunsTableColumns(
       width: 200,
       render: (_value, record) => (
         <span>
-          {record.invocation_count > 1 && (
-            <Tag>
-              {t('auto.task_invocation_count', {
-                count: record.invocation_count
-              })}
-            </Tag>
-          )}
-          {record.compaction_count > 0 && (
-            <Tag>
-              {t('auto.task_compaction_count', {
-                count: record.compaction_count
-              })}
-            </Tag>
-          )}
+          {typeof record.invocation_count === 'number' &&
+            record.invocation_count > 1 && (
+              <Tag>
+                {t('auto.task_invocation_count', {
+                  count: record.invocation_count
+                })}
+              </Tag>
+            )}
+          {typeof record.compaction_count === 'number' &&
+            record.compaction_count > 0 && (
+              <Tag>
+                {t('auto.task_compaction_count', {
+                  count: record.compaction_count
+                })}
+              </Tag>
+            )}
           {record.outcome === 'in_progress' && (
             <Tag color="processing">{t('auto.task_outcome_in_progress')}</Tag>
           )}
@@ -200,6 +203,7 @@ export function getApplicationRunsTableColumns(
       width: 220,
       ellipsis: true,
       render: (_value, run) => {
+        if (!run.principal) return '—';
         const identity = run.principal.display_name ?? run.principal.id;
         const kind = principalKindLabel(run.principal.kind, t);
         const isApiKey =
@@ -247,6 +251,7 @@ export function getApplicationRunsTableColumns(
       key: 'run_mode',
       title: t('auto.mode'),
       dataIndex: 'run_mode',
+      render: (_value, run) => run.run_mode ?? '—',
       width: 180
     },
     {
@@ -266,7 +271,11 @@ export function getApplicationRunsTableColumns(
       dataIndex: 'target_node_id',
       width: 160,
       render: (value) =>
-        typeof value === 'string' && value ? value : t('auto.full_flow')
+        value === undefined
+          ? '—'
+          : typeof value === 'string' && value
+            ? value
+            : t('auto.full_flow')
     },
     {
       key: 'status',
@@ -308,32 +317,42 @@ export function getApplicationRunsTableColumns(
       title: t('auto.count_tokens'),
       width: 140,
       render: (_value, run) =>
-        renderRunTokenCount(run.count_tokens_input_tokens)
+        run.count_tokens_input_tokens === undefined
+          ? '—'
+          : renderRunTokenCount(run.count_tokens_input_tokens)
     },
     {
       key: 'input_cache_hit_tokens',
       title: t('auto.input_cache_hit_tokens'),
       width: 150,
-      render: (_value, run) =>
-        renderRunTokenCount(run.input_cache_hit_tokens)
+      render: (_value, run) => renderRunTokenCount(run.input_cache_hit_tokens)
     },
     {
       key: 'input_cache_hit_rate',
       title: t('auto.input_cache_hit_rate'),
       width: 130,
-      render: (_value, run) => formatRunStatisticRate(run.input_cache_hit_rate)
+      render: (_value, run) =>
+        run.input_cache_hit_rate === undefined
+          ? '—'
+          : formatRunStatisticRate(run.input_cache_hit_rate)
     },
     {
       key: 'unique_node_count',
       title: t('auto.real_node_count'),
       width: 130,
-      render: (_value, run) => formatRunStatisticNumber(run.unique_node_count)
+      render: (_value, run) =>
+        run.unique_node_count === undefined
+          ? '—'
+          : formatRunStatisticNumber(run.unique_node_count)
     },
     {
       key: 'invocation_count',
       title: t('auto.invocation_count'),
       width: 150,
-      render: (_value, run) => formatRunStatisticNumber(run.invocation_count)
+      render: (_value, run) =>
+        run.invocation_count === undefined
+          ? '—'
+          : formatRunStatisticNumber(run.invocation_count)
     },
     {
       key: 'started_at',
