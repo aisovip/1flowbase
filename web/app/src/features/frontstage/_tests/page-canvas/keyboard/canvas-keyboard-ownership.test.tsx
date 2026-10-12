@@ -183,7 +183,7 @@ describe('I2019 canvas keyboard ownership', () => {
       button.focus();
       fireEvent.click(button, { detail: 0, composed: true });
       const dialog = await queries.findByRole('dialog');
-      expect(dialog).toBeVisible();
+      await waitFor(() => expect(dialog).toBeVisible());
       const field = await queries.findByRole('textbox', {
         name: 'dialog prompt'
       });
