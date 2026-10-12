@@ -1,0 +1,97 @@
+import { render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { expect, test, vi } from 'vitest';
+
+import { ApplicationRunLogViewer } from '../../ApplicationRunLogViewer';
+import {
+  AllAgentFlowLogs,
+  ApplicationLogs
+} from '../ApplicationLogs';
+import { NativeBlockSurfaceProvider } from '../../../../../frontstage/lib/native-modules/native-block-surface-context';
+import { createNativeOverlayHost } from '../../../../../frontstage/lib/native-modules/native-overlay-host';
+import { createNativeBlockSurfaceRuntime } from '../../../../../frontstage/lib/native-modules/surface/native-block-surface-runtime';
+import trajectoryVirtualListStyles from '../../../../../agent-flow/components/debug-console/trajectory/virtual/trajectory-virtual-list.css?inline';
+
+// Vitest stubs CSS imports; retain the actual stylesheet for this injection contract.
+vi.mock(
+  '../../../../../agent-flow/components/debug-console/trajectory/virtual/trajectory-virtual-list.css?inline',
+  async () => {
+    const { readFile } = await import('node:fs/promises');
+    return {
+      default: await readFile(
+        `${process.cwd()}/src/features/agent-flow/components/debug-console/trajectory/virtual/trajectory-virtual-list.css`,
+        'utf8'
+      )
+    };
+  }
+);
+
+vi.mock('../../../../api/applications', () => ({
+  applicationsQueryKey: ['applications'],
+  fetchApplications: vi.fn().mockResolvedValue([])
+}));
+vi.mock('../ApplicationLogsWorkspace', () => ({
+  ApplicationLogsWorkspace: () => <div>Logs workspace</div>
+}));
+vi.mock('../../ApplicationRunDetailPanel', () => ({
+  ApplicationRunDetailPanel: () => <div>Run details</div>
+}));
+
+test.each([
+  ['single application', <ApplicationLogs applicationId="app-1" />],
+  ['all applications', <AllAgentFlowLogs />],
+  [
+    'run viewer',
+    <ApplicationRunLogViewer
+      applicationId="app-1"
+      runId="run-1"
+      view="detail"
+      onClose={() => {}}
+    />
+  ]
+])(
+  'injects the Listy viewport styles into the %s overlay ShadowRoot',
+  async (_, component) => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const targetRoot = host.attachShadow({ mode: 'open' });
+    const overlayHost = createNativeOverlayHost({
+      blockId: 'logs',
+      targetRoot
+    });
+    const scope = createNativeBlockSurfaceRuntime({
+      layoutEpoch: 'test',
+      overlayHost,
+      scrollOwner: window,
+      targetRoot
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <NativeBlockSurfaceProvider scope={scope}>
+          {component}
+        </NativeBlockSurfaceProvider>
+      </QueryClientProvider>
+    );
+    try {
+      // A document-head import cannot style virtualized rows in a block overlay.
+      // Layout itself is covered by the real-browser embedded trajectory regression.
+      expect(trajectoryVirtualListStyles).toContain('.trajectory-virtual-list');
+      await waitFor(() => {
+        const style = overlayHost.container.querySelector(
+          'style[data-application-logs-overlay-styles], style[data-application-run-log-viewer-styles]'
+        );
+        expect(style?.getRootNode()).toBe(targetRoot);
+        expect(style?.textContent).toContain(trajectoryVirtualListStyles);
+      });
+    } finally {
+      view.unmount();
+      client.clear();
+      scope.dispose();
+      overlayHost.dispose();
+      host.remove();
+    }
+  }
+);
