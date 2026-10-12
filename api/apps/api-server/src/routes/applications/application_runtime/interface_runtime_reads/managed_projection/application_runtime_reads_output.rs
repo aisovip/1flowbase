@@ -1018,6 +1018,9 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
         Some(match self {
             Self::CurrentContext(response) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(usize::from(response.record_id.is_some())))]),
             Self::QueryFields(fields) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(fields.record_fields.len()+fields.trajectory_fields.len()))]),
+            Self::Conversations(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),
+            Self::RecordTraceTree(tree) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(tree.nodes.len()))]),
+            Self::RecordTraceChildren(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),
             Self::Records(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),
             Self::RecordTrajectoryQuery(page) => mp::object_value(&[("variant",serde_json::json!("LogQueryResult")),("item_count",serde_json::json!(page.items.len()))]),Self::RecordClientTrajectoryPage(page)=>mp::object_value(&[("variant",serde_json::json!("RecordClientTrajectoryPage")),("item_count",serde_json::json!(page.items.len()))]),Self::RecordConversationPage(page) => mp::object_value(&[("variant",serde_json::json!("RecordConversationPage")),("item_count",serde_json::json!(page.items.len()))]),Self::Record(_) => mp::object_value(&[("variant",serde_json::json!("Record"))]),
 Self::WorkflowTrajectoryPage(value) => mp::object_value(&[("variant", serde_json::json!("WorkflowTrajectoryPage")), ("item_count", serde_json::json!(value.items.len()))]),

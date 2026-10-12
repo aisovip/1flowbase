@@ -261,3 +261,43 @@ fn numeric_sequence_comparison_preserves_integer_precision_and_fractional_order(
         &fields
     ));
 }
+
+#[test]
+fn record_trace_contract_is_explicit_metadata_with_record_locator() {
+    let record = Uuid::now_v7();
+    let child = Uuid::now_v7();
+    let value = serde_json::to_value(ApplicationLogRecordTraceChildren {
+        items: vec![ApplicationLogRecordTraceNode {
+            trace_node_id: child,
+            record_id: child,
+            parent_trace_node_id: Some(record),
+            node_kind: "child_task".into(),
+            node_alias: "delegated task".into(),
+            status: "running".into(),
+            started_at: "2026-10-12T00:00:00Z".into(),
+            finished_at: None,
+            duration_ms: None,
+            metrics_payload: json!({"total_tokens":42}),
+            has_children: false,
+            child_count: 0,
+            has_content: true,
+            source_client: Some("codex".into()),
+            source_session_id: Some("child-session".into()),
+            source_task_id: Some("child-task".into()),
+        }],
+        page_info: ApplicationLogRecordTracePageInfo {
+            has_more: false,
+            next_cursor: None,
+            page_size: 107,
+        },
+    })
+    .unwrap();
+    assert_eq!(value["items"][0]["record_id"], json!(child));
+    assert_eq!(value["items"][0]["parent_trace_node_id"], json!(record));
+    assert_eq!(value["page_info"]["page_size"], 107);
+    for field in ["flow_run_id", "messages", "raw", "content"] {
+        assert!(value["items"][0].get(field).is_none());
+    }
+    let roundtrip: ApplicationLogRecordTraceChildren = serde_json::from_value(value).unwrap();
+    assert_eq!(roundtrip.items[0].trace_node_id, child);
+}

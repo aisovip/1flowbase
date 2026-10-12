@@ -4,6 +4,8 @@ use control_plane_contracts::ports::*;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 mod records;
+mod conversations;
+pub(super) use conversations::conversations;
 mod trajectory;
 pub(super) use records::records;
 pub(super) use trajectory::trajectory;

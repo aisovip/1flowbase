@@ -130,6 +130,7 @@ pub struct ApplicationLogRecordConversationPageInfo {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationLogRecordOverview {
+    pub log_conversation_id: Option<Uuid>,
     pub parent_task_run_id: Option<Uuid>,
     pub child_task_count: i64,
     pub started_at: String,
@@ -367,4 +368,39 @@ pub struct AgentLogsDeleteJob {
     pub error_code: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordTraceTree {
+    pub nodes: Vec<ApplicationLogRecordTraceNode>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordTraceNode {
+    pub trace_node_id: Uuid,
+    pub record_id: Uuid,
+    pub parent_trace_node_id: Option<Uuid>,
+    pub node_kind: String,
+    pub node_alias: String,
+    pub status: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub metrics_payload: serde_json::Value,
+    pub has_children: bool,
+    pub child_count: i64,
+    pub has_content: bool,
+    pub source_client: Option<String>,
+    pub source_session_id: Option<String>,
+    pub source_task_id: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordTraceChildren {
+    pub items: Vec<ApplicationLogRecordTraceNode>,
+    pub page_info: ApplicationLogRecordTracePageInfo,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogRecordTracePageInfo {
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+    pub page_size: i64,
 }

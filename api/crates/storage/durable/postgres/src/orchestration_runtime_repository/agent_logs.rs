@@ -340,6 +340,7 @@ async fn refresh_task(
 
 mod hierarchy;
 pub(super) mod conversation;
+pub(super) mod trace;
 pub(super) mod reads;
 pub(super) use reads::{overview, page, section};
 

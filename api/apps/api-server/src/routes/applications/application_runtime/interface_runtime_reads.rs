@@ -35,6 +35,19 @@ pub(crate) enum ApplicationRuntimeReadsInput {
         context: crate::routes::mcp_protocol::client_context::McpClientContext,
     },
     QueryFields,
+    QueryConversations {
+        query: log_query::LogConversationsQuery,
+    },
+    RecordTraceTree {
+        application_id: Uuid,
+        record_id: Uuid,
+    },
+    RecordTraceChildren {
+        application_id: Uuid,
+        record_id: Uuid,
+        trace_node_id: Uuid,
+        query: record_trace::RecordTraceChildrenQuery,
+    },
     QueryRecords {
         query: log_query::LogRecordsQuery,
     },
@@ -168,6 +181,9 @@ pub(crate) enum ApplicationRuntimeReadsInput {
 pub(crate) enum ApplicationRuntimeReadsOutput {
     CurrentContext(log_query::current_context::CurrentRunContextResponse),
     QueryFields(log_query::QueryFields),
+    Conversations(control_plane::ports::ApplicationLogConversationsPage),
+    RecordTraceTree(control_plane::ports::ApplicationLogRecordTraceTree),
+    RecordTraceChildren(control_plane::ports::ApplicationLogRecordTraceChildren),
     Records(control_plane::ports::ApplicationLogRecordsPage),
     RecordTrajectoryQuery(control_plane::ports::RecordClientTrajectoryQueryPage),
     RecordClientTrajectoryPage(control_plane::ports::RecordClientTrajectoryPage),
@@ -865,6 +881,50 @@ impl ApplicationRuntimeReadsAdapter {
             ApplicationRuntimeReadsInput::QueryFields => Ok(
                 ApplicationRuntimeReadsOutput::QueryFields(log_query::QueryFields::default()),
             ),
+            ApplicationRuntimeReadsInput::QueryConversations { query } => {
+                Ok(ApplicationRuntimeReadsOutput::Conversations(
+                    self.query_log_conversations(actor, query).await?,
+                ))
+            }
+            ApplicationRuntimeReadsInput::RecordTraceTree {
+                application_id,
+                record_id,
+            } => {
+                self.visible_log_application(actor, application_id, "get_record_trace_tree")
+                    .await?;
+                Ok(ApplicationRuntimeReadsOutput::RecordTraceTree(
+                    self.store
+                        .application_log_record_trace_tree(application_id, record_id)
+                        .await?,
+                ))
+            }
+            ApplicationRuntimeReadsInput::RecordTraceChildren {
+                application_id,
+                record_id,
+                trace_node_id,
+                query,
+            } => {
+                self.visible_log_application(actor, application_id, "list_record_trace_children")
+                    .await?;
+                let page_size = query.page_size.unwrap_or(50);
+                if page_size < 1 || page_size.checked_add(1).is_none() {
+                    return Err(ControlPlaneError::InvalidInput(
+                        "page_size must be positive without lookahead overflow",
+                    )
+                    .into());
+                }
+                Ok(ApplicationRuntimeReadsOutput::RecordTraceChildren(
+                    self.store
+                        .application_log_record_trace_children(
+                            application_id,
+                            record_id,
+                            trace_node_id,
+                            query.cursor,
+                            page_size,
+                        )
+                        .await?,
+                ))
+            }
             ApplicationRuntimeReadsInput::QueryRecords { query } => Ok(
                 ApplicationRuntimeReadsOutput::Records(self.query_log_records(actor, query).await?),
             ),
@@ -887,20 +947,16 @@ impl ApplicationRuntimeReadsAdapter {
                     "list_record_conversation_messages",
                 )
                 .await?;
-                let page = match query.scope {
-                    provider_trajectory::RecordConversationScope::Session => {
-                        self.store.application_log_record_conversation_page(
-                            application_id, record_id, query.before, query.after,
-                            query.limit.unwrap_or(5),
-                        ).await?
-                    }
-                    provider_trajectory::RecordConversationScope::Children => {
-                        self.store.application_log_record_children_page(
-                            application_id, record_id, query.before, query.after,
-                            query.limit.unwrap_or(5),
-                        ).await?
-                    }
-                };
+                let page = self
+                    .store
+                    .application_log_record_conversation_page(
+                        application_id,
+                        record_id,
+                        query.before,
+                        query.after,
+                        query.limit.unwrap_or(5),
+                    )
+                    .await?;
                 Ok(ApplicationRuntimeReadsOutput::RecordConversationPage(page))
             }
             ApplicationRuntimeReadsInput::GetRecord {
@@ -1143,6 +1199,10 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.conversations.query", binding_id:"http.console.applications.runtime.conversations.query.v1", method:"POST", path:"/api/console/applications/logs/conversations/query", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.trace-tree.get", binding_id:"http.console.applications.runtime.record.trace-tree.get.v1", method:"GET", path:"/api/console/applications/:id/logs/records/:record_id/trace-tree", mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"applications.runtime.record.trace-tree.children.list", binding_id:"http.console.applications.runtime.record.trace-tree.children.list.v1", method:"GET", path:"/api/console/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", mutating:false },
+
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.current-context.get", binding_id:"http.console.applications.runtime.current-context.get.v1", method:"GET", path:"/api/console/applications/logs/current-context", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query-fields", binding_id:"http.console.applications.runtime.records.query-fields.v1", method:"GET", path:"/api/console/applications/logs/query-fields", mutating:false },
     ConsoleInterfaceDeclaration { interface_id:"applications.runtime.records.query", binding_id:"http.console.applications.runtime.records.query.v1", method:"POST", path:"/api/console/applications/logs/records/query", mutating:false },

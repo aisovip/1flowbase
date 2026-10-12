@@ -94,3 +94,19 @@ mod tests;
 
 mod cursor;
 pub use cursor::*;
+
+#[derive(Debug, Clone)]
+pub struct ApplicationLogConversationsQuery {
+    pub filter: ResourceFilterExpr,
+    pub sort_field: String,
+    pub descending: bool,
+    pub page: i64,
+    pub page_size: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationLogConversationsPage {
+    pub items: Vec<ApplicationLogRecordSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}

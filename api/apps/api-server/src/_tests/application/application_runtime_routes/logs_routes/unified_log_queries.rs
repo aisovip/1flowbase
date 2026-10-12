@@ -38,6 +38,9 @@ async fn replace_log_read_policy(app: &axum::Router, cookie: &str, csrf: &str, s
     let operations = [
         "get_query_fields",
         "query_log_records",
+        "query_log_conversations",
+        "get_record_trace_tree",
+        "list_record_trace_children",
         "get_log_record",
         "list_record_conversation_messages",
         "query_record_trajectory",
@@ -149,6 +152,71 @@ async fn agent_logs_unified_query_console_auth_readonly_discovery_and_validation
     .await;
     assert_eq!(empty["data"]["items"], json!([]));
     assert!(empty["data"]["next_cursor"].is_null());
+    let conversations_uri = "/api/console/applications/logs/conversations/query";
+    assert_eq!(
+        query_request(&app, conversations_uri, None, None, json!({}))
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let conversations = response_json(
+        query_request(
+            &app,
+            conversations_uri,
+            Some(&cookie),
+            None,
+            json!({"application_ids":[],"page":2,"page_size":3}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        conversations["data"],
+        json!({"items":[],"total":0,"page":2,"page_size":3})
+    );
+    let larger_page = response_json(
+        query_request(
+            &app,
+            conversations_uri,
+            Some(&cookie),
+            None,
+            json!({"application_ids":[],"page_size":201}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        larger_page["data"]["page_size"], 201,
+        "positive sizes have no arbitrary capacity cap"
+    );
+    for body in [
+        json!({"application_ids":[],"page":0}),
+        json!({"application_ids":[],"page_size":0}),
+        json!({"application_ids":[],"page":3,"page_size":i64::MAX}),
+        json!({"application_ids":[],"sort_field":"title"}),
+        json!({"application_ids":[],"sort_field":"started_at; DROP TABLE applications"}),
+        json!({"application_ids":[],"filter":{"application_id":{"$eq":"not-a-uuid"}}}),
+        json!({"application_ids":[],"filter":{"total_tokens":{"$includes":"12"}}}),
+    ] {
+        let response = query_request(&app, conversations_uri, Some(&cookie), None, body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+                .unwrap();
+        assert!(error["code"].is_string());
+    }
+}
+
+#[test]
+fn agent_logs_main_conversation_query_rejects_removed_children_scope() {
+    assert!(serde_json::from_value::<
+        crate::routes::application_runtime::provider_trajectory::RecordConversationQuery,
+    >(json!({"scope":"children"}))
+    .is_err());
+    assert!(serde_json::from_value::<
+        crate::routes::application_runtime::provider_trajectory::RecordConversationQuery,
+    >(json!({"before":Uuid::nil(),"limit":5}))
+    .is_ok());
 }
 
 #[tokio::test]
@@ -252,6 +320,72 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
     )
     .await;
     assert_eq!(overview["data"]["parent_task_run_id"], Value::Null);
+    assert!(overview["data"]["log_conversation_id"].is_string());
+    let conversations = response_json(
+        query_request(
+            &app,
+            "/api/console/applications/logs/conversations/query",
+            Some(&cookie),
+            None,
+            json!({"application_ids":[id],"keyword":"route needle","page_size":1}),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(conversations["data"]["total"], 1);
+    assert_eq!(
+        conversations["data"]["items"][0]["record_id"],
+        record.to_string()
+    );
+    assert_eq!(
+        conversations["data"]["items"][0]["log_conversation_id"],
+        overview["data"]["log_conversation_id"]
+    );
+    let trace_uri = format!("/api/console/applications/{id}/logs/records/{record}/trace-tree");
+    let tree = get_console_json(&app, &cookie, trace_uri.clone()).await;
+    assert_eq!(tree["data"]["nodes"].as_array().unwrap().len(), 1);
+    let node = &tree["data"]["nodes"][0];
+    assert_eq!(node["record_id"], record.to_string());
+    assert_eq!(node["trace_node_id"], record.to_string());
+    assert!(node.get("flow_run_id").is_none());
+    assert!(node.get("messages").is_none());
+    assert_eq!(node["has_content"], true);
+    let children_uri = format!("{trace_uri}/{record}/children");
+    let children = get_console_json(&app, &cookie, children_uri.clone()).await;
+    assert_eq!(children["data"]["items"], json!([]));
+    assert_eq!(children["data"]["page_info"]["has_more"], false);
+    for (url, expected) in [
+        (trace_uri.clone(), StatusCode::UNAUTHORIZED),
+        (
+            format!("{children_uri}?page_size=0"),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!("{children_uri}?cursor=forged"),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!("{trace_uri}/{other_record}/children"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            format!("/api/console/applications/{other_id}/logs/records/{record}/trace-tree"),
+            StatusCode::NOT_FOUND,
+        ),
+    ] {
+        let mut req = Request::builder().uri(&url);
+        if url != trace_uri {
+            req = req.header("cookie", &cookie);
+        }
+        assert_eq!(
+            app.clone()
+                .oneshot(req.body(Body::empty()).unwrap())
+                .await
+                .unwrap()
+                .status(),
+            expected
+        );
+    }
     assert_eq!(overview["data"]["child_task_count"], 0);
     let conversation_uri =
         format!("/api/console/applications/{id}/logs/records/{record}/conversation/messages");
@@ -267,14 +401,23 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         conversation["data"]["page"]["newest_cursor"],
         record.to_string()
     );
-    let children = get_console_json(&app, &cookie, format!("{conversation_uri}?scope=children")).await;
-    assert_eq!(children["data"]["items"], json!([]));
-    assert_eq!(children["data"]["page"]["has_before"], false);
     for (url, cookie_value, status) in [
         (conversation_uri.clone(), None, StatusCode::UNAUTHORIZED),
-        (format!("{conversation_uri}?scope=children"), None, StatusCode::UNAUTHORIZED),
-        (format!("{conversation_uri}?scope=invalid"), Some(cookie.as_str()), StatusCode::BAD_REQUEST),
-        (format!("{conversation_uri}?scope=children&before={other_record}"), Some(cookie.as_str()), StatusCode::BAD_REQUEST),
+        (
+            format!("{conversation_uri}?scope=children"),
+            Some(cookie.as_str()),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!("{conversation_uri}?scope=invalid"),
+            Some(cookie.as_str()),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            format!("{conversation_uri}?scope=children&before={other_record}"),
+            Some(cookie.as_str()),
+            StatusCode::BAD_REQUEST,
+        ),
         (
             format!("{conversation_uri}?before={other_record}"),
             Some(cookie.as_str()),
@@ -426,6 +569,65 @@ async fn agent_logs_unified_query_view_own_all_without_list_keeps_workspace_and_
             .unwrap()
             .record_ids[0];
         fixtures.push((application.id, record));
+    }
+    let conversations_uri = "/api/console/applications/logs/conversations/query";
+    let owned_conversations =
+        response_json(query_request(&app, conversations_uri, Some(&cookie), None, json!({})).await)
+            .await;
+    assert_eq!(owned_conversations["data"]["total"], 1);
+    assert_eq!(
+        owned_conversations["data"]["items"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    let own_tree = get_console_json(
+        &app,
+        &cookie,
+        format!(
+            "/api/console/applications/{}/logs/records/{}/trace-tree",
+            fixtures[0].0, fixtures[0].1
+        ),
+    )
+    .await;
+    assert_eq!(
+        own_tree["data"]["nodes"][0]["record_id"],
+        fixtures[0].1.to_string()
+    );
+    for index in [1, 2] {
+        assert_eq!(
+            query_request(
+                &app,
+                conversations_uri,
+                Some(&cookie),
+                None,
+                json!({"application_ids":[fixtures[index].0],"filter":{"id":{"$eq":fixtures[0].1}}})
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        for suffix in [
+            "trace-tree".to_owned(),
+            format!("trace-tree/{}/children", fixtures[index].1),
+        ] {
+            let url = format!(
+                "/api/console/applications/{}/logs/records/{}/{}",
+                fixtures[index].0, fixtures[index].1, suffix
+            );
+            assert_eq!(
+                app.clone()
+                    .oneshot(
+                        Request::builder()
+                            .uri(url)
+                            .header("cookie", &cookie)
+                            .body(Body::empty())
+                            .unwrap()
+                    )
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
     }
     let uri = "/api/console/applications/logs/records/query";
     let implicit =

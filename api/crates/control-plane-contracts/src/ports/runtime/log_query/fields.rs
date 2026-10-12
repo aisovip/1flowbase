@@ -42,6 +42,7 @@ pub fn application_log_query_fields() -> Vec<LogQueryField> {
                 "requested_model_id",
                 "reasoning_effort",
                 "source_kind",
+                "source_id",
                 "source_client",
                 "source_session_id",
                 "source_task_id",

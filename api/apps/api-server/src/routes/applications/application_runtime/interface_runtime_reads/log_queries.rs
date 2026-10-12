@@ -36,6 +36,62 @@ impl ApplicationRuntimeReadsAdapter {
         Ok(response)
     }
 
+    pub(super) async fn query_log_conversations(
+        &self,
+        actor: &domain::ActorContext,
+        query: log_query::LogConversationsQuery,
+    ) -> Result<control_plane::ports::ApplicationLogConversationsPage, ApiError> {
+        let page = query.page.unwrap_or(1);
+        let page_size = query.page_size.unwrap_or(50);
+        if page < 1 || page_size < 1 || (page - 1).checked_mul(page_size).is_none() {
+            return Err(ControlPlaneError::InvalidInput(
+                "page and page_size must be positive without offset overflow",
+            )
+            .into());
+        }
+        let filter = log_query::records_filter(&log_query::LogRecordsQuery {
+            filter: query.filter,
+            keyword: query.keyword,
+            ..Default::default()
+        })?;
+        let service = ApplicationService::new(self.store.for_actor(actor.clone()));
+        let application_ids = match query.application_ids {
+            Some(ids) => {
+                for id in &ids {
+                    service
+                        .get_application_for_read_operation(
+                            actor.user_id,
+                            *id,
+                            "query_log_conversations",
+                        )
+                        .await?;
+                }
+                ids
+            }
+            None => service
+                .list_readable_applications(actor.user_id, "query_log_conversations")
+                .await?
+                .into_iter()
+                .map(|application| application.id)
+                .collect(),
+        };
+        let query = control_plane::ports::ApplicationLogConversationsQuery {
+            filter,
+            sort_field: query.sort_field.unwrap_or_else(|| "started_at".into()),
+            descending: query.descending.unwrap_or(true),
+            page,
+            page_size,
+        };
+        Ok(self
+            .store
+            .query_application_log_conversations(
+                actor.current_workspace_id,
+                &application_ids,
+                &query,
+            )
+            .await?)
+    }
+
     pub(super) async fn query_log_records(
         &self,
         actor: &domain::ActorContext,

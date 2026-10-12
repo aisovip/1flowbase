@@ -254,7 +254,8 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         ),
         "application_run_log_tasks" => !matches!(
             field_code,
-            "total_cost"
+            "source_id"
+                | "total_cost"
                 | "parent_task_run_id"
                 | "log_conversation_id"
                 | "client_thread_id"
@@ -307,9 +308,15 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
                 | "input_cache_write_tokens"
                 | "input_cache_hit_rate"
         ),
-        "application_conversations" => {
-            !matches!(field_code, "external_user" | "api_key_id" | "title")
-        }
+        "application_conversations" => !matches!(
+            field_code,
+            "external_user"
+                | "api_key_id"
+                | "title"
+                | "source_id"
+                | "source_client"
+                | "source_session_id"
+        ),
         "application_conversation_messages" => !matches!(
             field_code,
             "flow_run_id" | "node_run_id" | "started_at" | "finished_at"
@@ -428,6 +435,7 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
 
 const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
     "source_kind",
+    "source_id",
     "source_client",
     "source_session_id",
     "source_task_id",
@@ -530,6 +538,10 @@ const APPLICATION_CONVERSATIONS_FIELDS: &[&str] = &[
     "title",
     "created_at",
     "updated_at",
+    "source_kind",
+    "source_id",
+    "source_client",
+    "source_session_id",
 ];
 
 const APPLICATION_CONVERSATION_MESSAGES_FIELDS: &[&str] = &[

@@ -226,15 +226,23 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::ApplicationLogRecordConversationPage> {
         agent_logs::conversation::page(self, application_id, record_id, before, after, limit).await
     }
-    async fn application_log_record_children_page(
-        &self,
-        application_id: Uuid,
-        record_id: Uuid,
-        before: Option<Uuid>,
-        after: Option<Uuid>,
-        limit: i64,
-    ) -> Result<control_plane_contracts::ports::ApplicationLogRecordConversationPage> {
-        agent_logs::conversation::children_page(self, application_id, record_id, before, after, limit).await
+
+    async fn query_application_log_conversations(
+        &self, scope_id: Uuid, application_ids: &[Uuid],
+        query: &control_plane_contracts::ports::ApplicationLogConversationsQuery,
+    ) -> Result<control_plane_contracts::ports::ApplicationLogConversationsPage> {
+        log_query::conversations(self, scope_id, application_ids, query).await
+    }
+    async fn application_log_record_trace_tree(
+        &self, application_id: Uuid, record_id: Uuid,
+    ) -> Result<control_plane_contracts::ports::ApplicationLogRecordTraceTree> {
+        agent_logs::trace::tree(self, application_id, record_id).await
+    }
+    async fn application_log_record_trace_children(
+        &self, application_id: Uuid, record_id: Uuid, trace_node_id: Uuid,
+        cursor: Option<String>, page_size: i64,
+    ) -> Result<control_plane_contracts::ports::ApplicationLogRecordTraceChildren> {
+        agent_logs::trace::children(self, application_id, record_id, trace_node_id, cursor, page_size).await
     }
     async fn application_log_record(
         &self,

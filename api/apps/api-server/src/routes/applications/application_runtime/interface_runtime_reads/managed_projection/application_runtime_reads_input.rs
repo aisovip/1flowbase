@@ -239,11 +239,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
         Some(match self {
             Self::CurrentContext { .. }
             | Self::QueryFields
+            | Self::QueryConversations { .. }
             | Self::QueryRecords { .. }
             | Self::QueryRecordTrajectory { .. } => {
                 mp::object_value(&[("variant", serde_json::json!("LogQuery"))])
             }
-            Self::RecordConversationPage { .. }
+            Self::RecordTraceTree { .. }
+            | Self::RecordTraceChildren { .. }
+            | Self::RecordConversationPage { .. }
             | Self::GetRecord { .. }
             | Self::RecordClientTrajectoryPage { .. }
             | Self::RecordClientTrajectorySection { .. } => {

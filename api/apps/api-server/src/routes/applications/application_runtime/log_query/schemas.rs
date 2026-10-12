@@ -59,6 +59,30 @@ fn log_records_page_schema() -> Value {
         json!({"items":{"type":"array","items":summary_schema()},"next_cursor":nullable(text())}),
     )
 }
+fn log_conversations_page_schema() -> Value {
+    object(
+        json!({"items":{"type":"array","items":summary_schema()},"total":integer(),"page":integer(),"page_size":integer()}),
+    )
+}
+fn record_trace_node_schema() -> Value {
+    object(json!({
+        "trace_node_id":uuid(),"record_id":uuid(),"parent_trace_node_id":nullable(uuid()),
+        "node_kind":text(),"node_alias":text(),"status":text(),"started_at":timestamp(),
+        "finished_at":nullable(timestamp()),"duration_ms":nullable(integer()),"metrics_payload":{"type":"object"},
+        "has_children":{"type":"boolean"},"child_count":integer(),"has_content":{"type":"boolean"},
+        "source_client":nullable(text()),"source_session_id":nullable(text()),"source_task_id":nullable(text())
+    }))
+}
+fn record_trace_tree_schema() -> Value {
+    object(json!({"nodes":{"type":"array","items":record_trace_node_schema()}}))
+}
+fn record_trace_children_schema() -> Value {
+    object(
+        json!({"items":{"type":"array","items":record_trace_node_schema()},"page_info":object(json!({
+            "has_more":{"type":"boolean"},"next_cursor":nullable(text()),"page_size":integer()
+        }))}),
+    )
+}
 fn trajectory_query_page_schema() -> Value {
     object(json!({
         "items":{"type":"array","items":step_schema()},
@@ -76,7 +100,7 @@ fn query_fields_schema() -> Value {
 }
 fn record_overview_schema() -> Value {
     object(json!({
-        "record_id":uuid(),"parent_task_run_id":nullable(uuid()),"child_task_count":integer(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
+        "record_id":uuid(),"log_conversation_id":nullable(uuid()),"parent_task_run_id":nullable(uuid()),"child_task_count":integer(),"source_kind":text(),"source_id":nullable(text()),"source_client":nullable(text()),
         "source_session_id":nullable(text()),"source_task_id":nullable(text()),"native_run_id":nullable(uuid()),
         "started_at":timestamp(),"finished_at":nullable(timestamp()),"requested_model_id":nullable(text()),"reasoning_effort":nullable(text()),
         "status":text(),"title":text(),"outcome":text(),"projection_output":nullable(text()),
@@ -113,6 +137,9 @@ macro_rules! projection {
     };
 }
 projection!(LogRecordsPageSchema, log_records_page_schema);
+projection!(LogConversationsPageSchema, log_conversations_page_schema);
+projection!(RecordTraceTreeSchema, record_trace_tree_schema);
+projection!(RecordTraceChildrenSchema, record_trace_children_schema);
 projection!(TrajectoryQueryPageSchema, trajectory_query_page_schema);
 projection!(QueryFieldsSchema, query_fields_schema);
 

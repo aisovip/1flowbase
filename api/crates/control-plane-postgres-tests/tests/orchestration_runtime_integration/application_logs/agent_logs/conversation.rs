@@ -54,10 +54,10 @@ async fn agent_logs_conversation_seven_turn_four_clients_cursor_isolation_and_lo
                 .iter()
                 .map(|i| i.record_id)
                 .collect::<Vec<_>>(),
-            ids[1..6]
+            ids[2..]
         );
-        assert!(initial.page.has_before && initial.page.has_after);
-        assert_eq!(initial.page.newest_cursor, Some(ids[5]));
+        assert!(initial.page.has_before && !initial.page.has_after);
+        assert_eq!(initial.page.newest_cursor, Some(ids[6]));
         for item in &initial.items {
             assert_eq!(item.source_client.as_deref(), Some(client));
             assert_eq!(item.reasoning_effort.as_deref(), Some("high"));
@@ -87,7 +87,7 @@ async fn agent_logs_conversation_seven_turn_four_clients_cursor_isolation_and_lo
             .unwrap();
         assert_eq!(
             older.items.iter().map(|i| i.record_id).collect::<Vec<_>>(),
-            ids[..1]
+            ids[..2]
         );
         assert!(!older.page.has_before);
         let newer = store
@@ -102,24 +102,31 @@ async fn agent_logs_conversation_seven_turn_four_clients_cursor_isolation_and_lo
             .unwrap();
         assert_eq!(
             newer.items.iter().map(|i| i.record_id).collect::<Vec<_>>(),
-            ids[6..]
+            Vec::<Uuid>::new()
         );
         assert!(!newer.page.has_after);
-        // Starting at an older anchor must catch every newer turn, even with
-        // several bounded forward requests. The cursor is the visible edge.
+        // Any older locator opens the current newest five. Explicit main
+        // cursors still support bounded forward paging without gaps.
         let anchored = store
             .application_log_record_conversation_page(app, ids[1], None, None, 5)
             .await
             .unwrap();
-        assert_eq!(anchored.page.newest_cursor, Some(ids[1]));
-        let mut cursor = anchored.page.newest_cursor;
+        assert_eq!(
+            anchored
+                .items
+                .iter()
+                .map(|i| i.record_id)
+                .collect::<Vec<_>>(),
+            ids[2..]
+        );
+        let mut cursor = Some(ids[1]);
         let mut caught_up = Vec::new();
         loop {
             let page = store
                 .application_log_record_conversation_page(app, ids[1], None, cursor, 2)
                 .await
                 .unwrap();
-            caught_up.extend(page.items.iter().map(|item| item.record_id));
+            caught_up.extend(page.items.iter().map(|i| i.record_id));
             assert_eq!(
                 page.page.newest_cursor,
                 page.items.last().map(|item| item.record_id)
@@ -138,6 +145,33 @@ async fn agent_logs_conversation_seven_turn_four_clients_cursor_isolation_and_lo
         assert!(empty.items.is_empty());
         assert_eq!(empty.page.newest_cursor, None);
         clients.push(ids);
+    }
+    let conversations = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                filter: domain::ResourceFilterExpr::All(vec![]),
+                sort_field: "started_at".into(),
+                descending: true,
+                page: 1,
+                page_size: 50,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(conversations.total, 4);
+    let canonical_ids = conversations
+        .items
+        .iter()
+        .map(|i| i.log_conversation_id.unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(canonical_ids.len(), 4);
+    for ids in &clients {
+        assert!(conversations
+            .items
+            .iter()
+            .any(|item| item.record_id == ids[6]));
     }
     assert!(store
         .application_log_record_conversation_page(app, clients[0][5], Some(clients[1][0]), None, 5)
@@ -236,4 +270,74 @@ async fn agent_logs_record_conversation_native_uses_existing_business_reader() {
         serde_json::to_value(&overview).unwrap()
     );
     assert_eq!(page.items[0].native_run_id, Some(run.id));
+}
+
+#[tokio::test]
+async fn agent_logs_conversation_forward_catchup_uses_returned_edge_without_gaps() {
+    let (store, scope, app) = setup().await;
+    let mut ids = Vec::new();
+    for index in 0..13 {
+        let mut e = event(
+            &format!("catchup-{index}"),
+            1,
+            AgentLogEventKind::User,
+            Some("main question"),
+        );
+        e.source_task_id = format!("catchup-{index}");
+        e.occurred_at = format!("2026-10-07T08:01:{index:02}Z");
+        ids.push(
+            AgentLogsService::new(store.clone())
+                .ingest(app, scope, Uuid::now_v7(), batch(vec![e]))
+                .await
+                .unwrap()
+                .record_ids[0],
+        );
+    }
+    let initial = store
+        .application_log_record_conversation_page(app, ids[0], None, None, 5)
+        .await
+        .unwrap();
+    assert_eq!(
+        initial
+            .items
+            .iter()
+            .map(|i| i.record_id)
+            .collect::<Vec<_>>(),
+        ids[8..]
+    );
+    let older = store
+        .application_log_record_conversation_page(app, ids[0], Some(ids[8]), None, 5)
+        .await
+        .unwrap();
+    assert_eq!(older.page.newest_cursor, Some(ids[7]));
+    let mut cursor = Some(ids[0]);
+    let mut returned = Vec::new();
+    let mut pages = 0;
+    loop {
+        let page = store
+            .application_log_record_conversation_page(app, ids[0], None, cursor, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            page.page.newest_cursor,
+            page.items.last().map(|i| i.record_id)
+        );
+        assert!(!page.items.is_empty());
+        returned.extend(page.items.iter().map(|i| i.record_id));
+        pages += 1;
+        if !page.page.has_after {
+            break;
+        }
+        cursor = page.page.newest_cursor;
+    }
+    assert_eq!(pages, 3);
+    assert_eq!(returned, ids[1..]);
+    assert_eq!(
+        returned
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        12
+    );
 }

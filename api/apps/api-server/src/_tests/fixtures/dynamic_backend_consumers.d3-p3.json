@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 402,
+  "projected_interface_count": 406,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -368,6 +368,24 @@
       "GET",
       "/api/console/applications/:id/logs/records/:record_id/client-trajectory/:step_id",
       "Get record client trajectory section"
+    ],
+    [
+      "list_record_conversation_messages",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id/conversation/messages",
+      "List source-neutral business turns around a selected log record"
+    ],
+    [
+      "get_record_trace_tree",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id/trace-tree",
+      "Get record trace tree"
+    ],
+    [
+      "list_record_trace_children",
+      "GET",
+      "/api/console/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children",
+      "List record trace children"
     ],
     [
       "list_application_runs",
@@ -1358,6 +1376,12 @@
       "POST",
       "/api/console/applications/archive/import",
       "Import applications orchestration template"
+    ],
+    [
+      "query_log_conversations",
+      "POST",
+      "/api/console/applications/logs/conversations/query",
+      "Query log conversations"
     ],
     [
       "query_log_records",

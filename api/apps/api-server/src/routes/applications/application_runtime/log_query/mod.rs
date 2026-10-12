@@ -3,9 +3,44 @@ use super::*;
 use control_plane::ports::{
     ApplicationLogRecordsPage, LogQueryField, RecordClientTrajectoryQueryPage,
 };
-pub(super) mod schemas;
 pub(crate) mod current_context;
-use schemas::{LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema};
+pub(super) mod schemas;
+use schemas::{
+    LogConversationsPageSchema, LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema,
+};
+
+#[derive(Debug, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LogConversationsQuery {
+    pub application_ids: Option<Vec<Uuid>>,
+    pub filter: Option<serde_json::Value>,
+    pub keyword: Option<String>,
+    pub sort_field: Option<String>,
+    pub descending: Option<bool>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+/// Query canonical conversations in readable applications.
+/// Returns exact conversation totals and whole-conversation usage with the latest main record locator.
+#[utoipa::path(post, path="/api/console/applications/logs/conversations/query", request_body=LogConversationsQuery, responses((status=200, body=LogConversationsPageSchema)))]
+pub async fn query_log_conversations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(query): Json<LogConversationsQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogConversationsPage>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.conversations.query.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::QueryConversations { query },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Conversations(page) = output else {
+        unreachable!("conversations query binding output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
+}
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]

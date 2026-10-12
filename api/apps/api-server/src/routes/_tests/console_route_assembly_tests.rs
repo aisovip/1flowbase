@@ -444,6 +444,9 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "/api/console/applications/logs/query-fields",
                 "applications.view",
             ),
+            ("POST", "/api/console/applications/logs/conversations/query", "applications.view"),
+            ("GET", "/api/console/applications/:id/logs/records/:record_id/trace-tree", "applications.view"),
+            ("GET", "/api/console/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", "applications.view"),
             (
                 "POST",
                 "/api/console/applications/logs/records/query",

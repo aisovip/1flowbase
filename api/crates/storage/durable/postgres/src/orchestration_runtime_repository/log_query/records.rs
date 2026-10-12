@@ -103,42 +103,41 @@ pub(in crate::orchestration_runtime_repository) async fn records(
     } else {
         None
     };
-    let items = rows
-        .into_iter()
-        .map(|r| {
-            Ok(ApplicationLogRecordSummary {
-                record_id: r.try_get("id")?,
-                application_id: r.try_get("application_id")?,
-                source_kind: r.try_get("source_kind")?,
-                source_id: r.try_get("source_id")?,
-                source_client: r.try_get("source_client")?,
-                source_session_id: r.try_get("source_session_id")?,
-                source_task_id: r.try_get("source_task_id")?,
-                native_run_id: r.try_get("native_run_id")?,
-                log_conversation_id: r.try_get("log_conversation_id")?,
-                requested_model_id: r.try_get("requested_model_id")?,
-                reasoning_effort: r.try_get("reasoning_effort")?,
-                status: r.try_get("status")?,
-                outcome: r.try_get("outcome")?,
-                title: r.try_get("title")?,
-                total_tokens: r.try_get("total_tokens")?,
-                input_tokens: r.try_get("input_tokens")?,
-                output_tokens: r.try_get("output_tokens")?,
-                input_cache_hit_tokens: r.try_get("input_cache_hit_tokens")?,
-                total_cost: r.try_get("total_cost")?,
-                cost_breakdown: ApplicationLogCostBreakdown {
-                    total_cost: r.try_get("total_cost")?,
-                },
-                started_at: timestamp(&r, "started_at")?,
-                finished_at: optional_timestamp(&r, "finished_at")?,
-                created_at: timestamp(&r, "created_at")?,
-                updated_at: timestamp(&r, "updated_at")?,
-                available_views: vec![
-                    ApplicationLogView::Conversation,
-                    ApplicationLogView::ClientTrajectory,
-                ],
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let items = rows.into_iter().map(summary).collect::<Result<Vec<_>>>()?;
     Ok(ApplicationLogRecordsPage { items, next_cursor })
+}
+
+pub(super) fn summary(r: sqlx::postgres::PgRow) -> Result<ApplicationLogRecordSummary> {
+    Ok(ApplicationLogRecordSummary {
+        record_id: r.try_get("id")?,
+        application_id: r.try_get("application_id")?,
+        source_kind: r.try_get("source_kind")?,
+        source_id: r.try_get("source_id")?,
+        source_client: r.try_get("source_client")?,
+        source_session_id: r.try_get("source_session_id")?,
+        source_task_id: r.try_get("source_task_id")?,
+        native_run_id: r.try_get("native_run_id")?,
+        log_conversation_id: r.try_get("log_conversation_id")?,
+        requested_model_id: r.try_get("requested_model_id")?,
+        reasoning_effort: r.try_get("reasoning_effort")?,
+        status: r.try_get("status")?,
+        outcome: r.try_get("outcome")?,
+        title: r.try_get("title")?,
+        total_tokens: r.try_get("total_tokens")?,
+        input_tokens: r.try_get("input_tokens")?,
+        output_tokens: r.try_get("output_tokens")?,
+        input_cache_hit_tokens: r.try_get("input_cache_hit_tokens")?,
+        total_cost: r.try_get("total_cost")?,
+        cost_breakdown: ApplicationLogCostBreakdown {
+            total_cost: r.try_get("total_cost")?,
+        },
+        started_at: timestamp(&r, "started_at")?,
+        finished_at: optional_timestamp(&r, "finished_at")?,
+        created_at: timestamp(&r, "created_at")?,
+        updated_at: timestamp(&r, "updated_at")?,
+        available_views: vec![
+            ApplicationLogView::Conversation,
+            ApplicationLogView::ClientTrajectory,
+        ],
+    })
 }

@@ -111,15 +111,31 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<ApplicationLogRecordConversationPage> {
         anyhow::bail!("application_log_record_conversation_page not implemented")
     }
-    async fn application_log_record_children_page(
+
+    async fn query_application_log_conversations(
+        &self,
+        _scope_id: Uuid,
+        _application_ids: &[Uuid],
+        _query: &ApplicationLogConversationsQuery,
+    ) -> anyhow::Result<ApplicationLogConversationsPage> {
+        anyhow::bail!("query_application_log_conversations not implemented")
+    }
+    async fn application_log_record_trace_tree(
         &self,
         _application_id: Uuid,
         _record_id: Uuid,
-        _before: Option<Uuid>,
-        _after: Option<Uuid>,
-        _limit: i64,
-    ) -> anyhow::Result<ApplicationLogRecordConversationPage> {
-        anyhow::bail!("application_log_record_children_page not implemented")
+    ) -> anyhow::Result<ApplicationLogRecordTraceTree> {
+        anyhow::bail!("application_log_record_trace_tree not implemented")
+    }
+    async fn application_log_record_trace_children(
+        &self,
+        _application_id: Uuid,
+        _record_id: Uuid,
+        _trace_node_id: Uuid,
+        _cursor: Option<String>,
+        _page_size: i64,
+    ) -> anyhow::Result<ApplicationLogRecordTraceChildren> {
+        anyhow::bail!("application_log_record_trace_children not implemented")
     }
     async fn application_log_record(
         &self,

@@ -68,5 +68,8 @@ pub(super) async fn resolve(
     // late ambiguity unbinds. Duplicate-only batches never reach this writer.
     sqlx::query("update application_run_log_tasks t set parent_task_run_id=r.parent from unnest($1::uuid[],$2::uuid[]) as r(id,parent) where t.id=r.id and t.parent_task_run_id is distinct from r.parent")
         .bind(ids).bind(parents).execute(&mut **tx).await?;
+    sqlx::query("select refresh_imported_conversation_ownership($1,$2,$3,$4)")
+        .bind(application_id).bind(scope_id).bind(source_id).bind(source_client)
+        .execute(&mut **tx).await?;
     Ok(())
 }

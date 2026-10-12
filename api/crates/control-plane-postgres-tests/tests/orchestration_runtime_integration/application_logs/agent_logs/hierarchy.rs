@@ -36,6 +36,15 @@ async fn agent_logs_hierarchy_late_parent_replay_and_late_ambiguity() {
     let child_event = declared("child", "child-session", Some("parent"));
     let child = upload(&store, scope, app, child_event.clone()).await;
     assert_eq!(parent(&store, app, child).await, None);
+    assert_eq!(
+        store
+            .application_log_record(app, child)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        None
+    );
     let root = upload(
         &store,
         scope,
@@ -44,6 +53,22 @@ async fn agent_logs_hierarchy_late_parent_replay_and_late_ambiguity() {
     )
     .await;
     assert_eq!(parent(&store, app, child).await, Some(root));
+    let canonical = store
+        .application_log_record(app, root)
+        .await
+        .unwrap()
+        .unwrap()
+        .log_conversation_id;
+    assert!(canonical.is_some());
+    assert_eq!(
+        store
+            .application_log_record(app, child)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        canonical
+    );
     let before =
         serde_json::to_value(store.application_log_record(app, child).await.unwrap()).unwrap();
     let counts = owned_log_counts(&store, app, &[root, child], &[]).await;
@@ -75,6 +100,15 @@ async fn agent_logs_hierarchy_late_parent_replay_and_late_ambiguity() {
     )
     .await;
     assert_eq!(parent(&store, app, child).await, None);
+    assert_eq!(
+        store
+            .application_log_record(app, child)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        None
+    );
     // Parent-first follows the same resolver.
     let first = upload(&store, scope, app, declared("first", "first-session", None)).await;
     let second = upload(
@@ -151,6 +185,15 @@ async fn agent_logs_hierarchy_namespace_self_cycles_and_unbounded_depth() {
     let c = upload(&store, scope, app, declared("c", "c", Some("a"))).await;
     for id in [a, b, c] {
         assert_eq!(parent(&store, app, id).await, None);
+        assert_eq!(
+            store
+                .application_log_record(app, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .log_conversation_id,
+            None
+        );
     }
     let events = (0..260)
         .map(|index| {
@@ -172,14 +215,14 @@ async fn agent_logs_hierarchy_namespace_self_cycles_and_unbounded_depth() {
 }
 
 #[tokio::test]
-async fn agent_logs_children_paging_nesting_membership_and_independent_trajectory() {
+async fn agent_logs_trace_metadata_paging_nesting_membership_and_independent_trajectory() {
     let (store, scope, app) = setup().await;
     let root = upload(&store, scope, app, declared("root", "root", None)).await;
     let events = (0..107)
-        .map(|index| {
+        .map(|i| {
             declared(
-                &format!("child-{index:03}"),
-                &format!("child-session-{index}"),
+                &format!("child-{i:03}"),
+                &format!("child-session-{i}"),
                 Some("root"),
             )
         })
@@ -188,7 +231,13 @@ async fn agent_logs_children_paging_nesting_membership_and_independent_trajector
         .ingest(app, scope, Uuid::now_v7(), batch(events))
         .await
         .unwrap();
-    let expected: Vec<Uuid> = sqlx::query_scalar("select id from application_run_log_tasks where parent_task_run_id=$1 order by started_at,id").bind(root).fetch_all(store.pool()).await.unwrap();
+    let expected: Vec<Uuid> = sqlx::query_scalar(
+        "select id from application_run_log_tasks where parent_task_run_id=$1 order by id",
+    )
+    .bind(root)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
     let child = expected[0];
     let child_name: String =
         sqlx::query_scalar("select source_task_id from application_run_log_tasks where id=$1")
@@ -203,81 +252,84 @@ async fn agent_logs_children_paging_nesting_membership_and_independent_trajector
         declared("grandchild", "nested", Some(&child_name)),
     )
     .await;
-    let overview = store
-        .application_log_record(app, root)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(overview.child_task_count, 107);
-    let initial = store
-        .application_log_record_children_page(app, root, None, None, 5)
+    let tree = store
+        .application_log_record_trace_tree(app, root)
         .await
         .unwrap();
-    assert_eq!(
-        initial
-            .items
-            .iter()
-            .map(|i| i.record_id)
-            .collect::<Vec<_>>(),
-        expected[102..]
+    assert_eq!(tree.nodes.len(), 1);
+    assert_eq!(tree.nodes[0].record_id, root);
+    assert_eq!(tree.nodes[0].child_count, 107);
+    assert_eq!(tree.nodes[0].parent_trace_node_id, None);
+    assert!(tree.nodes[0].has_content);
+    let value = serde_json::to_value(&tree.nodes[0]).unwrap();
+    assert!(
+        value.get("messages").is_none()
+            && value.get("raw").is_none()
+            && value.get("flow_run_id").is_none()
     );
-    assert!(initial.page.has_before && !initial.page.has_after);
     let first = store
-        .application_log_record_children_page(app, root, None, None, 100)
+        .application_log_record_trace_children(app, root, root, None, 100)
         .await
         .unwrap();
     assert_eq!(first.items.len(), 100);
-    let older = store
-        .application_log_record_children_page(app, root, first.page.before_cursor, None, 100)
-        .await
-        .unwrap();
-    assert_eq!(older.items.len(), 7);
-    let actual = older
+    assert!(first.page_info.has_more);
+    assert!(first
         .items
         .iter()
-        .chain(first.items.iter())
-        .map(|i| i.record_id)
-        .collect::<Vec<_>>();
-    assert_eq!(actual, expected);
-    let forward = store
-        .application_log_record_children_page(app, root, None, Some(child), 5)
+        .all(|n| n.parent_trace_node_id == Some(root) && n.node_kind == "child_task"));
+    let second = store
+        .application_log_record_trace_children(
+            app,
+            root,
+            root,
+            first.page_info.next_cursor.clone(),
+            100,
+        )
         .await
         .unwrap();
+    assert_eq!(second.items.len(), 7);
+    assert!(!second.page_info.has_more);
     assert_eq!(
-        forward
+        first
             .items
             .iter()
-            .map(|i| i.record_id)
+            .chain(second.items.iter())
+            .map(|n| n.record_id)
             .collect::<Vec<_>>(),
-        expected[1..6]
+        expected
     );
-    for invalid in [root, grandchild] {
-        assert!(store
-            .application_log_record_children_page(app, root, Some(invalid), None, 5)
-            .await
-            .is_err());
-    }
     assert!(store
-        .application_log_record_children_page(app, root, Some(child), Some(child), 5)
+        .application_log_record_trace_children(app, root, child, first.page_info.next_cursor, 100)
         .await
         .is_err());
     assert!(store
-        .application_log_record_children_page(Uuid::now_v7(), root, None, None, 5)
+        .application_log_record_trace_children(app, root, root, Some("forged".into()), 5)
+        .await
+        .is_err());
+    assert!(store
+        .application_log_record_trace_children(Uuid::now_v7(), root, root, None, 5)
         .await
         .is_err());
     let nested = store
-        .application_log_record_children_page(app, child, None, None, 5)
+        .application_log_record_trace_children(app, root, child, None, 5)
         .await
         .unwrap();
     assert_eq!(nested.items[0].record_id, grandchild);
+    assert_eq!(nested.items[0].parent_trace_node_id, Some(child));
     assert!(store
-        .application_log_record_children_page(app, grandchild, None, None, 5)
+        .application_log_record_trace_children(app, root, grandchild, None, 5)
         .await
         .unwrap()
         .items
         .is_empty());
+    let own_tree = store
+        .application_log_record_trace_tree(app, child)
+        .await
+        .unwrap();
+    assert_eq!(own_tree.nodes[0].node_kind, "task_round");
+    assert_eq!(own_tree.nodes[0].parent_trace_node_id, None);
     let session = store
-        .application_log_record_conversation_page(app, root, None, None, 5)
+        .application_log_record_conversation_page(app, child, None, None, 5)
         .await
         .unwrap();
     assert_eq!(
@@ -301,58 +353,38 @@ async fn agent_logs_children_paging_nesting_membership_and_independent_trajector
         .unwrap()
         .unwrap();
     assert_eq!(raw.items[0].value["parent_source_task_id"], json!("root"));
-    // Corrupted links still cannot leak another source/client/scope into paging.
     let foreign = upload(&store, scope, app, declared("foreign", "foreign", None)).await;
-    sqlx::query("update application_run_log_tasks set parent_task_run_id=$2,source_client='foreign-client' where id=$1").bind(foreign).bind(root).execute(store.pool()).await.unwrap();
-    assert_eq!(
-        store
-            .application_log_record(app, root)
+    for (client, source) in [("foreign-client", "collector"), ("codex", "foreign-source")] {
+        sqlx::query("update application_run_log_tasks set parent_task_run_id=$2,source_client=$3,source_id=$4 where id=$1").bind(foreign).bind(root).bind(client).bind(source).execute(store.pool()).await.unwrap();
+        assert!(store
+            .application_log_record_trace_children(app, root, foreign, None, 5)
             .await
-            .unwrap()
-            .unwrap()
-            .child_task_count,
-        107
-    );
+            .is_err());
+        assert_eq!(
+            store
+                .application_log_record_trace_tree(app, root)
+                .await
+                .unwrap()
+                .nodes[0]
+                .child_count,
+            107
+        );
+    }
+    let foreign_scope = seed_workspace(&store, "trace-foreign-scope").await;
+    sqlx::query("update application_run_log_tasks set source_client='codex',source_id='collector',scope_id=$2 where id=$1").bind(foreign).bind(foreign_scope).execute(store.pool()).await.unwrap();
     assert!(store
-        .application_log_record_children_page(app, root, Some(foreign), None, 5)
+        .application_log_record_trace_children(app, root, foreign, None, 5)
         .await
         .is_err());
-    sqlx::query("update application_run_log_tasks set source_client='codex',source_id='foreign-source' where id=$1").bind(foreign).execute(store.pool()).await.unwrap();
     assert_eq!(
         store
-            .application_log_record(app, root)
+            .application_log_record_trace_tree(app, root)
             .await
             .unwrap()
-            .unwrap()
-            .child_task_count,
+            .nodes[0]
+            .child_count,
         107
     );
-    assert!(store
-        .application_log_record_children_page(app, root, Some(foreign), None, 5)
-        .await
-        .is_err());
-    let foreign_scope = seed_workspace(&store, "paging-foreign-scope").await;
-    sqlx::query(
-        "update application_run_log_tasks set source_id='collector',scope_id=$2 where id=$1",
-    )
-    .bind(foreign)
-    .bind(foreign_scope)
-    .execute(store.pool())
-    .await
-    .unwrap();
-    assert_eq!(
-        store
-            .application_log_record(app, root)
-            .await
-            .unwrap()
-            .unwrap()
-            .child_task_count,
-        107
-    );
-    assert!(store
-        .application_log_record_children_page(app, root, Some(foreign), None, 5)
-        .await
-        .is_err());
 }
 
 #[tokio::test]
@@ -433,6 +465,18 @@ async fn agent_logs_root_session_page_reserves_five_root_turn_slots() {
         declared("same-session-child", "shared", Some(&root_task)),
     )
     .await;
+    let child_anchor = store
+        .application_log_record_conversation_page(app, child, None, None, 5)
+        .await
+        .unwrap();
+    assert_eq!(
+        child_anchor
+            .items
+            .iter()
+            .map(|i| i.record_id)
+            .collect::<Vec<_>>(),
+        roots[2..]
+    );
     let initial = store
         .application_log_record_conversation_page(app, roots[6], None, None, 5)
         .await
@@ -469,11 +513,274 @@ async fn agent_logs_root_session_page_reserves_five_root_turn_slots() {
         .is_err());
     assert_eq!(
         store
-            .application_log_record_children_page(app, roots[6], None, None, 5)
+            .application_log_record_trace_children(app, roots[6], roots[6], None, 5)
             .await
             .unwrap()
             .items[0]
             .record_id,
         child
     );
+}
+
+#[tokio::test]
+async fn agent_logs_conversations_grouped_paging_filter_usage_and_backfill() {
+    let (store, scope, app) = setup().await;
+    let root = upload(&store, scope, app, declared("main-1", "main", None)).await;
+    let latest = upload(&store, scope, app, declared("main-2", "main", None)).await;
+    let child = upload(
+        &store,
+        scope,
+        app,
+        declared("child", "child", Some("main-1")),
+    )
+    .await;
+    let unresolved = upload(
+        &store,
+        scope,
+        app,
+        declared("orphan", "orphan", Some("missing")),
+    )
+    .await;
+    let other = upload(&store, scope, app, declared("other", "other", None)).await;
+    sqlx::query("update application_run_log_tasks set total_tokens=case when id=$1 then 10 when id=$2 then 20 when id=$3 then 30 else 999 end,total_cost=case when id=$1 then 1 when id=$2 then 2 when id=$3 then 3 else 999 end where application_id=$4")
+        .bind(root).bind(latest).bind(child).bind(app).execute(store.pool()).await.unwrap();
+    let query = ApplicationLogConversationsQuery {
+        filter: domain::ResourceFilterExpr::All(vec![]),
+        sort_field: "total_tokens".into(),
+        descending: false,
+        page: 1,
+        page_size: 1,
+    };
+    let first = store
+        .query_application_log_conversations(scope, &[app], &query)
+        .await
+        .unwrap();
+    assert_eq!(first.total, 2);
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].record_id, latest);
+    assert_eq!(first.items[0].source_session_id.as_deref(), Some("main"));
+    assert_eq!(first.items[0].total_tokens, Some(60));
+    assert_eq!(
+        first.items[0]
+            .total_cost
+            .as_ref()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap(),
+        6.0
+    );
+    assert!(first.items[0].log_conversation_id.is_some());
+    let filtered = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                filter: domain::ResourceFilterExpr::Field {
+                    field: "id".into(),
+                    operator: domain::ResourceFilterOperator::Eq,
+                    value: json!(root),
+                },
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered.total, 1);
+    assert_eq!(filtered.items[0].record_id, latest);
+    assert_eq!(filtered.items[0].total_tokens, Some(60));
+    let child_filter = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                filter: domain::ResourceFilterExpr::Field {
+                    field: "id".into(),
+                    operator: domain::ResourceFilterOperator::Eq,
+                    value: json!(child),
+                },
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(child_filter.total, 0);
+    let source_filter = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                filter: domain::ResourceFilterExpr::Field {
+                    field: "source_id".into(),
+                    operator: domain::ResourceFilterOperator::Eq,
+                    value: json!("foreign-source"),
+                },
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(source_filter.total, 0);
+    assert!(store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                sort_field: "raw".into(),
+                ..query.clone()
+            }
+        )
+        .await
+        .is_err());
+    assert!(store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                page: i64::MAX,
+                page_size: 2,
+                ..query.clone()
+            }
+        )
+        .await
+        .is_err());
+    let large = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                page_size: 107,
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(large.items.len(), 2);
+    let second = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                page: 2,
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.items[0].record_id, other);
+    let past = store
+        .query_application_log_conversations(
+            scope,
+            &[app],
+            &ApplicationLogConversationsQuery {
+                page: 3,
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(past.total, 2);
+    assert!(past.items.is_empty());
+    assert_eq!(
+        store
+            .query_application_log_conversations(Uuid::now_v7(), &[app], &query)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        store
+            .query_application_log_conversations(scope, &[Uuid::now_v7()], &query)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    let normalized = store
+        .application_log_record_conversation_page(app, child, None, None, 5)
+        .await
+        .unwrap();
+    assert_eq!(
+        normalized
+            .items
+            .iter()
+            .map(|i| i.record_id)
+            .collect::<Vec<_>>(),
+        vec![root, latest]
+    );
+    assert!(store
+        .application_log_record_conversation_page(app, root, Some(child), None, 5)
+        .await
+        .is_err());
+    assert_eq!(
+        store
+            .application_log_record(app, unresolved)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        None
+    );
+    // Backfill projection recomputation keeps observation identities and bodies intact.
+    let before =
+        owned_log_counts(&store, app, &[root, latest, child, unresolved, other], &[]).await;
+    sqlx::query(
+        "update application_run_log_tasks set log_conversation_id=null where application_id=$1",
+    )
+    .bind(app)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query("select refresh_imported_conversation_ownership(null,null,null,null)")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        owned_log_counts(&store, app, &[root, latest, child, unresolved, other], &[]).await,
+        before
+    );
+    assert_eq!(
+        store
+            .application_log_record(app, child)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        first.items[0].log_conversation_id
+    );
+}
+
+#[tokio::test]
+async fn agent_logs_canonical_conversation_keeps_identity_and_first_main_title_fresh() {
+    let (store, scope, app) = setup().await;
+    let root = upload(&store, scope, app, declared("first question", "main", None)).await;
+    let canonical = store
+        .application_log_record(app, root)
+        .await
+        .unwrap()
+        .unwrap()
+        .log_conversation_id
+        .unwrap();
+    sqlx::query(
+        "update application_conversations set updated_at='2000-01-01T00:00:00Z' where id=$1",
+    )
+    .bind(canonical)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let next = upload(&store, scope, app, declared("later question", "main", None)).await;
+    assert_eq!(
+        store
+            .application_log_record(app, next)
+            .await
+            .unwrap()
+            .unwrap()
+            .log_conversation_id,
+        Some(canonical)
+    );
+    let (title,fresh):(String,bool)=sqlx::query_as("select title,updated_at>'2000-01-01T00:00:00Z'::timestamptz from application_conversations where id=$1").bind(canonical).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(title, "first question");
+    assert!(fresh);
+    let count:i64=sqlx::query_scalar("select count(*) from application_conversations where application_id=$1 and source_kind='imported' and source_session_id='main'").bind(app).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(count, 1);
 }

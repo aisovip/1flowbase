@@ -327,3 +327,71 @@ fn historical_configured_models_default_to_the_global_zero_pricing_target() {
         crate::DEFAULT_MODEL_PRICING_MODEL_ID
     );
 }
+
+#[test]
+fn application_conversation_source_identity_is_a_read_only_builtin_contract() {
+    let contract = crate::builtin_data_model_contract("application_conversations")
+        .expect("canonical conversation read model");
+    assert_eq!(contract.kind, crate::BuiltinDataModelKind::RuntimeRead);
+    assert_eq!(
+        contract.capabilities.record,
+        crate::DataModelRecordCapabilities::read_only()
+    );
+    let expected = [
+        ("source_kind", true),
+        ("source_id", false),
+        ("source_client", false),
+        ("source_session_id", false),
+    ];
+    let migration=include_str!("../../../storage/durable/postgres/migrations/20261012100000_imported_canonical_conversations.sql");
+    let metadata_seed = migration
+        .split("-- Canonical imported identity belongs")
+        .nth(1)
+        .expect("conversation metadata seed");
+    for (code, required) in expected {
+        let field = contract
+            .field_contract(code)
+            .unwrap_or_else(|| panic!("missing canonical identity field {code}"));
+        assert_eq!(field.physical_column_name, code);
+        assert_eq!(field.field_kind, crate::ModelFieldKind::String);
+        assert_eq!(
+            field.is_required, required,
+            "native optional source identity: {code}"
+        );
+        assert!(!field.is_unique, "identity uniqueness is composite: {code}");
+        let seed = metadata_seed
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("('{code}',")))
+            .unwrap_or_else(|| panic!("missing canonical metadata seed {code}"));
+        assert!(
+            seed.contains(&format!(", {required},")),
+            "metadata nullable contract: {code}"
+        );
+    }
+    assert!(metadata_seed.contains("'string',true,false,f.required,f.required,false"));
+    assert!(metadata_seed.contains("and not exists(select 1 from model_fields old"));
+    assert!(!metadata_seed.to_lowercase().contains("do update"));
+    assert!(!metadata_seed.to_lowercase().contains("update model_fields"));
+    assert!(migration.contains("add column source_kind text not null default 'native'"));
+    for code in ["source_id", "source_client", "source_session_id"] {
+        assert!(migration.contains(&format!("add column {code} text;")));
+    }
+}
+
+#[test]
+fn application_log_task_source_id_is_nullable_system_owned_string() {
+    let contract = crate::builtin_data_model_contract("application_run_log_tasks").unwrap();
+    assert!(contract.owns_field_code("source_id"));
+    assert_eq!(
+        contract.capabilities.record,
+        crate::DataModelRecordCapabilities::read_only()
+    );
+    let field = contract.field_contract("source_id").unwrap();
+    assert_eq!(field.physical_column_name, "source_id");
+    assert_eq!(field.field_kind, crate::ModelFieldKind::String);
+    assert!(!field.is_required);
+    assert!(!field.is_unique);
+    let migration=include_str!("../../../storage/durable/postgres/migrations/20261012100000_imported_canonical_conversations.sql");
+    assert!(migration
+        .contains("'source_id','Source ID','source_id','string',true,false,false,false,false"));
+}

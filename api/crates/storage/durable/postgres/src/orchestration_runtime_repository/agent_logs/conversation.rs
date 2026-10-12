@@ -1,21 +1,7 @@
 //! Bounded business turns from the persisted task/message projections.
 use super::*;
 
-const SESSION: &str = "t.application_id=a.application_id and t.scope_id=a.scope_id and t.source_kind=a.source_kind and ((a.source_kind='native' and a.log_conversation_id is not null and t.log_conversation_id=a.log_conversation_id) or (a.source_kind<>'native' and a.source_id is not null and a.source_client is not null and nullif(a.source_session_id,'') is not null and t.source_id=a.source_id and t.source_client=a.source_client and t.source_session_id=a.source_session_id) or t.id=a.id) and (a.source_kind='native' or a.parent_task_run_id is not null or t.parent_task_run_id is null)";
-
-// Direct children never broaden to a session; reject even corrupted cross-namespace links.
-const CHILDREN: &str = "t.parent_task_run_id=a.id and t.id<>a.id and t.application_id=a.application_id and t.scope_id=a.scope_id and t.source_kind=a.source_kind and t.source_id is not distinct from a.source_id and t.source_client is not distinct from a.source_client and (a.source_kind='native' or (a.source_id is not null and a.source_client is not null))";
-
-pub(in crate::orchestration_runtime_repository) async fn children_page(
-    store: &PgControlPlaneStore,
-    application_id: Uuid,
-    record_id: Uuid,
-    before: Option<Uuid>,
-    after: Option<Uuid>,
-    limit: i64,
-) -> Result<ApplicationLogRecordConversationPage> {
-    scoped_page(store, application_id, record_id, before, after, limit, true).await
-}
+const SESSION: &str = "t.application_id=a.application_id and t.scope_id=a.scope_id and t.source_kind=a.source_kind and ((a.source_kind='native' and ((a.log_conversation_id is not null and t.log_conversation_id=a.log_conversation_id) or t.id=a.id)) or (a.source_kind='imported' and a.log_conversation_id is not null and t.log_conversation_id=a.log_conversation_id and t.source_id=a.source_id and t.source_client=a.source_client and t.parent_task_run_id is null and t.parent_source_task_id is null))";
 
 pub(in crate::orchestration_runtime_repository) async fn page(
     store: &PgControlPlaneStore,
@@ -25,34 +11,11 @@ pub(in crate::orchestration_runtime_repository) async fn page(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<ApplicationLogRecordConversationPage> {
-    scoped_page(
-        store,
-        application_id,
-        record_id,
-        before,
-        after,
-        limit,
-        false,
-    )
-    .await
-}
-
-async fn scoped_page(
-    store: &PgControlPlaneStore,
-    application_id: Uuid,
-    record_id: Uuid,
-    before: Option<Uuid>,
-    after: Option<Uuid>,
-    limit: i64,
-    children: bool,
-) -> Result<ApplicationLogRecordConversationPage> {
-    let membership = if children { CHILDREN } else { SESSION };
+    let membership = SESSION;
     if before.is_some() && after.is_some() {
         return Err(ControlPlaneError::InvalidInput("record_conversation_cursor").into());
     }
-    let cursor = before
-        .or(after)
-        .or_else(|| (!children).then_some(record_id));
+    let cursor = before.or(after);
     // Validate membership before using cursor time. A foreign cursor never alters the scope.
     let sql = format!(
         "select t.id from application_run_log_tasks a join application_run_log_tasks t on {membership} where a.application_id=$1 and a.id=$2 and ($3::uuid is null or t.id=$3) limit 1"
@@ -68,18 +31,6 @@ async fn scoped_page(
             .bind(application_id).bind(record_id).fetch_one(store.pool()).await?;
         if !exists {
             return Err(ControlPlaneError::NotFound("log_record").into());
-        }
-        if children && cursor.is_none() {
-            return Ok(ApplicationLogRecordConversationPage {
-                items: vec![],
-                page: ApplicationLogRecordConversationPageInfo {
-                    has_before: false,
-                    has_after: false,
-                    before_cursor: None,
-                    after_cursor: None,
-                    newest_cursor: None,
-                },
-            });
         }
         return Err(ControlPlaneError::InvalidInput("record_conversation_cursor").into());
     }

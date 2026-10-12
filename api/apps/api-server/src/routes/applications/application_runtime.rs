@@ -59,6 +59,7 @@ pub(crate) mod interface_trace_exports;
 pub(crate) mod interface_trace_payloads;
 pub(crate) mod log_query;
 pub(crate) mod logs_delete;
+pub(crate) mod record_trace;
 mod runtime_debug_artifacts;
 
 use archive::{
@@ -98,6 +99,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route("/applications/logs/current-context", console_get(log_query::current_context::get_current_run_context, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/query-fields", console_get(log_query::get_query_fields, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/logs/conversations/query", console_post(log_query::query_log_conversations, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/records/:record_id/trace-tree", console_get(record_trace::get_record_trace_tree, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/records/:record_id/trace-tree/:trace_node_id/children", console_get(record_trace::list_record_trace_children, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/records/query", console_post(log_query::query_log_records, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/records/:record_id/client-trajectory/query", console_post(log_query::query_record_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/deletion-preview", console_post(logs_delete::jobs::preview, ConsoleOperation("applications.logs.delete.preview".to_string())))

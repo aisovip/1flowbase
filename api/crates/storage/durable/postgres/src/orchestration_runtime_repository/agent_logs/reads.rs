@@ -4,7 +4,7 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
     application_id: Uuid,
     record_id: Uuid,
 ) -> Result<Option<ApplicationLogRecordOverview>> {
-    let row=sqlx::query("select parent_task_run_id,(select count(*) from application_run_log_tasks child where child.parent_task_run_id=application_run_log_tasks.id and child.id<>application_run_log_tasks.id and child.application_id=application_run_log_tasks.application_id and child.scope_id=application_run_log_tasks.scope_id and child.source_kind=application_run_log_tasks.source_kind and child.source_id is not distinct from application_run_log_tasks.source_id and child.source_client is not distinct from application_run_log_tasks.source_client and (application_run_log_tasks.source_kind='native' or (application_run_log_tasks.source_id is not null and application_run_log_tasks.source_client is not null))) as child_task_count,started_at,finished_at,requested_model_id,reasoning_effort,id,status,source_id,source_kind,source_client,source_session_id,source_task_id,case when source_kind='native' then id else native_run_id end as native_run_id,title,outcome,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,total_cost::text as total_cost,member_run_ids from application_run_log_tasks where application_id=$1 and id=$2")
+    let row=sqlx::query("select log_conversation_id,parent_task_run_id,(select count(*) from application_run_log_tasks child where child.parent_task_run_id=application_run_log_tasks.id and child.id<>application_run_log_tasks.id and child.application_id=application_run_log_tasks.application_id and child.scope_id=application_run_log_tasks.scope_id and child.source_kind=application_run_log_tasks.source_kind and child.source_id is not distinct from application_run_log_tasks.source_id and child.source_client is not distinct from application_run_log_tasks.source_client and (application_run_log_tasks.source_kind='native' or (application_run_log_tasks.source_id is not null and application_run_log_tasks.source_client is not null))) as child_task_count,started_at,finished_at,requested_model_id,reasoning_effort,id,status,source_id,source_kind,source_client,source_session_id,source_task_id,case when source_kind='native' then id else native_run_id end as native_run_id,title,outcome,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,total_cost::text as total_cost,member_run_ids from application_run_log_tasks where application_id=$1 and id=$2")
         .bind(application_id).bind(record_id).fetch_optional(store.pool()).await?;
     let Some(row) = row else { return Ok(None) };
     let native: Option<Uuid> = row.get("native_run_id");
@@ -41,6 +41,7 @@ pub(in crate::orchestration_runtime_repository) async fn overview(
     };
     Ok(Some(ApplicationLogRecordOverview {
         record_id,
+        log_conversation_id: row.get("log_conversation_id"),
         parent_task_run_id: row.get("parent_task_run_id"),
         child_task_count: row.get("child_task_count"),
         started_at: row
