@@ -953,12 +953,17 @@
     "applications.logs.delete.preview",
     "applications.runtime.client-trajectory.list",
     "applications.runtime.client-trajectory.section.get",
+    "applications.runtime.conversation-trajectory.query",
+    "applications.runtime.conversation-trajectory.section",
+    "applications.runtime.conversations.query",
     "applications.runtime.current-context.get",
     "applications.runtime.record.client-trajectory.list",
     "applications.runtime.record.client-trajectory.query",
     "applications.runtime.record.client-trajectory.section.get",
     "applications.runtime.record.conversation.messages.list",
     "applications.runtime.record.get",
+    "applications.runtime.record.trace-tree.children.list",
+    "applications.runtime.record.trace-tree.get",
     "applications.runtime.records.query",
     "applications.runtime.records.query-fields",
     "applications.runtime.run.payload.get",
@@ -998,12 +1003,17 @@
     "http.console.applications.logs.delete.v1",
     "http.console.applications.runtime.client-trajectory.list.v1",
     "http.console.applications.runtime.client-trajectory.section.get.v1",
+    "http.console.applications.runtime.conversation-trajectory.query.v1",
+    "http.console.applications.runtime.conversation-trajectory.section.v1",
+    "http.console.applications.runtime.conversations.query.v1",
     "http.console.applications.runtime.current-context.get.v1",
     "http.console.applications.runtime.record.client-trajectory.list.v1",
     "http.console.applications.runtime.record.client-trajectory.query.v1",
     "http.console.applications.runtime.record.client-trajectory.section.get.v1",
     "http.console.applications.runtime.record.conversation.messages.list.v1",
     "http.console.applications.runtime.record.get.v1",
+    "http.console.applications.runtime.record.trace-tree.children.list.v1",
+    "http.console.applications.runtime.record.trace-tree.get.v1",
     "http.console.applications.runtime.records.query-fields.v1",
     "http.console.applications.runtime.records.query.v1",
     "http.console.applications.runtime.run.payload.get.v1",
@@ -1041,5 +1051,5 @@
   "approvedRemovedBindings": [
     "http.console.ui-management.templates.archive.put.v1"
   ],
-  "evidence": "E00 frozen input; no second export. Candidate equality applies source-proven additions and the archive-to-delete replacement as explicit deltas. Current approved increment: 20 definitions and 20 bindings from organization declarations, shared log runtime-read declarations, log deletion declarations, application agent-log ingestion, and public collector-asset declarations. Managed contracts add 13 unique identities: organization 2, ingestion 3, collector assets 3, deletion 2, deletion jobs 2, preview output 1; preview shares deletion input and Console families share the existing target error. Later owner-proven additions: current caller log context (e013ac198) and verified plugin settings module assets (2563b1b9a, 9543fc432). These reuse the existing runtime-read and UI-management managed contract identities; frozen baseline identities and fingerprints remain unchanged."
+  "evidence": "E00 frozen input; no second export. Candidate equality applies source-proven additions and the archive-to-delete replacement as explicit deltas. Current approved increment: 20 definitions and 20 bindings from organization declarations, shared log runtime-read declarations, log deletion declarations, application agent-log ingestion, and public collector-asset declarations. Managed contracts add 13 unique identities: organization 2, ingestion 3, collector assets 3, deletion 2, deletion jobs 2, preview output 1; preview shares deletion input and Console families share the existing target error. Later owner-proven additions: current caller log context (e013ac198) and verified plugin settings module assets (2563b1b9a, 9543fc432). These reuse the existing runtime-read and UI-management managed contract identities; frozen baseline identities and fingerprints remain unchanged. Current runtime-read declarations also add five interface/binding pairs for canonical conversation queries, conversation trajectory query/section, and lazy record trace root/children; all use the existing ApplicationRuntimeReads managed contract identities."
 }

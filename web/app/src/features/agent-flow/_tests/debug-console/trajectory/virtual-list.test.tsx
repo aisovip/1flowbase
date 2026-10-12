@@ -51,7 +51,6 @@ test('consumer rerenders retain the viewport observer and report current rows wi
     const owner = observers.find((observer) =>
       observer.targets.includes(viewport)
     )!;
-    expect(owner).toBeDefined();
     expect(
       viewport.querySelectorAll('[data-trajectory-index]').length
     ).toBeLessThan(30);

@@ -534,10 +534,12 @@ async fn conversation_index(
                 conversation,
                 query,
                 sections,
-                position.clone(),
-                false,
-                None,
-                100,
+                ScanWindow {
+                    position: position.clone(),
+                    previous: false,
+                    focus_time: None,
+                    count: 100,
+                },
             )
             .await?;
             let done = hits.len() < 100;
