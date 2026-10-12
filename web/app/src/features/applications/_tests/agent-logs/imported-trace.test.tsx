@@ -65,7 +65,7 @@ function step(
     available_sections: ['parameters', 'raw']
   };
 }
-function fixture() {
+function fixture(paginated = false) {
   let refreshed = false;
   const queryConversationClientTrajectory = vi
     .fn()
@@ -93,8 +93,9 @@ function fixture() {
               }
             ]
           : [],
-        previous_cursor: query.cursor ? null : 'before',
-        next_cursor: query.cursor ? null : 'after',
+        previous_cursor:
+          paginated && !refreshed && !query.cursor ? 'before' : null,
+        next_cursor: paginated && !refreshed && !query.cursor ? 'after' : null,
         search_sections: query.search_sections ?? [],
         integrity: 'complete'
       })
@@ -176,18 +177,23 @@ test.each(['message trace', 'trajectory window'])(
         cursor: undefined
       })
     );
-    expect(screen.getByText('子', { selector: 'small' })).toHaveAttribute(
+    expect(screen.getByText('subagent', { selector: 'small' })).toHaveAttribute(
       'title',
       expect.stringContaining('codex · session · child')
     );
+    expect(
+      screen
+        .getByRole('button', { name: '工具调用 · main-tool' })
+        .querySelector('.conversation-trajectory__source')
+    ).toBeNull();
     expect(f.loader.loadTree).not.toHaveBeenCalled();
     expect(f.loader.loadChildren).not.toHaveBeenCalled();
     expect(f.loader.loadRecordClientTrajectory).not.toHaveBeenCalled();
     expect(document.querySelector('.client-trajectory__request')).toBeNull();
   }
 );
-test('previous and next are on demand, retain scope and server ordering, refresh discards pages at original focus', async () => {
-  const f = fixture();
+test('automatically loads both directions in server order and refresh restarts at original focus', async () => {
+  const f = fixture(true);
   const { container } = mount(
     <ConversationTrajectoryWorkspace
       recordId="main-round"
@@ -197,9 +203,13 @@ test('previous and next are on demand, retain scope and server ordering, refresh
   );
   await screen.findByRole('button', { name: '工具调用 · main-tool' });
   expect(f.queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: '加载更早事件' }));
+  expect(
+    screen.queryByRole('button', { name: '加载更早事件' })
+  ).not.toBeInTheDocument();
   await screen.findByRole('button', { name: '工具调用 · old-main' });
-  fireEvent.click(screen.getByRole('button', { name: '加载更新事件' }));
+  expect(
+    screen.queryByRole('button', { name: '加载更新事件' })
+  ).not.toBeInTheDocument();
   await screen.findByRole('button', { name: '工具调用 · grandchild-tool' });
   expect(
     [...container.querySelectorAll('.conversation-trajectory__row strong')].map(

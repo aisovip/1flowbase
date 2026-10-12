@@ -451,13 +451,17 @@ test('canonical trajectory preserves equal-sequence steps and follows opaque cur
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   await screen.findByRole('button', { name: '工具调用 · previous' });
   expect(queryConversationClientTrajectory).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: '加载更新事件' }));
+  expect(
+    screen.queryByRole('button', { name: '加载更新事件' })
+  ).not.toBeInTheDocument();
   expect(
     await screen.findByRole('button', {
       name: '工具调用 · same-sequence-first'
     })
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '加载更新事件' }));
+  expect(
+    screen.queryByRole('button', { name: '加载更新事件' })
+  ).not.toBeInTheDocument();
   const second = await screen.findByRole('button', {
     name: '工具调用 · same-sequence-second'
   });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   useInfiniteQuery,
   useQuery,
@@ -19,6 +19,7 @@ import {
   TrajectoryTimeline,
   type TrajectoryRange
 } from '../TrajectoryTimeline';
+import { useProgressiveTrajectory } from '../use-progressive-trajectory';
 import { integrityLabel } from '../trajectory-presentation';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane, sectionLabel } from './presentation';
@@ -40,8 +41,6 @@ const text = (key: string) =>
         'agentFlow',
         'conversation_trajectory.search_sections'
       ),
-      previous: i18nText('agentFlow', 'conversation_trajectory.previous'),
-      next: i18nText('agentFlow', 'conversation_trajectory.next'),
       loaded: i18nText('agentFlow', 'conversation_trajectory.loaded'),
       search: i18nText('agentFlow', 'conversation_trajectory.search'),
       invalid_time: i18nText(
@@ -57,7 +56,6 @@ const text = (key: string) =>
         'agentFlow',
         'conversation_trajectory.loaded_positions'
       ),
-      main_marker: i18nText('agentFlow', 'conversation_trajectory.main_marker'),
       subagent_marker: i18nText(
         'agentFlow',
         'conversation_trajectory.subagent_marker'
@@ -159,6 +157,11 @@ function CanonicalTimeline({
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
   const rows = useRef(new Map<string, HTMLButtonElement>());
+  const ledger = useRef<HTMLDivElement>(null);
+  const scrollAnchor = useRef<{
+    element: HTMLButtonElement;
+    top: number;
+  } | null>(null);
   const [provenance, setProvenance] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -221,8 +224,48 @@ function CanonicalTimeline({
     refetchOnWindowFocus: false,
     refetchOnMount: false
   });
+  useProgressiveTrajectory(active && !invalidTime, pages);
   // Preserve server full-precision order, including duplicate timestamps.
-  const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = useMemo(
+    () => pages.data?.pages.flatMap((page) => page.items) ?? [],
+    [pages.data]
+  );
+  const matchesByStep = useMemo(() => {
+    const matches = new Map<
+      string,
+      NonNullable<typeof pages.data>['pages'][number]['matches']
+    >();
+    for (const page of pages.data?.pages ?? [])
+      for (const match of page.matches) {
+        const entries = matches.get(match.step_id) ?? [];
+        entries.push(match);
+        matches.set(match.step_id, entries);
+      }
+    return matches;
+  }, [pages.data]);
+  useLayoutEffect(() => {
+    const anchor = scrollAnchor.current;
+    // Keep the focused round/user's viewport in place as older pages prepend.
+    // If the browser already anchored it, the measured adjustment is zero.
+    const first = items[0] && rows.current.get(items[0].id);
+    if (
+      ledger.current &&
+      anchor?.element.isConnected &&
+      first !== anchor.element
+    )
+      ledger.current.scrollTop +=
+        anchor.element.getBoundingClientRect().top -
+        ledger.current.getBoundingClientRect().top -
+        anchor.top;
+    scrollAnchor.current = first
+      ? {
+          element: first,
+          top:
+            first.getBoundingClientRect().top -
+            (ledger.current?.getBoundingClientRect().top ?? 0)
+        }
+      : null;
+  }, [items]);
   const related = useQuery({
     queryKey: [
       'conversation-trajectory-related',
@@ -353,10 +396,7 @@ function CanonicalTimeline({
     setGeneration((value) => value + 1);
   }
   function renderStep(step: ConversationClientTrajectoryStep) {
-    const matches =
-      pages.data?.pages
-        .flatMap((page) => page.matches)
-        .filter((match) => match.step_id === step.id) ?? [];
+    const matches = matchesByStep.get(step.id) ?? [];
     const identity = `${step.is_subagent ? text('subagent') : text('main')} · ${step.source_client ?? step.source_kind} · ${step.source_session_id ?? '—'} · ${step.source_task_id ?? '—'} · ${step.source_id ?? '—'} · ${step.record_id}`;
     return (
       <button
@@ -396,13 +436,15 @@ function CanonicalTimeline({
               step.preview ||
               '—'}
           </span>
-          <small className="conversation-trajectory__source" title={identity}>
-            {step.is_subagent ? text('subagent_marker') : text('main_marker')}
-          </small>
+          {step.is_subagent ? (
+            <small className="conversation-trajectory__source" title={identity}>
+              {text('subagent_marker')}
+            </small>
+          ) : null}
         </span>
         <span
           className="provider-trajectory__row-time"
-          title={`${formatDateTime(step.created_at)} · ${step.created_at}`}
+          title={`${formatDateTime(step.created_at)} · ${step.created_at} · ${identity}`}
         >
           #{step.sequence}
         </span>
@@ -637,7 +679,17 @@ function CanonicalTimeline({
         <Alert type="warning" title={text('invalid_time')} />
       ) : null}
       <div className="provider-trajectory__split" ref={split}>
-        <div className="provider-trajectory__ledger">
+        <div
+          className="provider-trajectory__ledger"
+          ref={ledger}
+          onScroll={() => {
+            const anchor = scrollAnchor.current;
+            if (anchor && ledger.current)
+              anchor.top =
+                anchor.element.getBoundingClientRect().top -
+                ledger.current.getBoundingClientRect().top;
+          }}
+        >
           <nav
             className="client-trajectory__categories"
             aria-label={text('loaded_categories')}
@@ -697,16 +749,6 @@ function CanonicalTimeline({
               </button>
             </span>
           </nav>
-          {pages.hasPreviousPage ? (
-            <Button
-              size="small"
-              loading={pages.isFetchingPreviousPage}
-              disabled={pages.isFetching}
-              onClick={() => void pages.fetchPreviousPage()}
-            >
-              {text('previous')}
-            </Button>
-          ) : null}
           {pages.isLoading ? (
             <div className="provider-trajectory__loading" role="status">
               <Spin />
@@ -759,16 +801,6 @@ function CanonicalTimeline({
                     .map(renderStep)}
                 </section>
               ))}
-          {pages.hasNextPage ? (
-            <Button
-              size="small"
-              loading={pages.isFetchingNextPage}
-              disabled={pages.isFetching}
-              onClick={() => void pages.fetchNextPage()}
-            >
-              {text('next')}
-            </Button>
-          ) : null}
         </div>
         {selectedStep ? (
           <aside
@@ -874,7 +906,8 @@ function CanonicalTimeline({
       </div>
       <footer className="provider-trajectory__footer">
         <span role="status">
-          {pages.isFetching
+          {!pages.isError &&
+          (pages.isFetching || pages.hasPreviousPage || pages.hasNextPage)
             ? i18nText('agentFlow', 'trajectory.loading_pages')
             : text('loaded')}
         </span>

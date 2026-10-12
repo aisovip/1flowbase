@@ -176,3 +176,127 @@ test('the existing Native workspace renders all three immediately completed summ
   view.unmount();
   client.clear();
 });
+
+test('focused pages load both directions serially and pause while the view is hidden', async () => {
+  let resolvePrevious!: (page: {
+    items: number[];
+    previous_cursor: null;
+    next_cursor: null;
+  }) => void;
+  const previous = new Promise<{
+    items: number[];
+    previous_cursor: null;
+    next_cursor: null;
+  }>((resolve) => {
+    resolvePrevious = resolve;
+  });
+  const loadPage = vi.fn().mockImplementation((cursor: string | undefined) =>
+    cursor === 'before'
+      ? previous
+      : Promise.resolve({
+          items: [cursor ? 3 : 2],
+          previous_cursor: cursor ? null : 'before',
+          next_cursor: cursor ? null : 'after'
+        })
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const { result, rerender, unmount } = renderHook(
+    ({ active }) => {
+      const pages = useInfiniteQuery({
+        queryKey: ['focused-pages'],
+        initialPageParam: undefined as string | undefined,
+        queryFn: ({ pageParam }) => loadPage(pageParam),
+        getPreviousPageParam: (page) => page.previous_cursor ?? undefined,
+        getNextPageParam: (page) => page.next_cursor ?? undefined
+      });
+      useProgressiveTrajectory(active, pages);
+      return pages;
+    },
+    { wrapper, initialProps: { active: true } }
+  );
+  await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  expect(loadPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+    undefined,
+    'before'
+  ]);
+  rerender({ active: false });
+  await act(async () =>
+    resolvePrevious({ items: [1], previous_cursor: null, next_cursor: null })
+  );
+  await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  expect(loadPage).toHaveBeenCalledTimes(2);
+  rerender({ active: true });
+  await waitFor(() => expect(result.current.data?.pages).toHaveLength(3));
+  expect(loadPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+    undefined,
+    'before',
+    'after'
+  ]);
+  expect(result.current.data?.pages.flatMap((page) => page.items)).toEqual([
+    1, 2, 3
+  ]);
+  unmount();
+  client.clear();
+});
+
+test('a failed older page pauses both directions until explicit retry succeeds', async () => {
+  let failPrevious = true;
+  const loadPage = vi.fn().mockImplementation((cursor: string | undefined) => {
+    if (cursor === 'before' && failPrevious)
+      return Promise.reject(new Error('older page unavailable'));
+    return Promise.resolve({
+      items: [cursor === 'before' ? 1 : cursor ? 3 : 2],
+      previous_cursor: cursor ? null : 'before',
+      next_cursor: cursor ? null : 'after'
+    });
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const { result, unmount } = renderHook(
+    () => {
+      const pages = useInfiniteQuery({
+        queryKey: ['focused-pages-error'],
+        initialPageParam: undefined as string | undefined,
+        queryFn: ({ pageParam }) => loadPage(pageParam),
+        getPreviousPageParam: (page) => page.previous_cursor ?? undefined,
+        getNextPageParam: (page) => page.next_cursor ?? undefined
+      });
+      useProgressiveTrajectory(true, pages);
+      return pages;
+    },
+    { wrapper }
+  );
+  await waitFor(() =>
+    expect(result.current.isFetchPreviousPageError).toBe(true)
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  expect(loadPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+    undefined,
+    'before'
+  ]);
+  expect(result.current.data?.pages.flatMap((page) => page.items)).toEqual([2]);
+  failPrevious = false;
+  await act(async () => {
+    await result.current.fetchPreviousPage();
+  });
+  await waitFor(() => expect(result.current.data?.pages).toHaveLength(3));
+  expect(loadPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+    undefined,
+    'before',
+    'before',
+    'after'
+  ]);
+  unmount();
+  client.clear();
+});

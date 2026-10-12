@@ -6,24 +6,33 @@ export function useProgressiveTrajectory(
   pages: {
     data?: { pages: unknown[] };
     hasNextPage: boolean;
+    hasPreviousPage?: boolean;
+    fetchPreviousPage?: () => Promise<unknown>;
     isFetching: boolean;
     isError: boolean;
     fetchNextPage: () => Promise<unknown>;
   }
 ) {
-  const { hasNextPage, isFetching, isError, fetchNextPage } = pages;
+  const {
+    hasNextPage,
+    hasPreviousPage,
+    isFetching,
+    isError,
+    fetchNextPage,
+    fetchPreviousPage
+  } = pages;
+  // A focused page can have older and newer neighbors. Drain one direction at
+  // a time so React Query never cancels an in-flight page with the other one.
+  const fetchPage = hasPreviousPage
+    ? fetchPreviousPage
+    : hasNextPage
+      ? fetchNextPage
+      : undefined;
   // Immediate responses can batch fetching transitions; completed pages still advance.
   const completedPageCount = pages.data?.pages.length ?? 0;
   useEffect(() => {
-    if (!active || !hasNextPage || isFetching || isError) return;
-    const timer = window.setTimeout(() => void fetchNextPage(), 100);
+    if (!active || !fetchPage || isFetching || isError) return;
+    const timer = window.setTimeout(() => void fetchPage(), 100);
     return () => window.clearTimeout(timer);
-  }, [
-    active,
-    completedPageCount,
-    hasNextPage,
-    isFetching,
-    isError,
-    fetchNextPage
-  ]);
+  }, [active, completedPageCount, isFetching, isError, fetchPage]);
 }

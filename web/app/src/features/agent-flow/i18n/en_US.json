@@ -859,8 +859,6 @@
     "from": "From",
     "to": "To",
     "search_sections": "Search sections",
-    "previous": "Load earlier events",
-    "next": "Load later events",
     "loaded": "Loaded events",
     "search": "Search entire conversation",
     "invalid_time": "Enter a valid start and end time.",
@@ -868,7 +866,6 @@
     "filters": "Trajectory filters",
     "loaded_categories": "Categories · counts in loaded pages",
     "loaded_positions": "Loaded positions map to a time range; events sharing boundary timestamps are included.",
-    "main_marker": "M",
-    "subagent_marker": "S"
+    "subagent_marker": "subagent"
   }
 }
