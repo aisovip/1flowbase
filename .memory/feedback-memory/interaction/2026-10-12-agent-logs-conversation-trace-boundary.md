@@ -7,8 +7,8 @@ keywords: [agent-logs, conversation, subagent, trace, 三级日志]
 match_when:
   - 设计或调整采集日志会话归属、会话历史、子代理展示及AI日志读取
 created_at: 2026-10-12 00
-updated_at: 2026-10-12 15
-last_verified_at: 2026-10-12 15
+updated_at: 2026-10-12 17
+last_verified_at: 2026-10-12 17
 decision_policy: direct_reference
 scope: [agent-logs, application-logs]
 ---
@@ -26,7 +26,7 @@ scope: [agent-logs, application-logs]
 
 - 会话归属与折叠层级修复必须保留原有轨迹界面的时间泳道、分类栏、紧凑事件行、搜索和详情侧栏；不得顺带替换为新的表单式布局。优先复用已有展示组件，只调整所需的数据接入和层级。
 
-- 事件分页沿用 Agent Flow 的逐页自动加载，直到全部事件读完；不要求手动点击加载更早/更新事件。行尾主代理不加标记，子代理只显示 `subagent`，完整来源身份仍可查看。
+- 事件列表采用 Ant Design Listy 虚拟化，保留完整轻量事件索引，摘要随可见窗口及邻近区域自动读取；空闲不拉完全部摘要，不要求手动点击加载更早/更新事件。完整索引和后端查询保留全会话搜索、计数和时间轴定位，不对事件总量设任意上限。此更新替代此前“直到全部事件读完”的自动摘要策略。行尾主代理不加标记，子代理只显示 `subagent`，完整来源身份仍可查看。
 
 ## 原因
 
