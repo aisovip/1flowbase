@@ -182,6 +182,8 @@ describe('I2019 canvas keyboard ownership', () => {
       });
       button.focus();
       fireEvent.click(button, { detail: 0, composed: true });
+      const dialog = await queries.findByRole('dialog');
+      expect(dialog).toBeVisible();
       const field = await queries.findByRole('textbox', {
         name: 'dialog prompt'
       });
@@ -190,9 +192,8 @@ describe('I2019 canvas keyboard ownership', () => {
         true
       );
       fireEvent.keyDown(field, { key: 'Escape', keyCode: 27, composed: true });
-      await waitFor(() =>
-        expect(queries.queryByRole('dialog')).not.toBeInTheDocument()
-      );
+      // An unconditional Modal retains its hidden DOM after closing.
+      await waitFor(() => expect(dialog).not.toBeVisible());
       await waitFor(() =>
         expect((button.getRootNode() as ShadowRoot).activeElement).toBe(button)
       );

@@ -54,6 +54,13 @@ struct PreparedPackage {
     authority: domain::PluginContributionAuthoritySnapshot,
 }
 
+pub(crate) struct ManagedExecutionInput {
+    pub(crate) principal: RuntimeExecutionPrincipal,
+    pub(crate) config_payload: serde_json::Value,
+    pub(crate) input_payload: serde_json::Value,
+    pub(crate) duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
+}
+
 pub(crate) struct ManagedExtensionComposition {
     generation_publisher: std::sync::OnceLock<
         std::sync::Weak<crate::managed_publication::ManagedGenerationPublisher>,
@@ -710,10 +717,12 @@ impl ManagedExtensionComposition {
             snapshot,
             workspace_id,
             contribution_id,
-            principal,
-            config_payload,
-            input_payload,
-            None,
+            ManagedExecutionInput {
+                principal,
+                config_payload,
+                input_payload,
+                duplex: None,
+            },
         )
         .await
     }
@@ -723,11 +732,14 @@ impl ManagedExtensionComposition {
         snapshot: Arc<ManagedWorkspaceSnapshot>,
         workspace_id: Uuid,
         contribution_id: &ContributionId,
-        principal: RuntimeExecutionPrincipal,
-        config_payload: serde_json::Value,
-        input_payload: serde_json::Value,
-        duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
+        input: ManagedExecutionInput,
     ) -> Result<serde_json::Value> {
+        let ManagedExecutionInput {
+            principal,
+            config_payload,
+            input_payload,
+            duplex,
+        } = input;
         anyhow::ensure!(
             principal.workspace_id == workspace_id.to_string(),
             "managed execution workspace mismatch"

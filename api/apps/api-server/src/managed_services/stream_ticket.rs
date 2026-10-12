@@ -85,16 +85,27 @@ pub(super) async fn store(cache: &dyn CacheStore, ticket: &Ticket) -> Result<Str
     }
     Err(Error::Conflict("managed_service_ticket").into())
 }
+pub(super) struct TicketBinding<'a> {
+    pub session: &'a str,
+    pub actor: uuid::Uuid,
+    pub origin: &'a str,
+    pub installation: uuid::Uuid,
+    pub generation: &'a str,
+    pub operation: &'a str,
+}
 pub(super) async fn claim(
     cache: &dyn CacheStore,
     token: &str,
-    session: &str,
-    actor: uuid::Uuid,
-    origin: &str,
-    installation: uuid::Uuid,
-    generation: &str,
-    operation: &str,
+    binding: TicketBinding<'_>,
 ) -> Result<Ticket, ApiError> {
+    let TicketBinding {
+        session,
+        actor,
+        origin,
+        installation,
+        generation,
+        operation,
+    } = binding;
     if token.len() != 64
         || !token
             .bytes()

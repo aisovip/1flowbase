@@ -11,7 +11,8 @@ mod managed_activation;
 #[cfg(test)]
 pub(crate) use managed_activation::validate_interface_protocol;
 pub(crate) use managed_activation::{
-    ManagedExtensionComposition, ManagedWorkspacePublicationSource, ManagedWorkspaceSnapshot,
+    ManagedExecutionInput, ManagedExtensionComposition, ManagedWorkspacePublicationSource,
+    ManagedWorkspaceSnapshot,
 };
 mod interface_contributions;
 pub(crate) use interface_contributions::InterfaceRegistryContribution;

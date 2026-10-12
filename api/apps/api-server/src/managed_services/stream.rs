@@ -201,7 +201,10 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
                         tokio::spawn(async move {
                             let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,
-                                runtime_core::runtime_backend::RuntimeExecutionPrincipal { workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline }, json!({}), input.payload, Some(duplex));
+                                crate::extension_bus::ManagedExecutionInput {
+                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
+                                    config_payload: json!({}), input_payload: input.payload, duplex: Some(duplex),
+                                });
                             tokio::pin!(execution);
                             let outcome = loop {
                                 tokio::select! {
@@ -325,12 +328,14 @@ async fn upgrade(
     let ticket = super::stream_ticket::claim(
         state.infrastructure.cache_store().as_ref(),
         token,
-        &session,
-        context.actor.user_id,
-        &origin,
-        installation,
-        &super::stream_ticket::generation(&state)?,
-        &operation.interface_id,
+        super::stream_ticket::TicketBinding {
+            session: &session,
+            actor: context.actor.user_id,
+            origin: &origin,
+            installation,
+            generation: &super::stream_ticket::generation(&state)?,
+            operation: &operation.interface_id,
+        },
     )
     .await?;
     if ticket.payload.get("path") != Some(&json!(path)) {
@@ -376,27 +381,28 @@ async fn upgrade(
         .on_upgrade(move |socket| {
             run_socket(
                 socket,
-                state,
-                operation,
-                headers,
-                session,
-                input,
-                events,
-                terminal_rx,
-                cancel,
-                lease,
+                SocketSession {
+                    state,
+                    operation,
+                    headers,
+                    session,
+                    input,
+                    events,
+                    terminal: terminal_rx,
+                    cancel,
+                    lease,
+                },
             )
         }))
 }
-async fn run_socket(
-    socket: WebSocket,
+struct SocketSession {
     state: Arc<ApiState>,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
     headers: HeaderMap,
     session: String,
     input: mpsc::Sender<Value>,
-    mut events: mpsc::Receiver<StreamEvent>,
-    mut terminal: oneshot::Receiver<
+    events: mpsc::Receiver<StreamEvent>,
+    terminal: oneshot::Receiver<
         Result<
             interface_runtime::InterfaceStreamTerminalOutcome<
                 ManagedServiceOutput,
@@ -405,9 +411,21 @@ async fn run_socket(
             interface_runtime::InterfaceInvocationFailure,
         >,
     >,
-    mut cancel: watch::Receiver<bool>,
+    cancel: watch::Receiver<bool>,
     lease: SocketLease,
-) {
+}
+async fn run_socket(socket: WebSocket, session: SocketSession) {
+    let SocketSession {
+        state,
+        operation,
+        headers,
+        session,
+        input,
+        mut events,
+        mut terminal,
+        mut cancel,
+        lease,
+    } = session;
     use futures_util::{SinkExt, StreamExt};
     let specification = operation
         .stream

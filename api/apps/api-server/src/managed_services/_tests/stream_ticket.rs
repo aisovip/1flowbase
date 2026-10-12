@@ -1,6 +1,6 @@
 use super::super::{
     stream,
-    stream_ticket::{self, Ticket},
+    stream_ticket::{self, Ticket, TicketBinding},
 };
 use serde_json::json;
 fn ticket() -> Ticket {
@@ -50,12 +50,14 @@ async fn stream_ticket_atomic_replay_origin_exact_session_and_generation_binding
         assert!(stream_ticket::claim(
             &cache,
             &token,
-            session,
-            ticket.actor,
-            origin,
-            ticket.installation,
-            generation,
-            operation
+            TicketBinding {
+                session: session,
+                actor: ticket.actor,
+                origin: origin,
+                installation: ticket.installation,
+                generation: generation,
+                operation: operation,
+            }
         )
         .await
         .is_err());
@@ -63,34 +65,40 @@ async fn stream_ticket_atomic_replay_origin_exact_session_and_generation_binding
     let a = stream_ticket::claim(
         &cache,
         &token,
-        &ticket.session,
-        ticket.actor,
-        &ticket.origin,
-        ticket.installation,
-        &ticket.generation,
-        &ticket.operation,
+        TicketBinding {
+            session: &ticket.session,
+            actor: ticket.actor,
+            origin: &ticket.origin,
+            installation: ticket.installation,
+            generation: &ticket.generation,
+            operation: &ticket.operation,
+        },
     );
     let b = stream_ticket::claim(
         &cache,
         &token,
-        &ticket.session,
-        ticket.actor,
-        &ticket.origin,
-        ticket.installation,
-        &ticket.generation,
-        &ticket.operation,
+        TicketBinding {
+            session: &ticket.session,
+            actor: ticket.actor,
+            origin: &ticket.origin,
+            installation: ticket.installation,
+            generation: &ticket.generation,
+            operation: &ticket.operation,
+        },
     );
     let (a, b) = tokio::join!(a, b);
     assert_ne!(a.is_ok(), b.is_ok());
     assert!(stream_ticket::claim(
         &cache,
         &token,
-        &ticket.session,
-        ticket.actor,
-        &ticket.origin,
-        ticket.installation,
-        &ticket.generation,
-        &ticket.operation
+        TicketBinding {
+            session: &ticket.session,
+            actor: ticket.actor,
+            origin: &ticket.origin,
+            installation: ticket.installation,
+            generation: &ticket.generation,
+            operation: &ticket.operation,
+        }
     )
     .await
     .is_err());
@@ -105,12 +113,14 @@ async fn mutation_and_hot_generation_revoke_preissued_ticket() {
     assert!(stream_ticket::claim(
         &cache,
         &token,
-        &ticket.session,
-        ticket.actor,
-        &ticket.origin,
-        ticket.installation,
-        &ticket.generation,
-        &ticket.operation
+        TicketBinding {
+            session: &ticket.session,
+            actor: ticket.actor,
+            origin: &ticket.origin,
+            installation: ticket.installation,
+            generation: &ticket.generation,
+            operation: &ticket.operation,
+        }
     )
     .await
     .is_err());
@@ -120,12 +130,14 @@ async fn mutation_and_hot_generation_revoke_preissued_ticket() {
     assert!(stream_ticket::claim(
         &cache,
         &token,
-        &ticket.session,
-        ticket.actor,
-        &ticket.origin,
-        ticket.installation,
-        &ticket.generation,
-        &ticket.operation
+        TicketBinding {
+            session: &ticket.session,
+            actor: ticket.actor,
+            origin: &ticket.origin,
+            installation: ticket.installation,
+            generation: &ticket.generation,
+            operation: &ticket.operation,
+        }
     )
     .await
     .is_err());

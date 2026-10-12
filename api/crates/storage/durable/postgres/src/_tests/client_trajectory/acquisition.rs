@@ -173,7 +173,7 @@ async fn client_acquisition_exact_index_request_scope_late_search_and_bidirectio
     );
     assert_eq!(timed.time_end.as_deref(), Some("2026-09-22T00:30:00Z"));
     assert_eq!(timed.category_counts.get("tool_call"), Some(&1));
-    assert!(timed.category_counts.get("request").is_none());
+    assert!(!timed.category_counts.contains_key("request"));
 }
 
 #[tokio::test]
