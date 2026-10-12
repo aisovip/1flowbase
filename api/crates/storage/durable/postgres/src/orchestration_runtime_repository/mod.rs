@@ -226,6 +226,16 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::ApplicationLogRecordConversationPage> {
         agent_logs::conversation::page(self, application_id, record_id, before, after, limit).await
     }
+    async fn application_log_record_children_page(
+        &self,
+        application_id: Uuid,
+        record_id: Uuid,
+        before: Option<Uuid>,
+        after: Option<Uuid>,
+        limit: i64,
+    ) -> Result<control_plane_contracts::ports::ApplicationLogRecordConversationPage> {
+        agent_logs::conversation::children_page(self, application_id, record_id, before, after, limit).await
+    }
     async fn application_log_record(
         &self,
         application_id: Uuid,

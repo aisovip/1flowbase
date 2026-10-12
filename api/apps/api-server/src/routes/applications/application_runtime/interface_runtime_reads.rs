@@ -887,17 +887,21 @@ impl ApplicationRuntimeReadsAdapter {
                     "list_record_conversation_messages",
                 )
                 .await?;
-                Ok(ApplicationRuntimeReadsOutput::RecordConversationPage(
-                    self.store
-                        .application_log_record_conversation_page(
-                            application_id,
-                            record_id,
-                            query.before,
-                            query.after,
+                let page = match query.scope {
+                    provider_trajectory::RecordConversationScope::Session => {
+                        self.store.application_log_record_conversation_page(
+                            application_id, record_id, query.before, query.after,
                             query.limit.unwrap_or(5),
-                        )
-                        .await?,
-                ))
+                        ).await?
+                    }
+                    provider_trajectory::RecordConversationScope::Children => {
+                        self.store.application_log_record_children_page(
+                            application_id, record_id, query.before, query.after,
+                            query.limit.unwrap_or(5),
+                        ).await?
+                    }
+                };
+                Ok(ApplicationRuntimeReadsOutput::RecordConversationPage(page))
             }
             ApplicationRuntimeReadsInput::GetRecord {
                 application_id,

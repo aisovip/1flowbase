@@ -44,6 +44,8 @@ vi.mock(
   })
 );
 const turn = (number: number): ConsoleApplicationLogRecordOverview => ({
+  parent_task_run_id: null,
+  child_task_count: 0,
   record_id: 'record-' + number,
   status: 'succeeded',
   source_id: 'source-1',

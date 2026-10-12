@@ -1,3 +1,4 @@
+import { ApplicationLogSubagents } from './subagents/ApplicationLogSubagents';
 import { ProviderTrajectory } from '../../../agent-flow/components/debug-console/trajectory/ProviderTrajectory';
 import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
@@ -520,6 +521,22 @@ function RunConversation({
         : buildConversationMessages(conversationItems, outputState),
     [conversationItems, outputState, recordId, recordConversationItems]
   );
+  const conversationSupplements = useMemo(() => {
+    let afterMessageId: string | null = null;
+    return recordConversationItems.flatMap((record) => {
+      const lastMessage = record.messages.at(-1);
+      if (lastMessage) afterMessageId = 'record-' + record.record_id + '-' + lastMessage.sequence;
+      if (record.child_task_count === 0) return [];
+      return [{
+        key: record.record_id,
+        afterMessageId,
+        content: (
+          <ApplicationLogSubagents applicationId={applicationId} record={record}
+            onOpenMessageLog={onOpenMessageLog} />
+        )
+      }];
+    });
+  }, [applicationId, recordConversationItems, onOpenMessageLog]);
   const refreshable =
     !recordId && conversationRefreshable(conversationItems, outputState);
   // The scope switch is a conversation-level action: it belongs to the last
@@ -687,7 +704,7 @@ function RunConversation({
           title={i18nText('agentFlow', 'auto.loading_failed')}
         />
       ) : null}
-      {recordId && recordQuery.isSuccess && messages.length === 0 ? (
+      {recordId && recordQuery.isSuccess && messages.length === 0 && conversationSupplements.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : null}
       {initialConversationQuery.isSuccess &&
@@ -742,6 +759,7 @@ function RunConversation({
             ) : null}
           </>
         )}
+        conversationSupplements={recordId ? conversationSupplements : undefined}
         composerUiOnly
         messages={messages}
         runContext={runConversationContext}

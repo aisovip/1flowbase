@@ -7,6 +7,8 @@ import type {
 
 export interface ConsoleApplicationLogRecordOverview {
   record_id: string;
+  parent_task_run_id: string | null;
+  child_task_count: number;
   status: string;
   source_id: string | null;
   started_at: string;
@@ -39,6 +41,7 @@ export interface ApplicationLogRecordConversationPage {
   };
 }
 export interface ApplicationLogRecordConversationQuery {
+  scope?: 'session' | 'children';
   before?: string;
   after?: string;
   limit?: number;
@@ -50,6 +53,7 @@ export function getConsoleApplicationLogRecordConversationMessages(
   baseUrl?: string
 ) {
   const query = new URLSearchParams();
+  if (input.scope) query.set('scope', input.scope);
   if (input.before) query.set('before', input.before);
   if (input.after) query.set('after', input.after);
   if (input.limit !== undefined) query.set('limit', String(input.limit));

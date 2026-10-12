@@ -496,6 +496,8 @@ describe('ApplicationRunDetailPanel', () => {
 
   test('#2336 imported records do not request native overview or conversations', async () => {
     trajectoryApi.fetchApplicationLogRecord.mockResolvedValue({
+      parent_task_run_id: null,
+      child_task_count: 0,
       native_run_id: null,
       available_views: ['client_trajectory'],
       messages: [{ sequence: 1, role: 'assistant', content: 'imported answer' }]
