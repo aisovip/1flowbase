@@ -39,6 +39,7 @@ export function DenseTrajectoryPoints({
     const draw = () => {
       const width = element.clientWidth;
       const height = element.clientHeight;
+      if (!width || !height) return;
       const ratio = window.devicePixelRatio || 1;
       element.width = Math.round(width * ratio);
       element.height = Math.round(height * ratio);

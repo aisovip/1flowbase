@@ -35,7 +35,6 @@ export interface ClientTrajectoryStep {
 }
 export interface ClientTrajectoryIndexItem {
   protocol: string;
-  preview?: string;
   id: string;
   sequence: number;
   created_at: string;

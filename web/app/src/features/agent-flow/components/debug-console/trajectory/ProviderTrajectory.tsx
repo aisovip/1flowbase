@@ -76,11 +76,10 @@ export function ProviderTrajectory({
   const queryClient = useQueryClient();
   useEffect(() => {
     if (!open || nodeRunId || !loader.loadWorkflowTrajectory) return;
-    // Warm only the first summary page; the visible workspace owns pagination.
-    void queryClient.prefetchInfiniteQuery({
-      ...workflowTrajectoryQueryOptions(runId, loader, { category: 'all' }),
-      pages: 1
-    });
+    // Reuse the same initial row window; the hidden view never drains summaries.
+    void queryClient.prefetchQuery(
+      workflowTrajectoryQueryOptions(runId, loader, { category: 'all' })
+    );
   }, [open, nodeRunId, runId, loader, queryClient]);
   const title = nodeRunId
     ? i18nText('agentFlow', 'trajectory.title')

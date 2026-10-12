@@ -81,18 +81,14 @@ export function ClientTrajectoryWorkspace({
     retry
   } = useTrajectoryWindow({
     queryKey: [
-      loader.loadRecordClientTrajectory
-        ? 'record-client-trajectory'
-        : 'client-trajectory',
+      'client-trajectory',
       runId,
       scope ?? 'run',
       options,
       windowQuery,
       generation
     ],
-    enabled:
-      active &&
-      Boolean(loader.loadRecordClientTrajectory || loader.loadClientTrajectory),
+    enabled: active && Boolean(loader.loadClientTrajectory),
     loadPage: (focusId, indexOnly) => {
       const requestOptions = {
         ...options,
@@ -100,14 +96,12 @@ export function ClientTrajectoryWorkspace({
         focus_step_id: focusId ?? options?.focus_step_id,
         index_only: indexOnly
       };
-      return loader.loadRecordClientTrajectory
-        ? loader.loadRecordClientTrajectory(
-            runId,
-            scope,
-            undefined,
-            requestOptions
-          )
-        : loader.loadClientTrajectory!(runId, scope, undefined, requestOptions);
+      return loader.loadClientTrajectory!(
+        runId,
+        scope,
+        undefined,
+        requestOptions
+      );
     },
     getIndexKey: (step: ClientTrajectoryIndexItem) => step.id,
     getRowKey: (step: ClientTrajectoryStep) => step.id
@@ -501,11 +495,12 @@ export function ClientTrajectoryWorkspace({
                   </div>
                 );
               const root = slot.root
-                ? (loaded.get(slot.root.id) ?? slot.root)
+                ? slot.root
                 : items.find(
                     (step) =>
                       step.request_id === slot.id && step.category === 'request'
                   );
+              const fullRoot = root ? loaded.get(root.id) : undefined;
               return (
                 <div className="client-trajectory__request-header">
                   <button
@@ -531,7 +526,17 @@ export function ClientTrajectoryWorkspace({
                     onClick={() => root && focus(root.id)}
                   >
                     <strong>{categoryLabel('request')}</strong>
-                    <span>{root?.preview || slot.id}</span>
+                    <span>
+                      {fullRoot?.preview || (
+                        <>
+                          <Spin size="small" />{' '}
+                          {i18nText(
+                            'agentFlow',
+                            'trajectory.loading_first_page'
+                          )}
+                        </>
+                      )}
+                    </span>
                     <small>{root ? formatDateTime(root.created_at) : ''}</small>
                   </button>
                 </div>

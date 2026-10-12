@@ -134,8 +134,6 @@ pub struct ClientTrajectoryArchiveReceipt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientTrajectoryIndexItem {
     pub protocol: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
     pub id: Uuid,
     pub sequence: i64,
     pub created_at: String,

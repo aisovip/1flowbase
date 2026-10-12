@@ -480,7 +480,7 @@ async fn conversation_index(
         && query.keyword.is_none();
     if simple {
         // Exact source order and identities only. No restored metadata/body projection.
-        let sql=format!("select s.id,s.request_id,s.event_sequence,s.observed_at,s.metadata->>'category' category,s.metadata->>'protocol' protocol,case when s.metadata->>'category'='request' then runtime_original_json(s.metadata,s.raw_json_payloads,'metadata') end request_metadata,s.flow_run_id,s.node_run_id,t.id record_id,(t.parent_task_run_id is not null or t.parent_source_task_id is not null) is_subagent {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} order by {EVENT_TIME},s.id,t.id");
+        let sql=format!("select s.id,s.request_id,s.event_sequence,s.observed_at,s.metadata->>'category' category,s.metadata->>'protocol' protocol,s.flow_run_id,s.node_run_id,t.id record_id,(t.parent_task_run_id is not null or t.parent_source_task_id is not null) is_subagent {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} order by {EVENT_TIME},s.id,t.id");
         for r in sqlx::query(&sql)
             .bind(app)
             .bind(conversation)
@@ -490,9 +490,6 @@ async fn conversation_index(
             items.push(ConversationTrajectoryIndexItem {
                 step: ClientTrajectoryIndexItem {
                     protocol: r.try_get("protocol")?,
-                    preview: r
-                        .try_get::<Option<Value>, _>("request_metadata")?
-                        .and_then(|v| v.get("preview").and_then(Value::as_str).map(str::to_owned)),
                     id: r.try_get("id")?,
                     request_id: r.try_get("request_id")?,
                     sequence: r.try_get("event_sequence")?,
@@ -516,7 +513,7 @@ async fn conversation_index(
                 conversation,
                 query,
                 sections,
-                position,
+                position.clone(),
                 false,
                 None,
                 100,
@@ -529,11 +526,6 @@ async fn conversation_index(
                 items.push(ConversationTrajectoryIndexItem {
                     step: ClientTrajectoryIndexItem {
                         protocol: s.step.protocol,
-                        preview: if s.step.category == "request" {
-                            Some(s.step.preview)
-                        } else {
-                            None
-                        },
                         id: s.step.id,
                         request_id: s.step.request_id,
                         sequence: s.step.sequence,

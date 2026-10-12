@@ -116,8 +116,6 @@ fn conversation_trajectory_query_page_schema() -> Value {
     let index = object(
         json!({"id":uuid(),"request_id":uuid(),"sequence":integer(),"created_at":timestamp(),"category":text(),"protocol":text(),"flow_run_id":nullable(uuid()),"node_run_id":nullable(uuid()),"record_id":uuid(),"log_conversation_id":uuid(),"is_subagent":{"type":"boolean"}}),
     );
-    let mut index = index;
-    index["properties"]["preview"] = text();
     page["properties"]["overview"] = object(
         json!({"total_count":integer(),"category_counts":{"type":"object","additionalProperties":integer()},"time_start":nullable(timestamp()),"time_end":nullable(timestamp()),"items":{"type":"array","items":index}}),
     );

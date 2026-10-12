@@ -87,22 +87,64 @@ function invocation(
 function fixture(nodeRunId?: string) {
   const loadClientTrajectory = vi
     .fn()
-    .mockImplementation((run, _node, _cursor, options) =>
-      Promise.resolve({
-        items: [
-          {
-            ...request,
-            id: options?.request_id ?? request.id,
-            request_id: options?.request_id ?? request.id,
-            flow_run_id: run,
-            preview:
-              run === 'run-previous' ? 'Previous request' : request.preview
-          }
-        ],
-        next_cursor: null,
-        integrity: 'complete'
-      })
-    );
+    .mockImplementation((run, _node, _cursor, options) => {
+      const row = {
+        ...request,
+        id: options?.request_id ?? request.id,
+        request_id: options?.request_id ?? request.id,
+        flow_run_id: run,
+        preview: run === 'run-previous' ? 'Previous request' : request.preview
+      };
+      const {
+        id,
+        request_id,
+        sequence,
+        created_at,
+        category,
+        protocol,
+        flow_run_id,
+        node_run_id
+      } = row;
+      return Promise.resolve(
+        options?.index_only
+          ? {
+              items: [],
+              overview: {
+                items: [
+                  {
+                    id,
+                    request_id,
+                    sequence,
+                    created_at,
+                    category,
+                    protocol,
+                    flow_run_id,
+                    node_run_id
+                  }
+                ],
+                request_roots: [
+                  {
+                    id,
+                    request_id,
+                    sequence,
+                    created_at,
+                    category,
+                    protocol,
+                    flow_run_id,
+                    node_run_id
+                  }
+                ],
+                total_count: 1,
+                category_counts: { request: 1 },
+                time_start: created_at,
+                time_end: created_at
+              },
+              next_cursor: null,
+              integrity: 'complete'
+            }
+          : { items: [row], next_cursor: null, integrity: 'complete' }
+      );
+    });
   const loadWorkflowTrajectory = vi
     .fn()
     .mockResolvedValue(
@@ -164,18 +206,20 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
     .closest('.provider-trajectory')!
     .querySelector('.provider-trajectory__ledger')!;
   ledger.scrollTop = 123;
-  fireEvent.click(screen.getByRole('button', { name: '查看关联内部调用' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: '查看关联内部调用' })
+  );
   await waitFor(() =>
     expect(loadWorkflowTrajectory).toHaveBeenCalledWith(
       'run-current',
       undefined,
-      {
+      expect.objectContaining({
         category: 'all',
         node_run_id: undefined,
         from: undefined,
         to: undefined,
         request_id: 'request-current'
-      }
+      })
     )
   );
   await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
@@ -217,14 +261,28 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
       'run-previous',
       undefined,
       undefined,
-      { request_id: 'request-previous', focus_step_id: 'request-previous' }
+      expect.objectContaining({
+        request_id: 'request-previous',
+        focus_step_id: 'request-previous'
+      })
     )
   );
   expect(
     await screen.findByRole('button', { name: /Previous request/ })
   ).toHaveAttribute('aria-pressed', 'true');
-  expect(loadClientTrajectory).toHaveBeenCalledTimes(2);
-  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(2);
+  expect(
+    loadClientTrajectory.mock.calls.filter(
+      (call) => call[0] === 'run-previous' && call[3]?.index_only
+    )
+  ).toHaveLength(1);
+  expect(
+    loadClientTrajectory.mock.calls.filter(
+      (call) => call[0] === 'run-previous' && !call[3]?.index_only
+    )
+  ).toHaveLength(1);
+  expect(
+    loadWorkflowTrajectory.mock.calls.filter((call) => !call[2]?.index_only)
+  ).toHaveLength(2);
   expect(
     screen.queryByRole('button', { name: '返回上一视图' })
   ).not.toBeInTheDocument();
@@ -236,7 +294,7 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
     'Current request'
   );
   expect(
-    screen.getByRole('button', { name: /Current request/ })
+    await screen.findByRole('button', { name: /Current request/ })
   ).toHaveAttribute('aria-pressed', 'true');
   expect(ledger.scrollTop).toBe(123);
 });
@@ -330,47 +388,51 @@ test('uses the single compact source shortcut to open its exact client request',
   );
 });
 
-test('warms only the internal first page, reuses it on switch, and loads remaining summaries visibly', async () => {
+test('warms only the internal first page, reuses it on switch, and fetches missing visible identities', async () => {
   const { loadWorkflowTrajectory, loadTrajectoryBody } = fixture();
+  const first = workflowNative(
+    invocation('warm-first', 0, 'generate'),
+    'warm-first'
+  );
+  const second = workflowNative(
+    invocation('second-page', 1, 'generate'),
+    'second-page'
+  );
   let resolveFirst!: (page: ReturnType<typeof workflowPage>) => void;
-  loadWorkflowTrajectory.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        resolveFirst = resolve;
-      })
-  );
-  loadWorkflowTrajectory.mockResolvedValueOnce(
-    workflowPage([workflowNative(invocation('second-page', 1, 'generate'))])
-  );
+  loadWorkflowTrajectory.mockImplementation((_run, cursor, query) => {
+    if (query?.index_only)
+      return Promise.resolve({ ...workflowPage([first, second]), items: [] });
+    if (query?.focus_event_id === second.event_id)
+      return Promise.resolve(workflowPage([second]));
+    return new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+  });
   expect(loadWorkflowTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   await waitFor(() => expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1));
   await act(async () =>
-    resolveFirst(
-      workflowPage(
-        [workflowNative(invocation('warm-first', 0, 'generate'))],
-        'next'
-      )
-    )
+    resolveFirst(workflowPage([first], 'opaque-do-not-drain'))
   );
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  });
   expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText('工作流内部事件'));
+  await screen.findByRole('button', { name: /^模型调用准备 ·.*warm-first/ });
+  await screen.findByRole('button', { name: /^模型调用准备 ·.*second-page/ });
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(3);
   expect(
-    screen.getByRole('button', { name: /^模型调用准备 ·/ })
-  ).toBeInTheDocument();
-  await waitFor(() => expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(2));
-  expect(loadWorkflowTrajectory.mock.calls[1][1]).toBe('next');
-  await waitFor(() =>
-    expect(
-      screen.getAllByRole('button', { name: /^模型调用准备 ·/ })
-    ).toHaveLength(2)
-  );
+    loadWorkflowTrajectory.mock.calls.filter((call) => call[2]?.index_only)
+  ).toHaveLength(1);
   expect(
-    screen
-      .getAllByRole('status')
-      .some((status) => status.textContent === '当前范围已全部加载')
+    loadWorkflowTrajectory.mock.calls.filter(
+      (call) => call[2]?.focus_event_id === second.event_id
+    )
+  ).toHaveLength(1);
+  expect(
+    loadWorkflowTrajectory.mock.calls.every((call) => call[1] === undefined)
   ).toBe(true);
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
 });

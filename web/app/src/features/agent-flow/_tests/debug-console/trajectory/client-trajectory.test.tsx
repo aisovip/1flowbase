@@ -79,7 +79,6 @@ function indexOverview(
       protocol: step.protocol,
       flow_run_id: step.flow_run_id,
       node_run_id: step.node_run_id,
-      ...(step.category === 'request' ? { preview: step.preview } : {}),
       ...('record_id' in step
         ? {
             record_id: step.record_id,
@@ -97,6 +96,7 @@ function fixture(namespace: string | null = null, protocol = 'responses') {
     {
       ...root,
       id: 'result-1',
+      protocol,
       sequence: 3,
       category: 'tool_result',
       name: 'exec_command',
@@ -276,16 +276,27 @@ test('loads viewport rows, keeps original categories and follows actual call rel
 });
 
 test('shows and searches actual protocol namespace without replacing the original tool name', async () => {
-  fixture('mcp__codex_apps__github');
+  const { loadClientTrajectory } = fixture('mcp__codex_apps__github');
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
-  const row = await screen.findByRole('button', {
+  await screen.findByRole('button', {
     name: '工具调用 · mcp__codex_apps__github.exec_command'
   });
   fireEvent.change(screen.getByRole('textbox', { name: '搜索已加载步骤' }), {
     target: { value: 'mcp__codex_apps__github' }
   });
-  expect(row).toBeInTheDocument();
-  fireEvent.click(row);
+  const filteredRow = await screen.findByRole('button', {
+    name: '工具调用 · mcp__codex_apps__github.exec_command'
+  });
+  expect(loadClientTrajectory).toHaveBeenCalledWith(
+    'run-1',
+    undefined,
+    undefined,
+    expect.objectContaining({
+      index_only: true,
+      keyword: 'mcp__codex_apps__github'
+    })
+  );
+  fireEvent.click(filteredRow);
   const inspector = screen.getByRole('complementary', { name: '步骤检查器' });
   expect(within(inspector).getByText('namespace')).toBeInTheDocument();
   expect(
@@ -509,7 +520,9 @@ test('canonical index preserves equal-sequence events and loads missing viewport
     )
   ).toBe(true);
   expect(
-    screen.getByText('子代理', { selector: '.conversation-trajectory__source' })
+    screen.getByText('subagent', {
+      selector: '.conversation-trajectory__source'
+    })
   ).toBeInTheDocument();
   expect(loadConversationClientTrajectorySection).not.toHaveBeenCalled();
   fireEvent.click(second);

@@ -15,6 +15,29 @@ const originalOffsetHeight = Object.getOwnPropertyDescriptor(
 )?.get;
 const originalRect = HTMLElement.prototype.getBoundingClientRect;
 beforeEach(() => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((
+    contextId: string
+  ) =>
+    contextId === '2d'
+      ? {
+          beginPath: vi.fn(),
+          clearRect: vi.fn(),
+          ellipse: vi.fn(),
+          fill: vi.fn(),
+          fillRect: vi.fn(),
+          lineTo: vi.fn(),
+          moveTo: vi.fn(),
+          quadraticCurveTo: vi.fn(),
+          restore: vi.fn(),
+          rotate: vi.fn(),
+          save: vi.fn(),
+          scale: vi.fn(),
+          stroke: vi.fn(),
+          translate: vi.fn(),
+          setTransform: vi.fn(),
+          resetTransform: vi.fn()
+        }
+      : null) as unknown as typeof HTMLCanvasElement.prototype.getContext);
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(
     function (this: HTMLElement) {
       return this.closest('.trajectory-virtual-list')

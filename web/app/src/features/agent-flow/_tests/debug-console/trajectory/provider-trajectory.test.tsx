@@ -1,5 +1,6 @@
 import './navigation';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -277,6 +278,11 @@ test('opens lazily in the existing floating workspace and restores focus when de
 test('time brush sends RFC3339 bounds and keeps the full scope domain after filtering', async () => {
   const { loadWorkflowTrajectory } = fixture();
   await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
+  let settle!: () => void;
+  const pending = new Promise<ReturnType<typeof workflowPage>>((resolve) => {
+    settle = () => resolve(workflowPage([node]));
+  });
+  loadWorkflowTrajectory.mockReturnValue(pending);
   const track = screen.getByTestId('trajectory-brush');
   vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
     left: 0,
@@ -305,6 +311,11 @@ test('time brush sends RFC3339 bounds and keeps the full scope domain after filt
     expect(screen.getAllByRole('slider')[1]).toHaveAttribute(
       'aria-valuemax',
       String(Date.parse('2026-09-22T01:00:00Z'))
+    );
+    await act(async () => settle());
+    expect(screen.getAllByRole('slider')[0]).toHaveAttribute(
+      'aria-valuemin',
+      String(Date.parse('2026-09-22T00:00:00Z'))
     );
   } finally {
     vi.unstubAllGlobals();

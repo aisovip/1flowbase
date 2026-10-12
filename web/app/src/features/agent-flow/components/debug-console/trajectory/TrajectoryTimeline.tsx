@@ -92,7 +92,7 @@ export function TrajectoryTimeline({
     [ordered]
   );
   // Use canvas once 5px event markers overlap, not a limit on event count.
-  const dense = width > 0 && points.length * 5 > width;
+  const dense = width === 0 || points.length * 5 > width;
   const activePoint =
     ordered.find((point) => point.id === cursor) ??
     ordered.find((point) => point.id === selected) ??

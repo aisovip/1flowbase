@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import './navigation';
+import { Profiler, useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import {
   TrajectoryTimeline,
   inTrajectoryRange,
   type TrajectoryRange
 } from '../../../components/debug-console/trajectory/TrajectoryTimeline';
+
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(60);
+});
 
 test('brush range filters inclusively, handles adjust it, reset restores newly loaded domain', () => {
   const select = vi.fn();
@@ -79,16 +85,26 @@ test('dense timeline bounds DOM while retaining exact distant and equal-time eve
     lane: 'model',
     label: `event ${i}`
   }));
+  const commits: number[] = [];
   try {
     const { container } = render(
-      <TrajectoryTimeline
-        points={points}
-        range={null}
-        onChange={() => undefined}
-        onSelect={select}
-        selected={null}
-        timeScale={false}
-      />
+      <Profiler
+        id="dense"
+        onRender={() =>
+          commits.push(
+            document.querySelectorAll('.provider-trajectory__block').length
+          )
+        }
+      >
+        <TrajectoryTimeline
+          points={points}
+          range={null}
+          onChange={() => undefined}
+          onSelect={select}
+          selected={null}
+          timeScale={false}
+        />
+      </Profiler>
     );
     expect(
       container.querySelectorAll('.provider-trajectory__block').length
@@ -101,9 +117,35 @@ test('dense timeline bounds DOM while retaining exact distant and equal-time eve
     fireEvent.keyDown(axis, { key: 'ArrowLeft' });
     fireEvent.keyDown(axis, { key: 'Enter' });
     expect(select).toHaveBeenLastCalledWith('9998');
-    expect(context.fillRect).toHaveBeenCalledTimes(10000);
+    expect(Math.max(...commits)).toBeLessThanOrEqual(2);
+    expect(context.fillRect.mock.calls.length).toBeGreaterThanOrEqual(10000);
+    expect(context.fillRect.mock.calls.length % 10000).toBe(0);
   } finally {
     width.mockRestore();
     canvas.mockRestore();
   }
+});
+
+test('a populated zero-width or hidden timeline never mounts every event', () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0);
+  const points = Array.from({ length: 10000 }, (_, i) => ({
+    id: String(i),
+    value: i,
+    lane: 'model',
+    label: `hidden event ${i}`
+  }));
+  const { container } = render(
+    <TrajectoryTimeline
+      points={points}
+      range={null}
+      onChange={() => undefined}
+      onSelect={() => undefined}
+      selected={null}
+      timeScale={false}
+    />
+  );
+  expect(
+    container.querySelectorAll('.provider-trajectory__block').length
+  ).toBeLessThanOrEqual(2);
+  expect(container.querySelectorAll('canvas')).toHaveLength(1);
 });

@@ -92,23 +92,13 @@ impl PgControlPlaneStore {
         }
         // Category is a protocol classification, observed_at is persisted original time.
         // Do not restore the storage body or sections to build the complete index.
-        let rows = sqlx::query("select s.id,s.request_id,s.flow_run_id,s.node_run_id,s.event_sequence,coalesce(s.metadata->>'created_at',s.metadata#>>'{fact,step,created_at}',s.observed_at) observed_at,coalesce(s.metadata->>'category',s.metadata#>>'{fact,step,category}') category,coalesce(s.metadata->>'protocol',s.metadata#>>'{fact,step,protocol}','responses') protocol,case when coalesce(s.metadata->>'category',s.metadata#>>'{fact,step,category}')='request' then client_trajectory_step_storage_body(s.id,s.flow_run_id) end request_metadata,s.semantic_metadata_restored from client_trajectory_steps s where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and ($3::uuid is null or s.request_id=$3) order by s.event_sequence")
+        let rows = sqlx::query("select s.id,s.request_id,s.flow_run_id,s.node_run_id,s.event_sequence,coalesce(s.metadata->>'created_at',s.metadata#>>'{fact,step,created_at}',s.observed_at) observed_at,coalesce(s.metadata->>'category',s.metadata#>>'{fact,step,category}') category,coalesce(s.metadata->>'protocol',s.metadata#>>'{fact,step,protocol}','responses') protocol from client_trajectory_steps s where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and ($3::uuid is null or s.request_id=$3) order by s.event_sequence")
             .bind(run).bind(node).bind(query.request_id).fetch_all(self.pool()).await?;
         let mut index: Vec<ClientTrajectoryIndexItem> = rows
             .into_iter()
             .map(|r| {
-                let preview = match r.get::<Option<Value>, _>("request_metadata") {
-                    Some(body) => {
-                        semantic::step_metadata(body, r.get("semantic_metadata_restored"))?
-                            ["preview"]
-                            .as_str()
-                            .map(str::to_owned)
-                    }
-                    None => None,
-                };
                 Ok::<_, anyhow::Error>(ClientTrajectoryIndexItem {
                     protocol: r.get("protocol"),
-                    preview,
                     id: r.get("id"),
                     request_id: r.get("request_id"),
                     flow_run_id: r.get("flow_run_id"),
@@ -268,6 +258,7 @@ impl PgControlPlaneStore {
                     target_id: None,
                 },
                 Some(&ids),
+                false,
             )
             .await?
             .items

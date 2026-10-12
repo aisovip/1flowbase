@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Empty, Spin, Segmented, Select } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
@@ -6,6 +6,7 @@ import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import type {
   WorkflowTrajectoryIndexItem,
+  WorkflowTrajectoryPage,
   WorkflowTrajectoryEvent,
   WorkflowTrajectoryCategory,
   ProviderTrajectoryStep,
@@ -62,6 +63,7 @@ export function NativeTrajectoryWorkspace({
   const list = useRef<TrajectoryVirtualListRef>(null);
   const filters = {
     category,
+    focus_event_id: options?.focus_event_id,
     node_run_id: nodeFilter,
     request_id: options?.request_id,
     from: timeRange ? new Date(timeRange[0]).toISOString() : undefined,
@@ -87,8 +89,23 @@ export function NativeTrajectoryWorkspace({
     getRowKey: (row: WorkflowTrajectoryEvent) => row.event_id,
     getIndexKey: (row: WorkflowTrajectoryIndexItem) => row.event_id
   });
-  const overview = indexQuery.data;
-  const matches = useMemo(() => overview?.overview?.items ?? [], [overview]);
+  const [scopeMetadata, setScopeMetadata] = useState<{
+    runId: string;
+    page: Pick<WorkflowTrajectoryPage, 'nodes' | 'time_start' | 'time_end'>;
+  }>();
+  useEffect(() => {
+    if (!indexQuery.data) return;
+    const { nodes, time_start, time_end } = indexQuery.data;
+    setScopeMetadata({ runId, page: { nodes, time_start, time_end } });
+  }, [runId, indexQuery.data]);
+  // The same backend run domain stays fixed while a new filter is pending.
+  const overview =
+    indexQuery.data ??
+    (scopeMetadata?.runId === runId ? scopeMetadata.page : undefined);
+  const matches = useMemo(
+    () => indexQuery.data?.overview?.items ?? [],
+    [indexQuery.data]
+  );
   const selectedStep = items.find(
     (step) =>
       step.event_id === selected || step.native_step?.event_id === selected
