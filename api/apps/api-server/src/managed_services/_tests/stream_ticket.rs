@@ -51,12 +51,12 @@ async fn stream_ticket_atomic_replay_origin_exact_session_and_generation_binding
             &cache,
             &token,
             TicketBinding {
-                session: session,
+                session,
                 actor: ticket.actor,
-                origin: origin,
+                origin,
                 installation: ticket.installation,
-                generation: generation,
-                operation: operation,
+                generation,
+                operation,
             }
         )
         .await

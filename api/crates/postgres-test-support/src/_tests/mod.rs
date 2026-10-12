@@ -19,6 +19,20 @@ async fn database_exists(pool: &PgPool, name: &str) -> bool {
         .unwrap()
 }
 
+async fn wait_for_database_removed(pool: &PgPool, name: &str) {
+    // SQLx background tasks can retain the pool guard after the panic task exits.
+    // Observe cleanup without closing the pool or deleting the database for it.
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while database_exists(pool, name).await {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!("owned database {name} was not removed within the cleanup deadline")
+    });
+}
+
 #[tokio::test]
 async fn ac_001_drop_removes_the_test_schema() {
     let base_url = base_database_url();
@@ -67,6 +81,7 @@ async fn ac_002_panic_drops_the_test_schema() {
     .await;
     assert!(panic.unwrap_err().is_panic());
     let admin = PgPool::connect(&base_url).await.unwrap();
+    wait_for_database_removed(&admin, &database_name).await;
     assert!(
         !database_exists(&admin, &database_name).await,
         "panic must not leak the owned database/schema"
@@ -195,6 +210,7 @@ async fn inner_panic_cleanup_survives_disappearance_of_owned_parent_database() {
     })
     .await;
     assert!(panic.unwrap_err().is_panic());
+    wait_for_database_removed(&admin, &inner_name).await;
     assert!(
         !database_exists(&admin, &inner_name).await,
         "inner panic must clean up through the stable maintenance database"
