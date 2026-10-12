@@ -13,6 +13,7 @@ import {
   prepareNativeReactSource,
   type NativeReactSourcePreparationResult
 } from '../../../../shared/code-block/native-react-source-preparation';
+import { resolveAppLocale } from '../../../../shared/i18n/locales';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   createFrontstageUnavailableBlockContext,
@@ -55,7 +56,8 @@ function PublishedPluginSettingsPage({
 }: {
   page: ConsolePluginSettingsPage;
 }) {
-  const { t } = useTranslation('settings');
+  const { t, i18n } = useTranslation('settings');
+  const locale = resolveAppLocale(i18n.resolvedLanguage ?? i18n.language);
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -88,9 +90,9 @@ function PublishedPluginSettingsPage({
           }
         : null,
       workspace: { id: actor?.current_workspace_id ?? '' },
-      ui: { locale: me?.preferred_locale ?? undefined }
+      ui: { locale }
     }),
-    [actor, me, plan]
+    [actor, me, plan, locale]
   );
 
   useEffect(() => {

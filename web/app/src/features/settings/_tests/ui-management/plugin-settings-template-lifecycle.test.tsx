@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   render,
+  act,
   screen,
   waitFor,
   fireEvent,
@@ -161,6 +162,18 @@ describe('AC-009/012 plugin settings published page', () => {
   });
   afterEach(() => {
     resetAuthStore();
+  });
+  test('publishes the active language and updates mounted plugins without a user locale preference', async () => {
+    api.fetchConsolePluginSettingsPage.mockResolvedValue({ ...page,
+      source: 'export default function Settings({ctx}) { return <h1>{ctx.ui.locale}</h1>; }'
+    });
+    renderPage();
+    const text = () => screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
+    await waitFor(() => expect(text()).toContain('en_US'));
+    await act(async () => { await i18n.changeLanguage('zh_Hans'); });
+    await waitFor(() => expect(text()).toContain('zh_Hans'));
+    await act(async () => { await i18n.changeLanguage('en_US'); });
+    await waitFor(() => expect(text()).toContain('en_US'));
   });
   test('retains the registered route identity rather than deriving plugin ownership from the URL', () => {
     expect(
