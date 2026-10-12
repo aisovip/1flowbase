@@ -36,7 +36,7 @@ async function createMock() {
       emit({ type: 'response.output_item.done', output_index: 0, item });
       emit({ type: 'response.completed', response: { id, status: 'completed', output: [item],
         usage: { input_tokens: 20, output_tokens: 10, total_tokens: 30 } } });
-    });
+    }, () => sockets.delete(socket));
     if (head.length) socket.emit('data', head);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
