@@ -34,6 +34,12 @@ async function main() {
   try {
     gateway = await createOwnedGateway({ upstreamBaseUrl: upstream, upstreamApiKey: key,
       artifactRoot: path.join(out, 'service-logs'), pluginPackage: oldPackage, additionalPluginPackages: [newPackage] });
+    // Upload assigns the new version, so select the old target before creating
+    // the conversation and retain the new installation for the actual handoff.
+    const uploaded = await gateway.ownerClient.uploadPackage(newPackage);
+    const selectedOld = await gateway.ownerClient.write('/api/console/settings/model-providers/plugins/families/openai/switch-version',
+      'POST', { installation_id: gateway.target.installation_id });
+    assert.equal(selectedOld.data.status, 'succeeded');
     const env = codexEnvironment(process.env, { home, config: home }, gateway.target.gateway.authorization.slice(7));
     const redact = value => JSON.stringify(value).split(key).join('[REDACTED]')
       .split(gateway.target.gateway.authorization.slice(7)).join('[REDACTED]');
@@ -63,7 +69,6 @@ async function main() {
       return started.turn.id;
     }
     evidence.seed_turn = await turn(`Remember this exact identifier for a later recall test: ${sentinel}. Reply only STORED. Do not use tools or read files.`);
-    const uploaded = await gateway.ownerClient.uploadPackage(newPackage);
     const switched = await gateway.ownerClient.write('/api/console/settings/model-providers/plugins/families/openai/switch-version',
       'POST', { installation_id: uploaded.installation.id });
     assert.equal(switched.data.status, 'succeeded');

@@ -20,6 +20,12 @@ async function main() {
   try {
     gateway = await createOwnedGateway({ upstreamBaseUrl: mock.baseUrl, artifactRoot: path.join(out, 'service-logs'),
       pluginPackage: oldPackage, additionalPluginPackages: [newPackage] });
+    // Provider upload assigns the uploaded version. Install both before seeding,
+    // then explicitly select the old target for the session we will hand off.
+    const uploaded = await gateway.ownerClient.uploadPackage(newPackage);
+    const selectedOld = await gateway.ownerClient.write('/api/console/settings/model-providers/plugins/families/openai/switch-version',
+      'POST', { installation_id: gateway.target.installation_id });
+    assert.equal(selectedOld.data.status, 'succeeded');
     async function request(kind, history) {
       const metadata = { thread_id: sessionId, turn_id: crypto.randomUUID(), request_kind: kind,
         ...(kind === 'compaction' ? { compaction: { implementation: 'responses', trigger: 'manual',
@@ -42,7 +48,6 @@ async function main() {
     }
     const history = [{ role: 'user', content: 'Remember HANDOFF_SENTINEL.' }];
     await request('turn', history);
-    const uploaded = await gateway.ownerClient.uploadPackage(newPackage);
     const switched = await gateway.ownerClient.write('/api/console/settings/model-providers/plugins/families/openai/switch-version',
       'POST', { installation_id: uploaded.installation.id });
     assert.equal(switched.data.status, 'succeeded');
