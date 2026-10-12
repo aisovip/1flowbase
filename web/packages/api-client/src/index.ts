@@ -45,3 +45,5 @@ export * from './console/departments';
 export * from './runtime/tree';
 
 export * from './console/managed-services';
+
+export * from './console/managed-service-stream';

@@ -362,6 +362,27 @@ where
     S: InterfaceContract,
     O: InterfaceContract,
 {
+    compile_server_stream_registry_with_scope(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+    )
+}
+
+pub(crate) fn compile_server_stream_registry_with_scope<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    scope: InterfaceScope,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
     let operations = declarations
         .iter()
@@ -395,7 +416,7 @@ where
                 interface_runtime::PrincipalProfile::User,
                 InterfaceAuthenticationPolicy::Authenticated,
                 operation,
-                InterfaceScope::Workspace,
+                scope,
             ),
             InterfaceExecution::new(
                 InterfaceExecutionMode::ServerStream,

@@ -93,7 +93,8 @@ impl ManagedServiceRegistration {
         self.declaration
             .operations
             .iter()
-            .map(|op| ConsoleInterfaceRegistration {
+            .flat_map(|op| {
+                let mut rows = vec![ConsoleInterfaceRegistration {
                 interface_id: op.interface_id.clone(),
                 route: ConsoleRouteBinding {
                     method: op.method.clone(),
@@ -101,6 +102,16 @@ impl ManagedServiceRegistration {
                 },
                 summary: op.summary.clone(),
                 description: op.description.clone(),
+            }];
+                if op.stream.is_some() {
+                    rows.push(ConsoleInterfaceRegistration {
+                        interface_id: format!("{}.stream-upgrade",op.interface_id),
+                        route: ConsoleRouteBinding {method:"GET".into(),path:op.path.clone()},
+                        summary: format!("Open {} stream", op.summary),
+                        description: "Upgrades a single-use session and Origin bound ticket; execution remains authorized by the declared POST operation.".into(),
+                    });
+                }
+                rows
             })
             .collect()
     }
@@ -213,6 +224,10 @@ pub(crate) fn append_openapi(
             "responses":{"200":{"description":"Successful operation","content":{"application/json":{"schema":op.output_schema}}}}});
             if op.method != "GET" && op.method != "DELETE" {
                 operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":op.input_schema.pointer("/properties/body").cloned().unwrap_or(json!({"type":"object"}))}}});
+            }
+            if op.stream.is_some() {
+                operation["responses"]["200"]["content"]["application/json"]["schema"] = json!({"type":"object","properties":{"ticket":{"type":"string"}},"required":["ticket"],"additionalProperties":false});
+                document["paths"][&op.path]["get"] = json!({"operationId":format!("{}.stream-upgrade",op.interface_id),"summary":format!("Open {} stream",op.summary),"description":"Upgrades a one-time session and Origin bound stream ticket and invokes the original POST operation authorization.","parameters":[{"name":"ticket","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"101":{"description":"WebSocket upgrade"}}});
             }
             document["paths"][&op.path][op.method.to_ascii_lowercase()] = operation;
         }

@@ -1,3 +1,5 @@
+import type { ClientRequest, IncomingMessage } from 'node:http';
+
 import type { ProxyOptions } from 'vite';
 
 import { oauthProxyDiagnostics } from './oauth-proxy-diagnostics';
@@ -20,14 +22,19 @@ export function oauthAwareApiProxy(target: string): ProxyOptions {
           'code' in error ? String(error.code) : undefined
         );
       });
-      proxy.on('proxyReq', (outgoing, incoming) => {
+      const projectPublicAuthority = (
+        outgoing: ClientRequest,
+        incoming: IncomingMessage
+      ) => {
         diagnostics.request(incoming);
         const forwardedHost = incoming.headers['x-forwarded-host'];
         if (typeof forwardedHost === 'string') {
           // The API validates the complete authority, including ambiguity.
           outgoing.setHeader('host', forwardedHost);
         }
-      });
+      };
+      proxy.on('proxyReq', projectPublicAuthority);
+      proxy.on('proxyReqWs', projectPublicAuthority);
     }
   };
 }

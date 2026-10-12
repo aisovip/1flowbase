@@ -85,3 +85,8 @@ mod multiplex_output_tests;
 
 #[path = "_tests/plugin_credential_client_tests.rs"]
 mod plugin_credential_client_tests;
+
+mod multiplex_duplex_tests;
+
+#[path = "_tests/multiplex/retention.rs"]
+mod retention;

@@ -6,6 +6,7 @@ mod event_stdio;
 mod hook;
 mod hook_stdio;
 mod process;
+mod service_workers;
 pub(crate) use binding::LoadedManagedBinding;
 
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -25,6 +26,7 @@ struct MountedContribution {
     handle: ManagedExecutionHandle,
     binding: LoadedManagedBinding,
     scope: Arc<PluginScope>,
+    service_workers: Option<Arc<service_workers::ServiceWorkers>>,
 }
 
 #[derive(Debug)]
@@ -101,11 +103,28 @@ impl ManagedWorkers {
             .ok_or_else(|| invalid("managed worker generation exhausted"))?;
         self.next_generation = generation.get();
         let handle = ManagedExecutionHandle::new(identity.clone(), generation);
+        let service_workers = binding.worker_idle_timeout_ms.map(|idle_ms| {
+            self.mounted
+                .iter()
+                .find_map(|(existing, mounted)| {
+                    (existing.installation_id() == identity.installation_id()
+                        && existing.workspace_id() == identity.workspace_id()
+                        && existing.artifact_fingerprint() == identity.artifact_fingerprint()
+                        && mounted.binding.executable_fingerprint == binding.executable_fingerprint
+                        && mounted.binding.runtime_executable == binding.runtime_executable)
+                        .then(|| mounted.service_workers.clone())
+                        .flatten()
+                })
+                .unwrap_or_else(|| {
+                    service_workers::ServiceWorkers::new(idle_ms, self.budget.clone())
+                })
+        });
         self.mounted.insert(
             identity,
             MountedContribution {
                 handle: handle.clone(),
                 binding,
+                service_workers,
                 scope: PluginScope::managed(generation.get(), self.budget.clone()),
             },
         );
@@ -119,6 +138,25 @@ impl ManagedWorkers {
         let mounted = self.exact_mount(handle)?;
         mounted.scope.close_admission()?;
         Ok(mounted.scope.clone())
+    }
+
+    pub(crate) fn service_pools(&self) -> Vec<Arc<service_workers::ServiceWorkers>> {
+        let mut pools = Vec::new();
+        for mounted in self.mounted.values() {
+            if let Some(pool) = &mounted.service_workers {
+                if !pools.iter().any(|old| Arc::ptr_eq(old, pool)) {
+                    pools.push(pool.clone());
+                }
+            }
+        }
+        pools
+    }
+
+    pub(crate) fn service_pool_for_handle(
+        &self,
+        handle: &ManagedExecutionHandle,
+    ) -> FrameworkResult<Option<Arc<service_workers::ServiceWorkers>>> {
+        Ok(self.exact_mount(handle)?.service_workers.clone())
     }
 
     pub(crate) fn finish_unmount(&mut self, handle: &ManagedExecutionHandle) {
@@ -152,6 +190,8 @@ impl ManagedWorkers {
         self.mounted.len()
     }
 
+    #[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn execute(
         &self,
         request: RuntimeManagedCapabilityRequest,
@@ -278,24 +318,72 @@ impl ManagedWorkers {
             .ok()
             .filter(|value| *value > 0)
             .ok_or_else(|| invalid("managed execution deadline has expired"))?;
+        // Subscribe before admission so a drain racing with this call cannot be missed.
+        let scope_cancel = request
+            .duplex
+            .as_ref()
+            .map(|_| mounted.scope.duplex_cancellation());
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;
+        let shared = if let Some(pool) = &mounted.service_workers {
+            let actor = request
+                .principal
+                .actor_id
+                .as_ref()
+                .filter(|actor| !actor.is_empty())
+                .ok_or_else(|| invalid("actor_scope service requires a trusted actor"))?
+                .clone();
+            Some((pool.clone(), pool.epoch()?, actor))
+        } else {
+            None
+        };
         let mut binding = mounted.binding.clone();
-        binding.limits.timeout_ms = Some(
-            binding
-                .limits
-                .timeout_ms
-                .unwrap_or(
-                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-                        remaining_ms
-                    } else {
-                        30_000
-                    },
-                )
-                .min(remaining_ms),
-        );
+        // Duplex lifetimes belong to the admitted principal and protocol/plugin cancellation.
+        // Provider/unary runtime limits do not impose a total terminal session duration.
+        let duplex_call = request.duplex.is_some();
+        if !duplex_call {
+            binding.limits.timeout_ms = Some(
+                binding
+                    .limits
+                    .timeout_ms
+                    .unwrap_or(
+                        if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                            remaining_ms
+                        } else {
+                            30_000
+                        },
+                    )
+                    .min(remaining_ms),
+            );
+        }
+        if request.duplex.is_some()
+            && binding.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
+        {
+            return Err(invalid("duplex requires multiplex transport").into());
+        }
         Ok(async move {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let cancel_task = scope_cancel.map(|mut scope| {
+                tokio::spawn(async move {
+                    if !scope.has_changed().unwrap_or(true) {
+                        let _ = scope.changed().await;
+                    }
+                    cancel_tx.send_replace(true);
+                })
+            });
+            struct CancelTask(Option<tokio::task::JoinHandle<()>>);
+            impl Drop for CancelTask {
+                fn drop(&mut self) {
+                    if let Some(task) = &self.0 {
+                        task.abort();
+                    }
+                }
+            }
+            let _cancel_task = CancelTask(cancel_task);
+            let indefinite = duplex_call && request.principal.deadline_unix_ms == i64::MAX;
+            let duplex = request.duplex;
+            let cancel = duplex.as_ref().map(|_| cancel_rx);
             let lease = Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining_ms =
@@ -313,21 +401,38 @@ impl ManagedWorkers {
                     "input_payload": request.input_payload,
                 }),
             };
-            // The request deadline also bounds process start and stdin writes, not only output.
-            tokio::time::timeout(
-                std::time::Duration::from_millis(
-                    remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms)),
-                ),
-                async {
-                    if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
-                        capability_multiplex::exchange(&binding, &request, lease, host_calls).await
+            let duration_ms = if duplex_call {
+                remaining_ms
+            } else {
+                remaining_ms.min(binding.limits.timeout_ms.unwrap_or(remaining_ms))
+            };
+            let operation = async {
+                if binding.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1 {
+                    if let Some((pool, epoch, actor)) = shared {
+                        let (worker, activity) = pool.acquire(epoch, &actor, &binding)?;
+                        capability_multiplex::exchange_shared(
+                            &worker, &binding, &request, lease, activity, host_calls, duplex,
+                            cancel,
+                        )
+                        .await
                     } else {
-                        capability::exchange(&binding, &request, lease).await
+                        capability_multiplex::exchange(
+                            &binding, &request, lease, host_calls, duplex, cancel,
+                        )
+                        .await
                     }
-                },
-            )
-            .await
-            .map_err(|_| invalid("managed execution deadline elapsed"))?
+                } else {
+                    capability::exchange(&binding, &request, lease).await
+                }
+            };
+            if indefinite {
+                // Do not create an enormous timer: i64::MAX is the trusted stream sentinel.
+                operation.await
+            } else {
+                tokio::time::timeout(std::time::Duration::from_millis(duration_ms), operation)
+                    .await
+                    .map_err(|_| invalid("managed execution deadline elapsed"))?
+            }
         })
     }
 

@@ -2,6 +2,8 @@
 mod interface;
 mod registration;
 mod routes;
+pub(crate) mod stream;
+pub(crate) mod stream_ticket;
 pub(crate) use interface::registry_contribution;
 pub(crate) use registration::{
     append_openapi, load, load_installations, ManagedServiceRegistration,

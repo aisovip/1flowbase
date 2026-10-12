@@ -179,7 +179,7 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
     module: await import('@1flowbase/ui')
   })),
-  registration('@1flowbase/plugin-settings', ['request'], async () => ({
+  registration('@1flowbase/plugin-settings', ['request', 'openStream'], async () => ({
     module: await import('./plugin-settings/runtime')
   })),
   registration(

@@ -20,6 +20,10 @@ pub(crate) fn route_assembly(
     let mut assembly = ConsoleRouteAssembly::new();
     for service in services {
         for operation in &service.declaration.operations {
+            if operation.stream.is_some() {
+                assembly = assembly.merge(super::stream::route_assembly(service, operation));
+                continue;
+            }
             let operation = Arc::new(operation.clone());
             let owner = access_control::ConsoleRouteOwnership::ConsoleOperation(
                 operation.interface_id.clone(),
@@ -117,6 +121,7 @@ async fn invoke(
         &format!("http.{}.v1", operation.interface_id),
         credential,
         ManagedServiceInput {
+            stream: None,
             interface_id: operation.interface_id.clone(),
             payload: serde_json::json!({"path":path,"query":query_value,"body":body}),
         },

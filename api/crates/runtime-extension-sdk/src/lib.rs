@@ -29,7 +29,10 @@ pub use extension_contracts::{
 pub use managed_hook::{
     serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
 };
-pub use multiplex::{serve, serve_io, MultiplexEmitter, MultiplexError};
+pub use multiplex::{
+    serve, serve_duplex, serve_duplex_io, serve_io, MultiplexEmitter, MultiplexError,
+    MultiplexInput, MultiplexResourceLease,
+};
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
 

@@ -102,6 +102,23 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  if (moduleSource === '@1flowbase/plugin-settings') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/plugin-settings/index.d.ts',
+      content: `
+declare module '@1flowbase/plugin-settings' {
+  export interface StreamOptions {
+    path: string; body?: unknown; signal?: AbortSignal;
+    onEvent(event: unknown): void | Promise<void>;
+    onClose?(output?: unknown): void; onError?(error: Error): void;
+  }
+  export interface Stream { send(input: unknown): Promise<void>; close(): void; }
+  export function openStream(options: StreamOptions): Promise<Stream>;
+  export function request<T = unknown>(options: { path: string; method?: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'; body?: unknown; signal?: AbortSignal }): Promise<T>;
+}`
+    };
+  }
   const dndKitInternalModule = isDndKitInternalModule(moduleSource);
   const dayjsRuntimeModule = moduleSource.startsWith('dayjs/');
   return {

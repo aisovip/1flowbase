@@ -126,3 +126,82 @@ fn business_failures_expose_only_classification_codes() {
 }
 
 mod hot_generation;
+
+mod stream_ticket;
+
+#[test]
+fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission() {
+    let mut service = fixture();
+    let op = &mut service.declaration.operations[0];
+    op.method = "POST".into();
+    op.stream = Some(plugin_framework::ManagedServiceStream {
+        input_schema: json!({"type":"object"}),
+        event_schema: json!({"type":"object"}),
+    });
+    let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
+        Vec::new(),
+        None,
+        crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+        vec![service.clone()],
+    )
+    .unwrap();
+    let operation = plan
+        .console_operation_registry
+        .inventory()
+        .operations
+        .iter()
+        .find(|op| op.authorization_profile_id == "fixture.list")
+        .unwrap();
+    assert_eq!(operation.routes.len(), 1);
+    assert_eq!(operation.routes[0].method, "POST");
+    let metadata = service.metadata();
+    assert!(metadata
+        .iter()
+        .any(|m| m.interface_id == "fixture.list.stream-upgrade" && m.route.method == "GET"));
+    assert!(plan
+        .route_assembly
+        .bindings()
+        .iter()
+        .any(|b| b.route.method == "GET"
+            && b.route.path == operation.routes[0].path
+            && matches!(
+                b.ownership,
+                access_control::ConsoleRouteOwnership::Authenticated
+            )));
+    let mut document = json!({"paths":{}});
+    append_openapi(&mut document, &[service]);
+    assert_eq!(
+        document["paths"][&operation.routes[0].path]["get"]["operationId"],
+        "fixture.list.stream-upgrade"
+    );
+}
+
+#[test]
+fn parallel_operation_keeps_post_authorization_and_route() {
+    let mut service = fixture();
+    let op = &mut service.declaration.operations[0];
+    op.method = "POST".into();
+    op.execution_concurrency = plugin_framework::ManagedServiceExecutionConcurrency::Parallel;
+    assert!(!op.requires_mutation_lock());
+    let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
+        Vec::new(),
+        None,
+        crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+        vec![service],
+    )
+    .unwrap();
+    let operation = plan
+        .console_operation_registry
+        .inventory()
+        .operations
+        .iter()
+        .find(|op| op.authorization_profile_id == "fixture.list")
+        .unwrap();
+    assert_eq!(operation.routes.len(), 1);
+    assert_eq!(operation.routes[0].method, "POST");
+    assert!(plan
+        .route_assembly
+        .bindings()
+        .iter()
+        .any(|b| b.route.method == "POST" && b.route.path == operation.routes[0].path));
+}

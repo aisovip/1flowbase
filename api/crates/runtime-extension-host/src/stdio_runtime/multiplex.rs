@@ -2,10 +2,10 @@ use super::*;
 use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
     PluginDataRequest, MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES,
-    MULTIPLEX_OUTPUT_BUDGET_BYTES,
+    MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
 };
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
 const QUEUE_CAPACITY: usize = 8;
@@ -22,11 +22,13 @@ struct WriteFrame {
     bytes: Vec<u8>,
     _permit: OwnedSemaphorePermit,
     call_id: Option<String>,
+    live: Option<Arc<AtomicBool>>,
 }
 
 struct ControlFrame {
     bytes: Vec<u8>,
     _permit: Option<OwnedSemaphorePermit>,
+    live: Option<Arc<AtomicBool>>,
 }
 
 enum CommandMessage {
@@ -40,6 +42,15 @@ enum CommandMessage {
     },
     Cancel {
         id: String,
+    },
+    Input {
+        id: String,
+        input: Value,
+        permit: OwnedSemaphorePermit,
+    },
+    EventAck {
+        id: String,
+        event_id: String,
     },
     CallbackDone {
         id: String,
@@ -59,10 +70,15 @@ struct ActiveCall {
     max_callback_id: u64,
     cancelling_since: Option<Instant>,
     written: bool,
+    pending_acks: std::collections::HashSet<String>,
+    max_event_id: u64,
+    live: Arc<AtomicBool>,
     _lease: Option<Arc<Box<dyn Send + Sync>>>,
 }
 
 struct ReaderContext {
+    retention_enabled: bool,
+    retained_resources: Arc<AtomicU64>,
     command_sender: mpsc::Sender<CommandMessage>,
     writes: mpsc::UnboundedSender<WriteFrame>,
     controls: mpsc::Sender<ControlFrame>,
@@ -105,6 +121,7 @@ impl Drop for CancelOnDrop {
 
 #[derive(Debug)]
 pub(crate) struct MultiplexProviderWorker {
+    retained_resources: Arc<AtomicU64>,
     control: ProviderWorkerProcessControl,
     commands: mpsc::Sender<CommandMessage>,
     writer_budget: Arc<Semaphore>,
@@ -118,6 +135,15 @@ impl MultiplexProviderWorker {
         limits: PluginRuntimeLimits,
         _generation: u64,
     ) -> FrameworkResult<Self> {
+        Self::activate_with_retention(path, limits, _generation, false)
+    }
+
+    pub(crate) fn activate_with_retention(
+        path: PathBuf,
+        limits: PluginRuntimeLimits,
+        _generation: u64,
+        retention_enabled: bool,
+    ) -> FrameworkResult<Self> {
         let process = spawn_worker_process(&path, &limits)?;
         let control = process.control.clone();
         let stdin = process.stdin;
@@ -125,6 +151,27 @@ impl MultiplexProviderWorker {
         let (commands, receiver) = mpsc::channel(QUEUE_CAPACITY);
         let (writes, write_receiver) = mpsc::unbounded_channel();
         let (controls, control_receiver) = mpsc::channel(QUEUE_CAPACITY);
+        if retention_enabled {
+            let bytes = encode(MultiplexHostMessage::WorkerCapabilities {
+                capabilities: vec![RUNTIME_WORKER_RETENTION_V1.to_string()],
+            })
+            .map_err(|_| {
+                PluginFrameworkError::invalid_provider_package("worker capability encoding failed")
+            })?;
+            controls
+                .try_send(ControlFrame {
+                    bytes,
+                    _permit: None,
+                    live: None,
+                })
+                .map_err(|_| {
+                    PluginFrameworkError::invalid_provider_package(
+                        "worker capability admission failed",
+                    )
+                })?;
+        }
+        let retained_resources = Arc::new(AtomicU64::new(0));
+        let reader_retention = retained_resources.clone();
         let writer_budget = Arc::new(Semaphore::new(WRITER_BYTES));
         let failed = Arc::new(AtomicBool::new(false));
         let actor_control = control.clone();
@@ -140,6 +187,8 @@ impl MultiplexProviderWorker {
                 stdout,
                 receiver,
                 ReaderContext {
+                    retention_enabled,
+                    retained_resources: reader_retention,
                     command_sender: reader_commands,
                     writes,
                     controls,
@@ -151,6 +200,7 @@ impl MultiplexProviderWorker {
             .await;
         });
         Ok(Self {
+            retained_resources,
             control,
             commands,
             writer_budget,
@@ -164,6 +214,9 @@ impl MultiplexProviderWorker {
     }
     pub(crate) fn is_failed(&self) -> bool {
         self.failed.load(Ordering::Acquire)
+    }
+    pub(crate) fn retained_resources(&self) -> u64 {
+        self.retained_resources.load(Ordering::Acquire)
     }
     pub(crate) fn limits(&self) -> &PluginRuntimeLimits {
         &self.limits
@@ -195,6 +248,19 @@ impl MultiplexProviderWorker {
         limits: &PluginRuntimeLimits,
         context: Option<StreamingCallContext>,
         lease: Option<Box<dyn Send + Sync>>,
+    ) -> FrameworkResult<(Value, Vec<ProviderStreamEvent>)> {
+        self.call_json_duplex(request, limits, context, lease, None, None)
+            .await
+    }
+
+    pub(crate) async fn call_json_duplex(
+        &self,
+        request: Value,
+        limits: &PluginRuntimeLimits,
+        context: Option<StreamingCallContext>,
+        lease: Option<Box<dyn Send + Sync>>,
+        duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
+        mut cancel: Option<tokio::sync::watch::Receiver<bool>>,
     ) -> FrameworkResult<(Value, Vec<ProviderStreamEvent>)> {
         if self.is_failed() {
             return Err(worker_exited_error());
@@ -237,32 +303,146 @@ impl MultiplexProviderWorker {
             control: self.control.clone(),
             armed: true,
         };
+        let (input_closed_tx, input_closed_rx) = tokio::sync::watch::channel(false);
+        let mut input_closed = duplex.as_ref().map(|_| input_closed_rx);
+        let input_task = duplex.as_ref().map(|duplex| {
+            let input = duplex.input.clone();
+            let commands = self.commands.clone();
+            let budget = self.writer_budget.clone();
+            let call_id = guard.id.clone();
+            tokio::spawn(async move {
+                let mut input = input.lock().await;
+                while let Some(value) = input.recv().await {
+                    let size = serde_json::to_vec(&value)
+                        .map(|v| v.len() + 256)
+                        .unwrap_or(MULTIPLEX_MAX_FRAME_BYTES + 1);
+                    if size > MULTIPLEX_MAX_FRAME_BYTES {
+                        break;
+                    }
+                    let Ok(permit) = budget.clone().acquire_many_owned(size as u32).await else {
+                        break;
+                    };
+                    if commands
+                        .send(CommandMessage::Input {
+                            id: call_id.clone(),
+                            input: value,
+                            permit,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                input_closed_tx.send_replace(true);
+                let _ = commands.send(CommandMessage::Cancel { id: call_id }).await;
+            })
+        });
+        struct AbortInput(Option<tokio::task::JoinHandle<()>>);
+        impl Drop for AbortInput {
+            fn drop(&mut self) {
+                if let Some(task) = &self.0 {
+                    task.abort();
+                }
+            }
+        }
+        let _input_task = AbortInput(input_task);
         let mut timeout = ProviderStreamTimeoutState::new();
         let mut output_events = Vec::new();
         let mut retained_event_permits = Vec::new();
         let mut first_error: Option<ProviderRuntimeError> = None;
+        let mut pending_acks = tokio::task::JoinSet::new();
         loop {
-            let (duration, kind, timeout_ms) = timeout.next_read_timeout(limits);
-            let mut message = match tokio::time::timeout(duration, receiver.recv()).await {
-                Ok(Some(message)) => message,
-                Ok(None) => {
-                    return Err(prefer_first_error(
-                        &first_error,
-                        transport_error("multiplex call channel closed"),
-                    ))
-                }
-                Err(_) => {
-                    return Err(prefer_first_error(
-                        &first_error,
-                        provider_timeout_error(kind, timeout_ms),
-                    ))
+            let receive = async {
+                loop {
+                    tokio::select! {
+                        message = receiver.recv() => return message,
+                    _ = async { if let Some(closed) = &mut input_closed { if !*closed.borrow() { let _ = closed.changed().await; } } else { std::future::pending::<()>().await; } } => {
+                        input_closed = None;
+                        let _ = self.commands.send(CommandMessage::Cancel { id: guard.id.clone() }).await;
+                        continue;
+                    }
+                        result = pending_acks.join_next(), if !pending_acks.is_empty() => {
+                            if !matches!(result, Some(Ok(true))) { let _ = self.commands.send(CommandMessage::Cancel { id: guard.id.clone() }).await; }
+                            continue;
+                        }
+                        _ = async { if let Some(cancel) = &mut cancel { if !*cancel.borrow() { let _ = cancel.changed().await; } } else { std::future::pending::<()>().await; } } => {
+                            cancel = None;
+                            let _ = self.commands.send(CommandMessage::Cancel { id: guard.id.clone() }).await;
+                            continue;
+                        }
+                    }
                 }
             };
+            let received = if duplex.is_some() {
+                // Raw streams have no provider token or wall-clock timeout. The managed
+                // admission owner enforces any explicit finite principal deadline.
+                receive.await
+            } else {
+                let (duration, kind, timeout_ms) = timeout.next_read_timeout(limits);
+                tokio::time::timeout(duration, receive).await.map_err(|_| {
+                    prefer_first_error(&first_error, provider_timeout_error(kind, timeout_ms))
+                })?
+            };
+            let mut message = received.ok_or_else(|| {
+                prefer_first_error(
+                    &first_error,
+                    transport_error("multiplex call channel closed"),
+                )
+            })?;
             let frame = message
                 .message
                 .map_err(|error| prefer_first_error(&first_error, transport_error(&error)))?;
             match frame {
-                MultiplexWorkerMessage::Event { event, .. } => {
+                MultiplexWorkerMessage::Event {
+                    event,
+                    await_ack,
+                    event_id,
+                    ..
+                } => {
+                    if let Some(duplex) = &duplex {
+                        let (consumed, consumed_rx) = oneshot::channel();
+                        let forwarded = runtime_core::runtime_backend::RuntimeManagedDuplexEvent {
+                            event,
+                            consumed,
+                        };
+                        let event_id = if await_ack { event_id } else { None };
+                        let forwarded_result = tokio::select! {
+                            result = duplex.events.send(forwarded) => result.is_ok(),
+                            _ = async { if let Some(closed) = &mut input_closed { if !*closed.borrow() { let _ = closed.changed().await; } } else { std::future::pending::<()>().await; } } => { input_closed = None; false },
+                            _ = async { if let Some(cancel) = &mut cancel { if !*cancel.borrow() { let _ = cancel.changed().await; } } else { std::future::pending::<()>().await; } } => { cancel = None; false }
+                        };
+                        if !forwarded_result {
+                            let _ = self
+                                .commands
+                                .send(CommandMessage::Cancel {
+                                    id: guard.id.clone(),
+                                })
+                                .await;
+                            continue;
+                        }
+                        let commands = self.commands.clone();
+                        let id = guard.id.clone();
+                        let permit = message._permit.take();
+                        pending_acks.spawn(async move {
+                            let _permit = permit;
+                            if consumed_rx.await.is_err() {
+                                let _ = commands.send(CommandMessage::Cancel { id }).await;
+                                return false;
+                            }
+                            if let Some(event_id) = event_id {
+                                return commands
+                                    .send(CommandMessage::EventAck { id, event_id })
+                                    .await
+                                    .is_ok();
+                            }
+                            true
+                        });
+                        continue;
+                    }
+                    if await_ack {
+                        return Err(transport_error("duplex event on unary call"));
+                    }
                     let event: ProviderStreamEvent =
                         serde_json::from_value(event).map_err(|error| {
                             prefer_first_error(
@@ -320,6 +500,9 @@ impl MultiplexProviderWorker {
                     if let Some(permit) = message._permit.take() {
                         retained_event_permits.push(permit);
                     }
+                }
+                MultiplexWorkerMessage::ResourceRetention { .. } => {
+                    return Err(transport_error("worker control on invocation lane"))
                 }
                 MultiplexWorkerMessage::Response { response, .. } => {
                     guard.armed = false;
@@ -448,12 +631,15 @@ async fn writer(
     loop {
         let frame = tokio::select! {
             biased;
-            control = controls.recv() => control.map(|frame| (frame.bytes, frame._permit, None)),
-            data = writes.recv() => data.map(|frame| (frame.bytes, Some(frame._permit), frame.call_id)),
+            control = controls.recv() => control.map(|frame| (frame.bytes, frame._permit, None, frame.live)),
+            data = writes.recv() => data.map(|frame| (frame.bytes, Some(frame._permit), frame.call_id, frame.live)),
         };
-        let Some((bytes, permit, call_id)) = frame else {
+        let Some((bytes, permit, call_id, live)) = frame else {
             return;
         };
+        if live.is_some_and(|live| !live.load(Ordering::Acquire)) {
+            continue;
+        }
         if let Err(error) = stdin.write_all(&bytes).await {
             let _ = commands
                 .send(CommandMessage::WriterFailed(error.to_string()))
@@ -481,6 +667,8 @@ async fn run_reader(
     context: ReaderContext,
 ) {
     let ReaderContext {
+        retention_enabled,
+        retained_resources,
         command_sender,
         writes,
         controls,
@@ -493,14 +681,24 @@ async fn run_reader(
     let mut pending_frame = Vec::new();
     let mut active: HashMap<String, ActiveCall> = HashMap::new();
     let mut next_id = 0_u64;
+    let mut retention_sequence = 0_u64;
     let mut ticker = tokio::time::interval(Duration::from_millis(100));
     let reason = loop {
         tokio::select! {
             frame = read_frame(&mut reader, &mut pending_frame) => {
                 let (frame, frame_bytes) = match frame { Ok(Some(frame)) => frame, Ok(None) => break "multiplex worker stdout closed".to_string(), Err(error) => break error };
-                let id = match &frame { MultiplexWorkerMessage::Event { call_id, .. } | MultiplexWorkerMessage::Response { call_id, .. } | MultiplexWorkerMessage::Cancelled { call_id } | MultiplexWorkerMessage::Callback { call_id, .. } => call_id.clone() };
+                if let MultiplexWorkerMessage::ResourceRetention { sequence, retained_resources: count } = &frame {
+                    if !retention_enabled || *sequence == 0 { break "unsupported worker retention control".to_string(); }
+                    if *sequence > retention_sequence {
+                        retention_sequence = *sequence;
+                        retained_resources.store(*count, Ordering::Release);
+                    }
+                    continue;
+                }
+                let id = match &frame { MultiplexWorkerMessage::Event { call_id, .. } | MultiplexWorkerMessage::Response { call_id, .. } | MultiplexWorkerMessage::Cancelled { call_id } | MultiplexWorkerMessage::Callback { call_id, .. } => call_id.clone(), MultiplexWorkerMessage::ResourceRetention { .. } => unreachable!("retention is process-scoped") };
                 let Some(call) = active.get_mut(&id) else { break format!("unknown or duplicate multiplex call id: {id}"); };
                 match frame {
+                    MultiplexWorkerMessage::ResourceRetention { .. } => unreachable!("retention is process-scoped"),
                     MultiplexWorkerMessage::Callback { callback_id, service, request, .. } => {
                         let callback_sequence = match callback_id.parse::<u64>() { Ok(value) if value > call.max_callback_id && callback_id == value.to_string() => value, _ => break "invalid or duplicate multiplex callback id".to_string() };
                         if call.cancelling_since.is_some() { break "callback on cancelling multiplex call".to_string(); }
@@ -517,7 +715,12 @@ async fn run_reader(
                         });
                         call.callbacks.insert(callback_id, task);
                     }
-                    MultiplexWorkerMessage::Event { .. } => {
+                    MultiplexWorkerMessage::Event { await_ack, ref event_id, .. } => {
+                        if await_ack {
+                            let Some(sequence) = event_id.as_ref().and_then(|id| id.parse::<u64>().ok().filter(|n| *n > call.max_event_id && n.to_string() == *id)) else { break "invalid event sequence".to_string(); };
+                            call.max_event_id = sequence;
+                            call.pending_acks.insert(event_id.clone().unwrap());
+                        } else if event_id.is_some() { break "event id requires acknowledgment".to_string(); }
                         if call.cancelling_since.is_some() { continue; }
                         let permit = call.event_budget.clone().try_acquire_many_owned(frame_bytes as u32);
                         if let Ok(permit) = permit {
@@ -528,6 +731,7 @@ async fn run_reader(
                     MultiplexWorkerMessage::Response { .. } | MultiplexWorkerMessage::Cancelled { .. } => {
                         if matches!(frame, MultiplexWorkerMessage::Cancelled { .. }) && call.cancelling_since.is_none() { break "unsolicited multiplex cancellation".to_string(); }
                         if let Some(call) = active.remove(&id) {
+                            call.live.store(false, Ordering::Release);
                             if let Ok(permit) = call.event_budget.clone().try_acquire_many_owned(frame_bytes as u32) {
                                 let _ = call.events.send(Delivered { message: Ok(frame), _permit: Some(permit) });
                             }
@@ -541,13 +745,31 @@ async fn run_reader(
                         next_id = match next_id.checked_add(1) { Some(value) => value, None => break "multiplex call id exhausted".to_string() };
                         let id = next_id.to_string();
                         let bytes = match encode(MultiplexHostMessage::Call { call_id: id.clone(), request }) { Ok(bytes) => bytes, Err(error) => { let _ = events.send(Delivered { message: Err(error), _permit: None }); continue; } };
-                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, _lease: lease.map(Arc::new) });
-                        if writes.send(WriteFrame { bytes, _permit: permit, call_id: Some(id) }).is_err() { break "multiplex writer queue is full or closed".to_string(); }
+                        active.insert(id.clone(), ActiveCall { events, event_budget: Arc::new(Semaphore::new(CALL_EVENT_BYTES)), host_calls: host_calls.map(|context| *context), callbacks: HashMap::new(), max_callback_id: 0, cancelling_since: None, written: false, pending_acks: std::collections::HashSet::new(), max_event_id: 0, live: Arc::new(AtomicBool::new(true)), _lease: lease.map(Arc::new) });
+                        if writes.send(WriteFrame { bytes, _permit: permit, call_id: Some(id), live: None }).is_err() { break "multiplex writer queue is full or closed".to_string(); }
                         let id = next_id.to_string();
                         if registered.send(id.clone()).is_err() { if let Some(call) = active.get_mut(&id) { request_cancel(&id, call, &controls); } }
                     }
                     Some(CommandMessage::Cancel { id }) => {
                         if let Some(call) = active.get_mut(&id) { request_cancel(&id, call, &controls); }
+                    }
+                    Some(CommandMessage::Input { id, input, permit }) => {
+                        if let Some(call) = active.get_mut(&id) {
+                            if call.cancelling_since.is_none() {
+                                let bytes = match encode(MultiplexHostMessage::Input { call_id: id.clone(), input }) { Ok(bytes) => bytes, Err(_) => { request_cancel(&id, call, &controls); continue; } };
+                                if writes.send(WriteFrame { bytes, _permit: permit, call_id: None, live: Some(call.live.clone()) }).is_err() { break "multiplex writer closed".to_string(); }
+                            }
+                        }
+                    }
+                    Some(CommandMessage::EventAck { id, event_id }) => {
+                        if let Some(call) = active.get_mut(&id) {
+                            if call.cancelling_since.is_none() && call.pending_acks.remove(&event_id) {
+                                let bytes = match encode(MultiplexHostMessage::EventAck { call_id: id.clone(), event_id }) { Ok(bytes) => bytes, Err(error) => break error };
+                                let controls = controls.clone();
+                                let live = call.live.clone();
+                                tokio::spawn(async move { let _ = controls.send(ControlFrame { bytes, _permit: None, live: Some(live) }).await; });
+                            }
+                        }
                     }
                     Some(CommandMessage::Written(id)) => {
                         if let Some(call) = active.get_mut(&id) {
@@ -560,7 +782,7 @@ async fn run_reader(
                             if call.cancelling_since.is_none() && call.callbacks.remove(&callback_id).is_some() {
                                 let bytes = match encode(MultiplexHostMessage::CallbackResult { call_id: id.clone(), callback_id, response }) { Ok(bytes) => bytes, Err(_) => { request_cancel(&id, call, &controls); continue; } };
                                 let permit = match writer_budget.clone().try_acquire_many_owned(bytes.len() as u32) { Ok(permit) => permit, Err(_) => { request_cancel(&id, call, &controls); continue; } };
-                                if controls.try_send(ControlFrame { bytes, _permit: Some(permit) }).is_err() { request_cancel(&id, call, &controls); }
+                                if controls.try_send(ControlFrame { bytes, _permit: Some(permit), live: Some(call.live.clone()) }).is_err() { request_cancel(&id, call, &controls); }
                             }
                         }
                     }
@@ -598,6 +820,7 @@ fn request_cancel(id: &str, call: &mut ActiveCall, controls: &mpsc::Sender<Contr
         return;
     }
     call.cancelling_since = Some(Instant::now());
+    call.live.store(false, Ordering::Release);
     for (_, task) in call.callbacks.drain() {
         task.abort();
     }
@@ -613,6 +836,7 @@ fn send_cancel(id: &str, controls: &mpsc::Sender<ControlFrame>, call: &mut Activ
         match controls.try_send(ControlFrame {
             bytes,
             _permit: None,
+            live: None,
         }) {
             Ok(()) => return,
             Err(mpsc::error::TrySendError::Full(frame)) => {
@@ -658,6 +882,12 @@ async fn execute_callback(
                         false,
                     ));
                 }
+                if context.binding.deadline_unix_ms == i64::MAX {
+                    return context
+                        .plugin_data
+                        .execute(&context.binding, &request)
+                        .await;
+                }
                 tokio::time::timeout(
                     Duration::from_millis(remaining as u64),
                     context.plugin_data.execute(&context.binding, &request),
@@ -689,6 +919,9 @@ async fn execute_callback(
                 let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
                 if remaining <= 0 {
                     return Err(PluginCredentialError::new("plugin_credential_deadline"));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
                 }
                 tokio::time::timeout(
                     Duration::from_millis(remaining as u64),

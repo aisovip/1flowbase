@@ -15,6 +15,7 @@ use std::{collections::BTreeMap, sync::Arc};
 pub(crate) struct ManagedServiceInput {
     pub interface_id: String,
     pub payload: serde_json::Value,
+    pub stream: Option<super::stream::StreamInput>,
 }
 pub(crate) struct ManagedServiceOutput(pub serde_json::Value);
 // Generic business bodies can contain outbound credentials. Hooks only receive safe metadata.
@@ -40,15 +41,15 @@ impl InterfaceContract for ManagedServiceOutput {
         Some(serde_json::json!({"body_bytes":serde_json::to_vec(&self.0).ok()?.len()}))
     }
 }
-struct Operation {
-    declaration: plugin_framework::ManagedServiceOperation,
-    input: jsonschema::Validator,
-    output: jsonschema::Validator,
+pub(super) struct Operation {
+    pub(super) declaration: plugin_framework::ManagedServiceOperation,
+    pub(super) input: jsonschema::Validator,
+    pub(super) output: jsonschema::Validator,
 }
-struct Adapter {
-    state: std::sync::Weak<ApiState>,
-    registration: ManagedServiceRegistration,
-    operations: BTreeMap<String, Operation>,
+pub(super) struct Adapter {
+    pub(super) state: std::sync::Weak<ApiState>,
+    pub(super) registration: ManagedServiceRegistration,
+    pub(super) operations: BTreeMap<String, Operation>,
 }
 impl ConsoleInterfacePort<ManagedServiceInput, ManagedServiceOutput> for Adapter {
     fn execute<'a>(
@@ -92,7 +93,7 @@ impl Adapter {
             .checked_add(i64::try_from(timeout_ms).map_err(|_| Error::InvalidInput("timeout_ms"))?)
             .ok_or(Error::InvalidInput("timeout_ms"))?;
         let result = tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async {
-            let _mutation = if op.declaration.method != "GET" {
+            let _mutation = if op.declaration.requires_mutation_lock() {
                 Some(
                     state
                         .store
@@ -144,6 +145,12 @@ impl Adapter {
                 .await?;
             if !op.output.is_valid(&output) {
                 return Err(Error::UpstreamUnavailable("managed_service_output_contract").into());
+            }
+            if op.declaration.invalidates_streams {
+                super::stream::revoke_installation(self.registration.installation_id);
+            }
+            if op.declaration.invalidates_workers {
+                composition.reset_service_workers(&binding.handle).await?;
             }
             Ok::<_, anyhow::Error>(ManagedServiceOutput(output))
         })
@@ -201,20 +208,55 @@ pub(crate) fn registry_contribution(
             mutating: op.method != "GET",
         })
         .collect::<Vec<_>>();
-    let registry = console_interface::compile_registry_with_scope(
-        &registration.plugin_code,
-        &format!(
-            "managed-service:{}:{}",
-            registration.installation_id, registration.plugin_version
-        ),
-        &declarations,
-        Arc::new(Adapter {
-            state: Arc::downgrade(state),
-            registration: registration.clone(),
-            operations,
-        }),
-        interface_runtime::InterfaceScope::System,
-    )?;
+    let adapter = Arc::new(Adapter {
+        state: Arc::downgrade(state),
+        registration: registration.clone(),
+        operations,
+    });
+    let (stream_declarations, unary_declarations): (Vec<_>, Vec<_>) =
+        declarations.into_iter().partition(|declaration| {
+            adapter.operations[declaration.interface_id]
+                .declaration
+                .stream
+                .is_some()
+        });
+    let owner = interface_runtime::InterfaceOwner::new(&registration.plugin_code)?;
+    let operations = registration
+        .declaration
+        .operations
+        .iter()
+        .map(|op| interface_runtime::AuthorizationOperation::new(&op.interface_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let graph = format!(
+        "managed-service:{}:{}",
+        registration.installation_id, registration.plugin_version
+    );
+    let mut compiler = interface_runtime::RegistryCompiler::new(
+        interface_runtime::GraphFingerprint::new(&graph)?,
+        operations,
+        [owner],
+    );
+    if !unary_declarations.is_empty() {
+        let registry = console_interface::compile_registry_with_scope(
+            &registration.plugin_code,
+            &graph,
+            &unary_declarations,
+            adapter.clone(),
+            interface_runtime::InterfaceScope::System,
+        )?;
+        compiler.absorb_snapshot(&registry)?;
+    }
+    if !stream_declarations.is_empty() {
+        let registry = console_interface::compile_server_stream_registry_with_scope(
+            &registration.plugin_code,
+            &graph,
+            &stream_declarations,
+            adapter,
+            interface_runtime::InterfaceScope::System,
+        )?;
+        compiler.absorb_snapshot(&registry)?;
+    }
+    let registry = compiler.compile()?;
     Ok(InterfaceRegistryContribution::managed(
         registration.plugin_code.clone(),
         registration

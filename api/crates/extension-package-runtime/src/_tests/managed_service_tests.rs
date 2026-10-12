@@ -138,3 +138,132 @@ fn managed_mcp_rejects_ambiguous_flat_parameters_and_unsafe_route_identity() {
         assert!(parse(&invalid).is_err(), "{pointer}");
     }
 }
+
+#[test]
+fn actor_scope_worker_lifetime_is_explicit_and_bounded_by_idle_policy() {
+    let service = parse(&fixture()).unwrap().managed_service.unwrap();
+    assert_eq!(
+        service.worker_lifetime,
+        crate::ManagedServiceWorkerLifetime::PerCall
+    );
+    let mut value = fixture();
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    assert_eq!(
+        parse(&value)
+            .unwrap()
+            .managed_service
+            .unwrap()
+            .worker_lifetime,
+        crate::ManagedServiceWorkerLifetime::ActorScope
+    );
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(1800000);
+    assert!(parse(&value).is_ok());
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(0);
+    assert!(parse(&value).is_err());
+    value["managed_service"]["worker_idle_timeout_ms"] = json!(1000);
+    value["managed_service"]["worker_lifetime"] = json!("per_call");
+    assert!(parse(&value).is_err());
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    let mut op = value["managed_service"]["operations"][0].clone();
+    op["interface_id"] = json!("managed_fixture.other");
+    op["contribution_id"] = json!("managed_fixture.other");
+    op["path"] = json!("/api/console/managed-services/managed_fixture/other");
+    value["managed_service"]["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(op);
+    let mut contribution = value["managed"]["module"]["contributions"][0].clone();
+    contribution["contribution_id"] = json!("managed_fixture.other");
+    value["managed"]["module"]["contributions"]
+        .as_array_mut()
+        .unwrap()
+        .push(contribution);
+    let mut binding = value["managed"]["execution_bindings"][0].clone();
+    binding["contribution_id"] = json!("managed_fixture.other");
+    binding["handler"] = json!("other");
+    value["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(binding);
+    assert!(parse(&value).is_ok());
+    value["managed"]["execution_bindings"][1]["runtime"]["entry"] = json!("bin/other");
+    assert!(
+        parse(&value).is_err(),
+        "shared operations cannot select separate executables"
+    );
+}
+
+#[test]
+fn duplex_operations_require_authorized_multiplex_marker_and_self_contained_schemas() {
+    let mut value = fixture();
+    value["managed_service"]["operations"][0]["method"] = json!("POST");
+    value["managed_service"]["operations"][0]["stream"] =
+        json!({"input_schema":{"type":"object"},"event_schema":{"type":"object"}});
+    assert!(parse(&value).is_err());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!(["runtime_duplex/v1"]);
+    let parsed = parse(&value).unwrap();
+    assert!(!parsed.managed_service.unwrap().operations[0].invalidates_streams);
+    value["managed_service"]["operations"][0]["stream"]["event_schema"] =
+        json!({"$ref":"https://attacker.invalid/schema"});
+    assert!(parse(&value).is_err());
+    value["managed_service"]["operations"][0]["stream"]["event_schema"] = json!({"type":"object"});
+    value["managed_service"]["operations"][0]["method"] = json!("GET");
+    assert!(parse(&value).is_err());
+}
+
+#[test]
+fn operation_concurrency_defaults_to_serialized_and_parallel_is_explicit() {
+    use crate::ManagedServiceExecutionConcurrency;
+    let mut value = fixture();
+    value["managed_service"]["operations"][0]["method"] = json!("POST");
+    let default = parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .operations
+        .remove(0);
+    assert_eq!(
+        default.execution_concurrency,
+        ManagedServiceExecutionConcurrency::Serialized
+    );
+    assert!(default.requires_mutation_lock());
+    assert!(!default.invalidates_workers);
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("parallel");
+    value["managed_service"]["operations"][0]["invalidates_workers"] = json!(true);
+    let parallel = parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .operations
+        .remove(0);
+    assert!(!parallel.requires_mutation_lock());
+    assert!(parallel.invalidates_workers);
+    assert_eq!(parallel.method, "POST");
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("unrestricted");
+    assert!(
+        parse(&value).is_err(),
+        "unknown concurrency must fail closed"
+    );
+    value["managed_service"]["operations"][0]["execution_concurrency"] = json!("serialized");
+    value["managed_service"]["operations"][0]["method"] = json!("GET");
+    assert!(
+        !parse(&value).unwrap().managed_service.unwrap().operations[0].requires_mutation_lock()
+    );
+}
+
+#[test]
+fn worker_retention_requires_supported_multiplex_actor_scope_capability() {
+    let mut value = fixture();
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]);
+    assert!(parse(&value).is_ok());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!(["runtime_worker_retention/v2"]);
+    assert!(parse(&value).is_err());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]);
+    value["managed_service"]["worker_lifetime"] = json!("per_call");
+    assert!(parse(&value).is_err());
+}

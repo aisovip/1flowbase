@@ -364,6 +364,8 @@ fn encoded_frame_holds_shared_byte_budget_until_dropped() {
         MultiplexWorkerMessage::Event {
             call_id: "1".into(),
             event: json!("x"),
+            await_ack: false,
+            event_id: None,
         },
         &budget,
     )

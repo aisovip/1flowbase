@@ -34,6 +34,13 @@ pub struct ManagedServiceMcpDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct ManagedServiceStream {
+    pub input_schema: Value,
+    pub event_schema: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManagedServiceOperation {
     pub interface_id: String,
     pub contribution_id: String,
@@ -44,13 +51,58 @@ pub struct ManagedServiceOperation {
     pub input_schema: Value,
     pub output_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<ManagedServiceStream>,
+    #[serde(default)]
+    pub invalidates_streams: bool,
+    /// Successful execution retires shared actor workers without unmounting contributions.
+    #[serde(default)]
+    pub invalidates_workers: bool,
+    #[serde(default)]
+    pub execution_concurrency: ManagedServiceExecutionConcurrency,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<ManagedServiceMcpDeclaration>,
+}
+
+/// Mutation serialization is independent of authorization and HTTP mutability.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedServiceExecutionConcurrency {
+    #[default]
+    Serialized,
+    Parallel,
+}
+impl ManagedServiceOperation {
+    pub fn requires_mutation_lock(&self) -> bool {
+        self.method != "GET"
+            && self.execution_concurrency == ManagedServiceExecutionConcurrency::Serialized
+    }
+}
+
+/// Carrier lifetime only: every operation retains its own deadline and authority.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedServiceWorkerLifetime {
+    #[default]
+    PerCall,
+    ActorScope,
+}
+impl ManagedServiceWorkerLifetime {
+    fn is_per_call(&self) -> bool {
+        *self == Self::PerCall
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceManifest {
     pub scope: ManagedServiceScope,
+    #[serde(
+        default,
+        skip_serializing_if = "ManagedServiceWorkerLifetime::is_per_call"
+    )]
+    pub worker_lifetime: ManagedServiceWorkerLifetime,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_idle_timeout_ms: Option<u64>,
     pub feature: ManagedServiceFeature,
     pub operations: Vec<ManagedServiceOperation>,
 }
@@ -70,6 +122,14 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
         }
         return Ok(());
     };
+    if service.worker_idle_timeout_ms == Some(0)
+        || (service.worker_lifetime == ManagedServiceWorkerLifetime::PerCall
+            && service.worker_idle_timeout_ms.is_some())
+    {
+        return Err(invalid(
+            "managed service idle timeout requires actor_scope and must be positive",
+        ));
+    }
     let owner = manifest.plugin_code()?;
     let managed = manifest
         .managed
@@ -136,6 +196,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
     let mut routes = BTreeSet::new();
     let mut contributions = BTreeSet::new();
     let mut mcp_names = BTreeSet::new();
+    let mut shared_runtime = None;
     for operation in &service.operations {
         if let Some(mcp) = &operation.mcp {
             let mut parameter_names = BTreeSet::new();
@@ -215,7 +276,37 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 "managed service operation requires authorized multiplex capability binding",
             ));
         }
-        for schema in [&operation.input_schema, &operation.output_schema] {
+        if operation.stream.is_some()
+            && (operation.method != "POST"
+                || !binding
+                    .runtime
+                    .capabilities
+                    .iter()
+                    .any(|value| value == "runtime_duplex/v1"))
+        {
+            return Err(invalid(
+                "managed stream requires POST and runtime_duplex/v1 multiplex capability",
+            ));
+        }
+        if operation.stream.is_some() && operation.mcp.is_some() {
+            return Err(invalid("managed stream is a socket transport operation"));
+        }
+        if service.worker_lifetime == ManagedServiceWorkerLifetime::ActorScope {
+            if let Some(runtime) = shared_runtime {
+                if runtime != &binding.runtime {
+                    return Err(invalid(
+                        "actor_scope operations must share one runtime entry and limits",
+                    ));
+                }
+            } else {
+                shared_runtime = Some(&binding.runtime);
+            }
+        }
+        let mut schemas = vec![&operation.input_schema, &operation.output_schema];
+        if let Some(stream) = &operation.stream {
+            schemas.extend([&stream.input_schema, &stream.event_schema]);
+        }
+        for schema in schemas {
             fn references(value: &Value) -> bool {
                 match value {
                     Value::Object(fields) => {

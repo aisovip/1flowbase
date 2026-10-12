@@ -321,6 +321,22 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
                 "managed execution binding entry must be a relative package path",
             ));
         }
+        for capability in &binding.runtime.capabilities {
+            if capability.starts_with("runtime_worker_retention/")
+                && (capability != extension_contracts::RUNTIME_WORKER_RETENTION_V1
+                    || binding.runtime.protocol != extension_contracts::STDIO_JSON_MULTIPLEX_V1
+                    || manifest.managed_service.as_ref().is_none_or(|service| {
+                        service.worker_lifetime != crate::ManagedServiceWorkerLifetime::ActorScope
+                            || !service.operations.iter().any(|operation| {
+                                operation.contribution_id == binding.contribution_id.as_str()
+                            })
+                    }))
+            {
+                return Err(invalid(
+                    "worker retention requires supported v1 multiplex actor_scope service",
+                ));
+            }
+        }
         let mut capabilities = BTreeSet::new();
         if binding
             .runtime

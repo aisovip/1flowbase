@@ -689,6 +689,14 @@ impl ManagedExtensionComposition {
         .await
     }
 
+    /// Reset the exact pool that executed the successful mutation, preserving its mounts.
+    pub(crate) async fn reset_service_workers(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<()> {
+        Ok(self.backend.reset_managed_service_workers(handle).await?)
+    }
+
     pub(crate) async fn execute_snapshot(
         &self,
         snapshot: Arc<ManagedWorkspaceSnapshot>,
@@ -697,6 +705,28 @@ impl ManagedExtensionComposition {
         principal: RuntimeExecutionPrincipal,
         config_payload: serde_json::Value,
         input_payload: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.execute_snapshot_duplex(
+            snapshot,
+            workspace_id,
+            contribution_id,
+            principal,
+            config_payload,
+            input_payload,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_snapshot_duplex(
+        &self,
+        snapshot: Arc<ManagedWorkspaceSnapshot>,
+        workspace_id: Uuid,
+        contribution_id: &ContributionId,
+        principal: RuntimeExecutionPrincipal,
+        config_payload: serde_json::Value,
+        input_payload: serde_json::Value,
+        duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
     ) -> Result<serde_json::Value> {
         anyhow::ensure!(
             principal.workspace_id == workspace_id.to_string(),
@@ -719,6 +749,7 @@ impl ManagedExtensionComposition {
                 principal,
                 config_payload,
                 input_payload,
+                duplex,
             })
             .await?;
         // On release failure the already-admitted future drops here, releasing its execution lease.

@@ -1169,7 +1169,21 @@ pub(crate) fn compile_migrated_console_operation_registry_with_managed(
         resources,
         locale_contributions,
     )?;
-    let mut interfaces = compile_console_interface_metadata(bindings, &registry)?;
+    let metadata_bindings = bindings
+        .iter()
+        .filter(|binding| {
+            !managed_services
+                .iter()
+                .flat_map(|service| &service.declaration.operations)
+                .any(|op| {
+                    op.stream.is_some()
+                        && binding.route.method == "GET"
+                        && route_templates_match(&op.path, &binding.route.path)
+                })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut interfaces = compile_console_interface_metadata(&metadata_bindings, &registry)?;
     for metadata in managed_services.iter().flat_map(|s| s.metadata()) {
         interfaces.retain(|existing| existing.interface_id != metadata.interface_id);
         interfaces.push(metadata);

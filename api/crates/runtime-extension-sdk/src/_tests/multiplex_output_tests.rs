@@ -125,7 +125,9 @@ fn exact_burst(state: &Rc<RefCell<OutputState>>) {
             message,
             &MultiplexWorkerMessage::Event {
                 call_id: "1".into(),
-                event: json!({"index":index,"text":"完整🙂é"})
+                event: json!({"index":index,"text":"完整🙂é"}),
+                await_ack: false,
+                event_id: None,
             }
         );
     }
@@ -199,7 +201,9 @@ async fn one_idle_event_flushes_before_waiting_for_cancel() {
                 event.message,
                 MultiplexWorkerMessage::Event {
                     call_id: "1".into(),
-                    event: json!({"text":"idle-first"})
+                    event: json!({"text":"idle-first"}),
+                    await_ack: false,
+                    event_id: None,
                 }
             );
             host.write_all(&line(MultiplexHostMessage::Cancel {

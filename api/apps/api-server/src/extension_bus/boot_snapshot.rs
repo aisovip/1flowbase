@@ -19,6 +19,7 @@ use super::{
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
 pub struct ExtensionBootSnapshot {
+    generation_id: uuid::Uuid,
     managed_composition: OnceLock<Arc<super::ManagedExtensionComposition>>,
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
@@ -54,6 +55,9 @@ impl std::fmt::Debug for ExtensionBootSnapshot {
 }
 
 impl ExtensionBootSnapshot {
+    pub(crate) fn generation_id(&self) -> uuid::Uuid {
+        self.generation_id
+    }
     pub(crate) fn attach_managed_composition(
         &self,
         composition: Arc<super::ManagedExtensionComposition>,
@@ -75,6 +79,7 @@ impl ExtensionBootSnapshot {
         )
         .compile()?;
         let fork = Self {
+            generation_id: uuid::Uuid::now_v7(),
             managed_composition: OnceLock::new(),
             graph: self.graph.clone(),
             interface_registry: Some(Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
@@ -112,6 +117,7 @@ impl ExtensionBootSnapshot {
     #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
+            generation_id: uuid::Uuid::now_v7(),
             graph,
             interface_registry: None,
             authentication_factories: Arc::new(
@@ -145,6 +151,7 @@ impl ExtensionBootSnapshot {
         let mut authentication_factories = AuthenticationAdapterFactoryRegistry::built_in()?;
         authentication_factories.activate_host_extensions(host_authentication_factories)?;
         Ok(Self {
+            generation_id: uuid::Uuid::now_v7(),
             graph,
             interface_registry: Some(interface_registry),
             authentication_factories: Arc::new(authentication_factories),

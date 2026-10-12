@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const RUNTIME_WORKER_RETENTION_V1: &str = "runtime_worker_retention/v1";
+
 pub const STDIO_JSON_MULTIPLEX_V1: &str = "stdio_json_multiplex_v1";
 pub const MULTIPLEX_MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 /// Shared across queued worker output, pending terminal frames, and callback results.
@@ -35,9 +37,21 @@ impl<T> MultiplexEnvelope<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MultiplexHostMessage {
+    /// Sent only when the installed binding requires these supported worker controls.
+    WorkerCapabilities {
+        capabilities: Vec<String>,
+    },
     Call {
         call_id: String,
         request: Value,
+    },
+    Input {
+        call_id: String,
+        input: Value,
+    },
+    EventAck {
+        call_id: String,
+        event_id: String,
     },
     Cancel {
         call_id: String,
@@ -59,9 +73,18 @@ pub enum MultiplexHostService {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MultiplexWorkerMessage {
+    /// Process-local resource ownership; never carries a trusted execution identity.
+    ResourceRetention {
+        sequence: u64,
+        retained_resources: u64,
+    },
     Event {
         call_id: String,
         event: Value,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        await_ack: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        event_id: Option<String>,
     },
     Response {
         call_id: String,

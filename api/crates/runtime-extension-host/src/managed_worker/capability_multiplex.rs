@@ -36,6 +36,8 @@ pub(super) async fn exchange(
     request: &CapabilityStdioRequest,
     lease: Arc<PluginScopeLease>,
     host_calls: Option<ProviderHostCallContext>,
+    duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
 ) -> FrameworkResult<Value> {
     let worker = MultiplexProviderWorker::activate(
         binding.runtime_executable.clone(),
@@ -47,6 +49,32 @@ pub(super) async fn exchange(
         lease: lease.clone(),
         finished: false,
     };
+    let result = exchange_shared(
+        &worker,
+        binding,
+        request,
+        lease,
+        Box::new(()),
+        host_calls,
+        duplex,
+        cancel,
+    )
+    .await;
+    owner.control.terminate().await;
+    owner.finished = true;
+    result
+}
+
+pub(super) async fn exchange_shared(
+    worker: &MultiplexProviderWorker,
+    binding: &LoadedManagedBinding,
+    request: &CapabilityStdioRequest,
+    lease: Arc<PluginScopeLease>,
+    activity: Box<dyn Send + Sync>,
+    host_calls: Option<ProviderHostCallContext>,
+    duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
+    cancel: Option<tokio::sync::watch::Receiver<bool>>,
+) -> FrameworkResult<Value> {
     let context = StreamingCallContext {
         required_live_events: None,
         diagnostic_live_events: None,
@@ -55,16 +83,16 @@ pub(super) async fn exchange(
         host_calls,
     };
     let result = worker
-        .call_json(
+        .call_json_duplex(
             serde_json::to_value(request)
                 .map_err(|_| invalid("managed operation request encoding failed"))?,
             &binding.limits,
             Some(context),
-            Some(Box::new(lease)),
+            Some(Box::new((lease, activity))),
+            duplex,
+            cancel,
         )
         .await;
-    owner.control.terminate().await;
-    owner.finished = true;
     let (response, _) = result?;
     let response: CapabilityStdioResponse = serde_json::from_value(response)
         .map_err(|_| invalid("managed operation response is malformed"))?;

@@ -476,6 +476,7 @@ pub(crate) fn is_approved_external_control_http(method: &str, route_template: &s
 
 #[derive(Default)]
 pub(crate) struct ExternalEndpointCatalogCompiler {
+    managed_stream_controls: BTreeSet<ExternalEndpointIdentity>,
     rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
     required_frozen_bindings: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
     mounted_routes: BTreeSet<ExternalEndpointIdentity>,
@@ -483,6 +484,43 @@ pub(crate) struct ExternalEndpointCatalogCompiler {
 }
 
 impl ExternalEndpointCatalogCompiler {
+    /// Exact protocol ingress is derived only from a validated managed stream declaration and its
+    /// frozen canonical POST binding; package paths alone never grant an external control surface.
+    pub(crate) fn contribute_managed_stream_controls(
+        &mut self,
+        services: &[crate::managed_services::ManagedServiceRegistration],
+        registry: &interface_runtime::CompiledInterfaceRegistry,
+    ) -> anyhow::Result<()> {
+        for op in services
+            .iter()
+            .flat_map(|service| &service.declaration.operations)
+            .filter(|op| op.stream.is_some())
+        {
+            let binding = registry
+                .binding(&interface_runtime::BindingId::new(format!(
+                    "http.{}.v1",
+                    op.interface_id
+                ))?)
+                .ok_or_else(|| anyhow::anyhow!("managed stream canonical binding missing"))?;
+            let route = binding
+                .projection()
+                .http_route()
+                .ok_or_else(|| anyhow::anyhow!("managed stream HTTP binding missing"))?;
+            anyhow::ensure!(
+                op.method == "POST" && route.method() == "POST" && route.path() == op.path,
+                "managed stream canonical route mismatch"
+            );
+            let identity = ExternalEndpointIdentity::http("GET", &op.path);
+            self.managed_stream_controls.insert(identity);
+            self.contribute(ExternalEndpointContribution::protocol_control_http(
+                "managed-service-stream",
+                "GET",
+                &op.path,
+            ))?;
+        }
+        Ok(())
+    }
+
     /// Reconcile the inventory emitted by the executable mount, after compiling binding
     /// and descriptor projections. A registry or OpenAPI-only inventory cannot supply it.
     pub(crate) fn contribute_mounted_routes(
@@ -661,7 +699,11 @@ impl ExternalEndpointCatalogCompiler {
                 || matches!((&contribution.identity, contribution.source.as_str()),
                     (ExternalEndpointIdentity::Http { method, variant: Some(variant), .. }, "axum.auto-head")
                         if method == "HEAD" && variant == "get-mirror");
-            if !approved && !derived {
+            let managed_stream = contribution.source == "managed-service-stream"
+                && self
+                    .managed_stream_controls
+                    .contains(&contribution.identity);
+            if !approved && !derived && !managed_stream {
                 return Err(ExternalEndpointCatalogError::UnknownControl {
                     identity: contribution.identity,
                 });

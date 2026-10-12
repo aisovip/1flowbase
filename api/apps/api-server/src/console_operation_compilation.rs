@@ -245,6 +245,7 @@ pub(crate) fn compile_console_operation_snapshot(
 
 pub(crate) fn policy_contributions_from_inventory(
     inventory: &access_control::ConsoleOperationCompiledInventory,
+    managed_stream_controls: &[access_control::ConsoleRouteBinding],
 ) -> Vec<ConsoleOperationPolicyContribution> {
     inventory
         .operations
@@ -263,7 +264,12 @@ pub(crate) fn policy_contributions_from_inventory(
                     !crate::external_endpoint_catalog::is_approved_external_control_http(
                         &route.method,
                         &route.path,
-                    )
+                    ) && !(matches!(
+                        operation.authorization,
+                        access_control::ConsoleAuthorization::Authenticated
+                    ) && managed_stream_controls
+                        .iter()
+                        .any(|control| route_key(control) == route_key(route)))
                 })
                 .cloned()
                 .collect(),
