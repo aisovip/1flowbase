@@ -109,7 +109,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 **环境要求**
 
 - Node.js `>=24.0.0`
-- pnpm `11.x`（可通过 `corepack enable` 启用）
+- pnpm `12.11.2`（执行 `corepack enable` 和 `corepack install --global pnpm@12.11.2`）
 - Rust stable 工具链（Cargo）
 - Docker 与 Docker Compose（用于 PostgreSQL 等中间件）
 
