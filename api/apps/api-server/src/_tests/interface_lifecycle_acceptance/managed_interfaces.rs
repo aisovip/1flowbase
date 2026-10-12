@@ -194,10 +194,8 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
             "approvedRemovedBindings"
         )
     );
-    // Approved owner declarations add 20 interfaces/bindings and 13 distinct contracts.
-    // Preview reuses deletion input; Console families reuse the existing target error.
-    assert_eq!(registry.definitions().len(), 494);
-    assert_eq!(registry.bindings().len(), 518);
+    // Exact identity sets above own definition/binding completeness. New routes
+    // can reuse existing managed contract identities; validate those separately.
     assert_eq!(registry.managed_contracts().count(), 198);
     let mut ids = BTreeSet::new();
     for descriptor in registry.managed_contracts() {

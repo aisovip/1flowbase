@@ -25,13 +25,18 @@ test('specialized logs and organization tables retain real ownership and lookup 
       assert.ok(candidate.findings.some((item) => item.table === name && item.rule === rule), `${name}: ${rule}`);
     };
     rejected({ ...original, primaryKey: null }, 'owned-table-primary-key');
-    rejected({ ...original, foreignKeys: [] }, 'owned-table-foreign-key');
-    const owner = contract.foreignKeys[0].columns[0];
-    rejected({ ...original, columns: original.columns.map((column) => column.name === owner
-      ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
+    for (const reference of contract.foreignKeys || []) {
+      rejected({ ...original, foreignKeys: [] }, 'owned-table-foreign-key');
+      for (const owner of reference.columns) {
+        if ((contract.nullableOwnerColumns || []).includes(owner)) continue;
+        rejected({ ...original, columns: original.columns.map((column) => column.name === owner
+          ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
+      }
+    }
     for (const columns of contract.indexes || []) {
       const matches = (index) => columns.every((column, position) => index.columns[position] === column);
       rejected({ ...original,
+        primaryKey: matches(original.primaryKey) ? null : original.primaryKey,
         indexes: original.indexes.filter((index) => !matches(index)),
         uniqueConstraints: original.uniqueConstraints.filter((index) => !matches(index)),
       }, 'owned-table-lookup-index');
@@ -52,5 +57,25 @@ test('specialized ownership exemptions do not relax ordinary business tables', (
   for (const rule of ['managed-table-created-at', 'managed-table-updated-at-or-append-only',
     'managed-table-scope-column', 'managed-table-scope-time-index']) {
     assert.ok(report.findings.some((item) => item.table === table.name && item.rule === rule), rule);
+  }
+});
+
+
+test('plugin credential lookup keeps scope and lifecycle checks without requiring chronology pagination', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const original = inventory.tables.find((table) => table.name === 'plugin_credentials');
+  assert.ok(original);
+  assert.deepEqual(config.exemptions.plugin_credentials.skip.sort(), ['managed-table-id', 'managed-table-scope-time-index']);
+  for (const [column, rule] of [
+    ['scope_id', 'managed-table-scope-column'],
+    ['created_at', 'managed-table-created-at'],
+    ['updated_at', 'managed-table-updated-at-or-append-only'],
+  ]) {
+    const report = evaluateSchemaHygiene({
+      inventory: { tables: [{ ...original, columns: original.columns.filter((item) => item.name !== column) }], parseErrors: [] },
+      config,
+    });
+    assert.ok(report.findings.some((item) => item.table === original.name && item.rule === rule), column);
   }
 });

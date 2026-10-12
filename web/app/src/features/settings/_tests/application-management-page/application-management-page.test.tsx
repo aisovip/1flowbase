@@ -748,7 +748,7 @@ describe('ApplicationManagementPanel', () => {
       </AppProviders>
     );
     const toggle = await screen.findByRole('switch', { name: '日志接收' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle).not.toBeChecked();
     expect(screen.getByText('已停用')).toBeInTheDocument();
     fireEvent.click(toggle);
     await waitFor(() =>
@@ -757,10 +757,7 @@ describe('ApplicationManagementPanel', () => {
       ).toHaveBeenCalledWith('logs', true, 'csrf-123')
     );
     await waitFor(() =>
-      expect(screen.getByRole('switch', { name: '日志接收' })).toHaveAttribute(
-        'aria-checked',
-        'true'
-      )
+      expect(screen.getByRole('switch', { name: '日志接收' })).toBeChecked()
     );
     expect(screen.getByText('接收中')).toBeInTheDocument();
     expect(

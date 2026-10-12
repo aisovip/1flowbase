@@ -696,10 +696,38 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
         .await
         .unwrap();
 
-    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        completed.flow_run.status,
+        domain::FlowRunStatus::Succeeded,
+        "callback must persist its terminal answer: error={:?}; nodes={:?}",
+        completed.flow_run.error_payload,
+        completed.node_runs
+    );
     assert_eq!(
         completed.flow_run.output_payload["answer"],
         json!(final_answer)
+    );
+    let selections = service
+        .llm_selection_events_fixture(completed.flow_run.id)
+        .await;
+    let selection_nodes = selections
+        .iter()
+        .filter(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+        .map(|event| event.node_run_id)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        selection_nodes.len(),
+        2,
+        "both provider rounds must commit selection"
+    );
+    assert_eq!(
+        stream
+            .events()
+            .iter()
+            .filter(|event| event.event_type == crate::ports::LlmInputSelection::EVENT_TYPE)
+            .count(),
+        1,
+        "the callback selection must not reopen the waiting stream"
     );
     let streamed_text = stream
         .events()

@@ -691,6 +691,25 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "plugin_credentials": {
+      "kind": "plugin_credential_lookup",
+      "reason": "Plugin outbound credentials are encrypted values addressed by publisher namespace, plugin code, scope and credential identity; reads and writes use that full composite key rather than chronological resource pagination.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_version_objects": {
+      "kind": "system_schema_version_membership",
+      "reason": "Version membership is an immutable set keyed by plugin owner, admitted version and ownership key; ownership_key references the system schema catalog and owner/version prefix supports all membership lookups.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "application_log_deletion_jobs": {
       "kind": "application_owned_job",
       "reason": "Deletion jobs are addressed by application_id and scope_id with newest-job chronology, while pending work uses the existing status-filtered index.",
@@ -1472,6 +1491,47 @@
     }
   },
   "ownedTableContracts": {
+    "plugin_credentials": {
+      "primaryKey": [
+        "publisher_namespace",
+        "plugin_code",
+        "scope_id",
+        "credential_id"
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        [
+          "publisher_namespace",
+          "plugin_code",
+          "scope_id",
+          "credential_id"
+        ]
+      ]
+    },
+    "plugin_schema_version_objects": {
+      "primaryKey": [
+        "owner_id",
+        "owner_version",
+        "ownership_key"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "ownership_key"
+          ],
+          "table": "plugin_schema_ownership",
+          "references": [
+            "ownership_key"
+          ]
+        }
+      ],
+      "indexes": [
+        [
+          "owner_id",
+          "owner_version"
+        ]
+      ]
+    },
     "application_log_deletion_jobs": {
       "primaryKey": [
         "id"

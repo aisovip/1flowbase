@@ -144,7 +144,7 @@ function boundIssueBody(markdown, maxBytes = MAX_GITHUB_ISSUE_BODY_BYTES) {
   return `${body.slice(0, low).trimEnd()}${suffix}`;
 }
 
-function listFilesBySuffix(rootDir, suffix) {
+function listFilesBySuffix(rootDir, suffix, excludedDirectories = new Set()) {
   if (!fs.existsSync(rootDir)) {
     return [];
   }
@@ -155,7 +155,7 @@ function listFilesBySuffix(rootDir, suffix) {
       const absolutePath = path.join(currentDir, entry.name);
 
       if (entry.isDirectory()) {
-        walk(absolutePath);
+        if (!excludedDirectories.has(entry.name)) walk(absolutePath);
         continue;
       }
 
@@ -558,7 +558,10 @@ function readQualityGateArtifactReports({ repoRoot, artifactRoot }) {
     return [];
   }
 
-  const reports = listFilesBySuffix(absoluteArtifactRoot, 'quality-gate-report.json')
+  // A rerun's previous aggregate is derived output, not a component receipt.
+  const reports = listFilesBySuffix(
+    absoluteArtifactRoot, 'quality-gate-report.json', new Set(['test-governance-artifacts'])
+  )
     .map((reportPath) => {
       const report = readJsonFileIfPresent(reportPath);
 

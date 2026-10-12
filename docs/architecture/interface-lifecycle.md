@@ -380,3 +380,8 @@ Outbox lease/retry/去重/每订阅者 ACK 与 PluginData 局部幂等归各自 
 ## AI Native 调用轨迹与协议诊断
 
 映射协议层、AI Native 与供应商插件保持各自职责；日志采集不迁移执行或翻译职责。采集开关、完整性、语义/原始协议读取与历史来源的契约统一见 [AI Gateway 执行证据](ai-gateway-observation.md#ai-native-调用轨迹与协议诊断)。
+
+
+### Provider selection and callback presentation
+
+宿主的 `LlmInputSelection` 是协议投影所需的 durable host fact：调用 Provider 前先等待其提交，失败则阻止 Provider 输出。实时展示副本在提交后发送，禁止再次进入异步持久化。工具回调可能在 WaitingCallback 展示流关闭后继续；旧流的关闭不取消业务，也不阻止后续 selection 和最终答案持久化，不为投影重新打开旧流。

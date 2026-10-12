@@ -36,7 +36,7 @@ test('Delivery 1919 keeps Host Service outside RuntimeBackend and storage outsid
 // Check the actual injection call, not an unrelated store clone elsewhere in boot.
 function assertPluginDataBoot(boot) {
   const call = boot.match(
-    /RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source\(\s*process_started_at,\s*runtime_artifact_resolver,\s*Arc::new\(store\.clone\(\)\),\s*Arc::clone\(&runtime_sample_source\),\s*\)/u,
+    /RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source\(\s*process_started_at,\s*runtime_artifact_resolver,\s*Arc::new\(\s*control_plane::plugin_management::ManagedPluginDataService::new\(\s*Arc::new\(store\.clone\(\)\),\s*Arc::new\(store\.clone\(\)\)\s*\)\s*\),\s*Arc::clone\(&runtime_sample_source\),\s*\)/u,
   );
   assert.ok(call, 'composition root must inject PluginData and the shared profile source');
 }
@@ -44,12 +44,12 @@ function assertPluginDataBoot(boot) {
 test('PluginData boot gate rejects missing injection even with unrelated store clones', () => {
   const boot = read('api/apps/api-server/src/lib.rs');
   assert.throws(() => assertPluginDataBoot(boot.replace(
-    '            Arc::new(store.clone()),',
-    '            Arc::new(MissingPluginDataPort),',
+    'ManagedPluginDataService::new',
+    'MissingPluginDataPort::new',
   )), /composition root must inject PluginData/u);
   assert.throws(() => assertPluginDataBoot(boot.replace(
-    '            Arc::clone(&runtime_sample_source),',
-    '            Arc::new(RuntimeSampleSource::default()),',
+    /Arc::clone\(&runtime_sample_source\)/u,
+    'Arc::new(RuntimeSampleSource::default())',
   )), /composition root must inject PluginData/u);
 });
 

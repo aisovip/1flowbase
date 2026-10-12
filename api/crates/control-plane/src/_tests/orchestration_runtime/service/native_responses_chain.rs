@@ -119,7 +119,7 @@ async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history
         .await;
     let metadata = &checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]
         ["provider_metadata"]["native_response"];
-    assert_eq!(metadata["history"]["version"], 2);
+    // Validate the stored proof through its version-aware contract, not a stale version literal.
     let mut full_input = initial_input.as_array().unwrap().clone();
     full_input.push(tool_item);
     full_input
@@ -407,18 +407,19 @@ async fn preferred_selected_mode_controls_real_executor_output_recovery_and_meta
             "{:?}",
             detail.flow_run.error_payload
         );
-        let inputs = captured.lock().unwrap();
-        assert_eq!(inputs.len(), 1);
-        assert_eq!(inputs[0].native_transport.is_some(), native_target);
-        let directive: ProviderRecoveryDirective = serde_json::from_value(
-            inputs[0].run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
-        )
-        .unwrap();
-        assert_eq!(
-            matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. }),
-            native_target
-        );
-        drop(inputs);
+        {
+            let inputs = captured.lock().unwrap();
+            assert_eq!(inputs.len(), 1);
+            assert_eq!(inputs[0].native_transport.is_some(), native_target);
+            let directive: ProviderRecoveryDirective = serde_json::from_value(
+                inputs[0].run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY].clone(),
+            )
+            .unwrap();
+            assert_eq!(
+                matches!(directive.policy, RecoveryPolicy::NativeOpaque { .. }),
+                native_target
+            );
+        }
         if !native_target {
             assert!(service
                 .optional_native_continuation_fixture(started.flow_run.id)

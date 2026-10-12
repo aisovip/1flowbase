@@ -170,9 +170,9 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                                 "permission_codes",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!(
-                                                        (item).permission_codes.len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .permission_codes
+                                                        .len()),
                                                 )]),
                                             ),
                                             (

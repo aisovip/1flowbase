@@ -60,7 +60,9 @@
 
 ## Executed Test Evidence
 
-后端一致性、Seed 和 image-llm 的每条定向 gate 命令需要至少一个已执行通过的测试；编译成功、全部 ignored 或空 filter 选择均失败。保护性 selector 重命名后同步更新 `verify/backend-targets.js`，脚本快照不能锁死已删除的测试名。`test-backend` 与 `verify-backend all/image-llm-vision` 都要拒绝单条空选择，不能用相邻命令的 passing count 代替。测试移到跨层 host 后使用当前 Cargo integration target，报告保留 `testTarget`，不能继续用旧 module 名获得 0 用例绿灯。
+所有定向 Cargo 行为门禁（包括后端一致性、Seed、image-llm、organization 与 agent logs 专项）的每条命令需要至少一个已执行通过的测试；编译成功、全部 ignored 或空 filter 选择均失败。保护性 selector 重命名后同步更新 `verify/backend-targets.js`，脚本快照不能锁死已删除的测试名。`test-backend` 与 `verify-backend all/image-llm-vision` 都要拒绝单条空选择，不能用相邻命令的 passing count 代替。测试移到跨层 host 后使用当前 Cargo integration target，报告保留 `testTarget`，不能继续用旧 module 名获得 0 用例绿灯。
+
+门禁路由必须覆盖真实 Git diff 的新增、修改与删除；纯删除生产 owner 或测试不能变成未选基座。正反 fixture 应使用实际 staged / branch diff，并保留产物目录忽略的合法反例。
 
 ## Quality Rule Changes
 

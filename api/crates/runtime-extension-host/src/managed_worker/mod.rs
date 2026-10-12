@@ -191,7 +191,6 @@ impl ManagedWorkers {
     }
 
     #[cfg(test)]
-    #[cfg(test)]
     pub(crate) fn execute(
         &self,
         request: RuntimeManagedCapabilityRequest,

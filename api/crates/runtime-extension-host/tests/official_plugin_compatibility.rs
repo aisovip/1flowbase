@@ -190,7 +190,12 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
                 | PluginExecutionMode::StatefulRuntimeWorker
         ));
         if manifest.plugin_id == "session_retry_distribution" {
-            assert_eq!(manifest.version, "1.0.0");
+            // Package versions follow release/signing changes. Host activation
+            // uses that manifest version; the distribution wire contract is stable.
+            assert_eq!(
+                manifest.contract_version,
+                extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1
+            );
         }
         actual.insert(manifest.plugin_id.clone());
         modes.insert(manifest.execution_mode.as_str());

@@ -42,10 +42,10 @@ mod conversation;
 mod deletion;
 #[path = "agent_logs/deletion_jobs.rs"]
 mod deletion_jobs;
-#[path = "agent_logs/input_titles.rs"]
-mod input_titles;
 #[path = "agent_logs/field_projection.rs"]
 mod field_projection;
+#[path = "agent_logs/input_titles.rs"]
+mod input_titles;
 #[path = "agent_logs/pricing.rs"]
 mod pricing;
 async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {

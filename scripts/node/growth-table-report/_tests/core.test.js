@@ -225,7 +225,7 @@ test('collectGrowthTableReport exempts bounded plugin projections from expansion
     create index plugin_package_catalog_projection_status_idx
       on plugin_package_catalog_projection (projection_status, updated_at desc);
 
-    create table plugin_artifact_instances (
+    create table extension_artifact_instances (
       node_id text not null,
       installation_id uuid not null,
       artifact_status text not null,
@@ -234,8 +234,8 @@ test('collectGrowthTableReport exempts bounded plugin projections from expansion
       primary key (node_id, installation_id)
     );
 
-    create index plugin_artifact_instances_installation_id_idx
-      on plugin_artifact_instances (installation_id);
+    create index extension_artifact_instances_installation_id_idx
+      on extension_artifact_instances (installation_id);
   `);
 
   const report = collectGrowthTableReport({
@@ -268,7 +268,7 @@ test('collectGrowthTableReport exempts bounded plugin projections from expansion
           ],
         },
         {
-          name: 'plugin_artifact_instances',
+          name: 'extension_artifact_instances',
           growthType: 'plugin_artifact_projection',
           requiredRoutingColumns: ['installation_id', 'node_id'],
           requiredTimeColumns: ['checked_at'],
@@ -292,7 +292,7 @@ test('collectGrowthTableReport exempts bounded plugin projections from expansion
 
   assert.equal(report.summary.mustFix, 0);
   const catalog = report.tables.find((table) => table.name === 'plugin_package_catalog_projection');
-  const artifact = report.tables.find((table) => table.name === 'plugin_artifact_instances');
+  const artifact = report.tables.find((table) => table.name === 'extension_artifact_instances');
 
   assert.equal(catalog.expansionReadiness.status, 'bounded');
   assert.equal(catalog.expansionReadiness.exemption.reason, catalogReason);
@@ -423,12 +423,12 @@ test('default config covers issue-required and active legacy high-growth tables'
     'application_run_trace_nodes',
     'application_run_trace_node_contents',
     'plugin_package_catalog_projection',
-    'plugin_artifact_instances',
+    'extension_artifact_instances',
   ]) {
     assert.equal(tableNames.has(tableName), true, `${tableName} must be covered`);
   }
 
-  for (const tableName of ['plugin_package_catalog_projection', 'plugin_artifact_instances']) {
+  for (const tableName of ['plugin_package_catalog_projection', 'extension_artifact_instances']) {
     const spec = config.tables.find((table) => table.name === tableName);
     assert.equal(spec.expansionReadinessExemption.kind, 'bounded_projection');
     assert.match(spec.expansionReadinessExemption.reason, /bounded plugin/u);
@@ -442,4 +442,27 @@ test('default config covers issue-required and active legacy high-growth tables'
     const spec = config.tables.find((table) => table.name === tableName);
     assert.match(spec.backfill.source, /flow_runs\.scope_id/u);
   }
+});
+
+
+test('default growth owners match current migrations and retired owners remain detectable', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const config = { ...loadConfig(repoRoot), sourceSearchDirs: [] };
+  const report = collectGrowthTableReport({ repoRoot, config });
+  assert.deepEqual(
+    report.tables.flatMap(table => table.findings.filter(finding => finding.rule === 'table-missing')),
+    [],
+    'growth inventory must track current migration table identities'
+  );
+  for (const name of ['plugin_package_catalog_projection', 'extension_artifact_instances']) {
+    const spec = config.tables.find(table => table.name === name);
+    assert.deepEqual(spec.expansionReadinessExemption.boundedBy, ['extension_installations']);
+  }
+  assert.equal(config.tables.some(table => table.name === 'plugin_artifact_instances'), false);
+  const retired = collectGrowthTableReport({
+    repoRoot,
+    config: { sourceSearchDirs: [], tables: [{ name: 'plugin_artifact_instances' }] },
+  });
+  assert.equal(retired.tables[0].status, 'must_fix');
+  assert.ok(retired.tables[0].findings.some(finding => finding.rule === 'table-missing'));
 });
