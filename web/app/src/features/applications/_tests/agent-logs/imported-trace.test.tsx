@@ -157,6 +157,7 @@ test.each(['message trace', 'trajectory window'])(
         <ConversationLogPanel
           activeTab="trace"
           defaultTraceToolsExpanded
+          onClose={vi.fn()}
           message={buildApplicationRunTraceMessage('main-round')}
           traceLoader={f.loader}
         />
