@@ -130,6 +130,8 @@ pub struct ApplicationLogRecordConversationPageInfo {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationLogRecordOverview {
+    pub parent_task_run_id: Option<Uuid>,
+    pub child_task_count: i64,
     pub started_at: String,
     pub finished_at: Option<String>,
     pub requested_model_id: Option<String>,

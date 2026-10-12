@@ -140,8 +140,9 @@ pub(super) async fn ingest(
         refresh_task(&mut tx, application_id, *record).await?;
     }
     if !changed_records.is_empty() {
-        sqlx::query("update application_run_log_tasks child set parent_task_run_id=parent.id from application_run_log_tasks parent where child.application_id=$1 and parent.application_id=$1 and child.source_id=$2 and parent.source_id=$2 and child.source_session_id=parent.source_session_id and child.parent_source_task_id=parent.source_task_id and child.id<>parent.id and child.parent_task_run_id is distinct from parent.id")
-        .bind(application_id).bind(&batch.source_id).execute(&mut *tx).await?;
+        hierarchy::resolve(
+            &mut tx, application_id, scope_id, &batch.source_id, &batch.source_client,
+        ).await?;
     }
     receipt.record_ids = records.into_iter().collect();
     tx.commit().await?;
@@ -327,7 +328,7 @@ async fn refresh_task(
             .map(|(_, _, timestamp)| timestamp.as_str()),
     );
     let final_text = final_output.as_ref().map(|(text, _, _)| text);
-    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),source_task_id),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=$12::timestamptz,updated_at=now(),parent_source_task_id=$13,parent_task_run_id=(select p.id from application_run_log_tasks p where p.application_id=$1 and p.source_id=application_run_log_tasks.source_id and p.source_session_id=application_run_log_tasks.source_session_id and p.source_task_id=$13 and p.id<>$2),requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
+    sqlx::query("update application_run_log_tasks set user_input=$3,final_output=$4,title=coalesce(left($3,100),source_task_id),status=$5,outcome=$6,total_tokens=$7,input_tokens=$8,output_tokens=$9,input_cache_hit_tokens=$10,total_cost=$11::numeric,cost_breakdown=jsonb_build_object('total_cost',$11::text),finished_at=$12::timestamptz,updated_at=now(),parent_source_task_id=$13,requested_model_id=$14,reasoning_effort=$15 where application_id=$1 and id=$2")
         .bind(application_id).bind(record_id).bind(user).bind(final_text).bind(status).bind(outcome).bind(totals[0]).bind(totals[1]).bind(totals[2]).bind(totals[3]).bind(total_cost).bind(finished_at).bind(parent).bind(model_id).bind(reasoning_effort).execute(&mut **tx).await?;
     sqlx::query("delete from application_run_conversation_message_items where application_id=$1 and record_id=$2").bind(application_id).bind(record_id).execute(&mut **tx).await?;
     for m in messages {
@@ -337,6 +338,7 @@ async fn refresh_task(
     Ok(())
 }
 
+mod hierarchy;
 pub(super) mod conversation;
 pub(super) mod reads;
 pub(super) use reads::{overview, page, section};

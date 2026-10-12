@@ -22,6 +22,12 @@ import { DebugMarkdownContent } from './DebugMarkdownContent';
 import { PageReferenceTag } from './PageReferenceTag';
 import { i18nText } from '../../../../../shared/i18n/text';
 
+export interface ConversationSupplement {
+  key: string;
+  afterMessageId: string | null;
+  content: ReactNode;
+}
+
 const HISTORY_LOAD_SCROLL_THRESHOLD_PX = 96;
 
 interface ConversationScrollSnapshot {
@@ -54,6 +60,7 @@ function bubbleMessageStatus(
 export function DebugConversationPane({
   assistantMessageActions,
   assistantMessageMainRender,
+  conversationSupplements,
   composerUiOnly = false,
   composerHeader,
   composerFooterActions,
@@ -73,6 +80,7 @@ export function DebugConversationPane({
   showComposer = true
 }: {
   assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
+  conversationSupplements?: ConversationSupplement[];
   status: AgentFlowDebugSessionStatus;
   stopping: boolean;
   runContext: AgentFlowRunContext;
@@ -162,6 +170,23 @@ export function DebugConversationPane({
       })),
     [messages]
   );
+  // Supplements are separate content, never fabricated conversation messages.
+  const conversationSections = useMemo(() => {
+    if (!conversationSupplements?.length) return null;
+    let start = 0;
+    return [
+      ...conversationSupplements.map((supplement) => {
+        const anchor = supplement.afterMessageId === null
+          ? -1
+          : messages.findIndex((message) => message.id === supplement.afterMessageId);
+        const end = Math.max(start, anchor + 1);
+        const items = bubbleItems.slice(start, end);
+        start = end;
+        return { key: supplement.key, items, content: supplement.content };
+      }),
+      { key: 'remaining-messages', items: bubbleItems.slice(start), content: null }
+    ];
+  }, [bubbleItems, conversationSupplements, messages]);
   const bubbleRoles = useMemo(
     () => ({
       assistant: {
@@ -394,7 +419,17 @@ export function DebugConversationPane({
           ref={messageListRef}
           className="agent-flow-editor__debug-message-list"
         >
-          {messages.length === 0 ? (
+          {conversationSections ? (
+            conversationSections.map((section) => (
+              <div key={section.key}>
+                {section.items.length ? (
+                  <Bubble.List autoScroll={false} items={section.items} role={bubbleRoles}
+                    rootClassName="agent-flow-editor__debug-bubble-list" />
+                ) : null}
+                {section.content}
+              </div>
+            ))
+          ) : messages.length === 0 ? (
             <Empty
               description={i18nText(
                 'agentFlow',

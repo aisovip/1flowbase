@@ -32,6 +32,8 @@ vi.mock('../../api/runtime', async (original) => ({
   ...native
 }));
 const record = {
+  parent_task_run_id: null,
+  child_task_count: 0,
   record_id: 'record-1',
   status: 'succeeded',
   source_id: 'source-1',

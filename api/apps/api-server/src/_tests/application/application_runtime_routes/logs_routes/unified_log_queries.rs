@@ -251,6 +251,8 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         format!("/api/console/applications/{id}/logs/records/{record}"),
     )
     .await;
+    assert_eq!(overview["data"]["parent_task_run_id"], Value::Null);
+    assert_eq!(overview["data"]["child_task_count"], 0);
     let conversation_uri =
         format!("/api/console/applications/{id}/logs/records/{record}/conversation/messages");
     let conversation = get_console_json(&app, &cookie, conversation_uri.clone()).await;
@@ -265,8 +267,14 @@ async fn agent_logs_unified_query_console_ingested_record_locator_wrong_applicat
         conversation["data"]["page"]["newest_cursor"],
         record.to_string()
     );
+    let children = get_console_json(&app, &cookie, format!("{conversation_uri}?scope=children")).await;
+    assert_eq!(children["data"]["items"], json!([]));
+    assert_eq!(children["data"]["page"]["has_before"], false);
     for (url, cookie_value, status) in [
         (conversation_uri.clone(), None, StatusCode::UNAUTHORIZED),
+        (format!("{conversation_uri}?scope=children"), None, StatusCode::UNAUTHORIZED),
+        (format!("{conversation_uri}?scope=invalid"), Some(cookie.as_str()), StatusCode::BAD_REQUEST),
+        (format!("{conversation_uri}?scope=children&before={other_record}"), Some(cookie.as_str()), StatusCode::BAD_REQUEST),
         (
             format!("{conversation_uri}?before={other_record}"),
             Some(cookie.as_str()),
