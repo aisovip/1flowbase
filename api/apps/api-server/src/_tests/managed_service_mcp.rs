@@ -305,3 +305,28 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
     };
     assert_eq!(value, json!({"stdout":"fixture"}));
 }
+
+#[test]
+fn managed_media_projection_preserves_mapping_and_advertises_metadata_schema() {
+    let mut service = registration();
+    let mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"});
+    let metadata_schema = json!({"type":"object","properties":{"path":{"type":"string"},"byte_count":{"type":"integer"}}});
+    let operation = &mut service.declaration.operations[0];
+    operation.output_schema = json!({"type":"object","properties":{"data":{"type":"string"},"mime_type":{"type":"string"},"metadata":metadata_schema}});
+    operation.mcp.as_mut().unwrap().output_mapping = Some(mapping.clone());
+    let mut catalog = base_catalog();
+    let instance = catalog.instances[0].clone();
+    append_service(
+        &mut catalog,
+        &instance,
+        &service,
+        &[&service.declaration.operations[0]],
+        Uuid::nil(),
+    )
+    .unwrap();
+    assert_eq!(catalog.tools[0].output_mapping, mapping);
+    assert_eq!(catalog.tools[0].result_schema, metadata_schema);
+    assert!(catalog.tools[0].result_schema["properties"]
+        .get("data")
+        .is_none());
+}

@@ -30,6 +30,62 @@ pub struct ManagedServiceMcpDeclaration {
     /// Package-local fixed operation name; Host prefixes the plugin owner namespace.
     pub name: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_mapping: Option<Value>,
+}
+
+/// Explicit MCP media projection; business responses retain their own schema.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedMcpMediaMapping {
+    pub mcp_content: Vec<ManagedMcpImageMapping>,
+    pub structured_content_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedMcpImageMapping {
+    #[serde(rename = "type")]
+    pub content_type: String,
+    pub data_path: String,
+    pub mime_type_path: String,
+}
+
+impl ManagedMcpMediaMapping {
+    pub fn parse(value: &Value) -> Result<Self, &'static str> {
+        let mapping: Self =
+            serde_json::from_value(value.clone()).map_err(|_| "invalid media mapping structure")?;
+        fn pointer(path: &str) -> bool {
+            if !path.starts_with('/') {
+                return false;
+            }
+            let mut bytes = path.bytes();
+            while let Some(byte) = bytes.next() {
+                if byte == b'~' && !matches!(bytes.next(), Some(b'0' | b'1')) {
+                    return false;
+                }
+            }
+            true
+        }
+        fn overlaps(a: &str, b: &str) -> bool {
+            a == b
+                || a.strip_prefix(b).is_some_and(|tail| tail.starts_with('/'))
+                || b.strip_prefix(a).is_some_and(|tail| tail.starts_with('/'))
+        }
+        if mapping.mcp_content.is_empty()
+            || !pointer(&mapping.structured_content_path)
+            || mapping.mcp_content.iter().any(|image| {
+                image.content_type != "image"
+                    || !pointer(&image.data_path)
+                    || !pointer(&image.mime_type_path)
+                    || overlaps(&image.data_path, &mapping.structured_content_path)
+                    || overlaps(&image.data_path, &image.mime_type_path)
+            })
+        {
+            return Err("invalid media mapping paths or content type");
+        }
+        Ok(mapping)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -199,6 +255,9 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
     let mut shared_runtime = None;
     for operation in &service.operations {
         if let Some(mcp) = &operation.mcp {
+            if let Some(mapping) = &mcp.output_mapping {
+                ManagedMcpMediaMapping::parse(mapping).map_err(invalid)?;
+            }
             let mut parameter_names = BTreeSet::new();
             for location in ["path", "query", "body"] {
                 if let Some(fields) = operation

@@ -208,9 +208,15 @@ fn append_service(
                 interface_id: operation.interface_id.clone(),
             },
             parameter_schema: operation.input_schema.clone(),
-            result_schema: operation.output_schema.clone(),
+            result_schema: media_result_schema(
+                &operation.output_schema,
+                mcp.output_mapping.as_ref(),
+            ),
             input_mapping: input_mapping(&operation.input_schema),
-            output_mapping: operation.output_schema.clone(),
+            output_mapping: mcp
+                .output_mapping
+                .clone()
+                .unwrap_or_else(|| operation.output_schema.clone()),
             max_inline_chars: None,
             response_fields: None,
             permission_code: None,
@@ -275,3 +281,31 @@ fn input_mapping(schema: &Value) -> Value {
 #[cfg(test)]
 #[path = "_tests/managed_service_mcp.rs"]
 mod tests;
+
+// Project only a real declared metadata subschema; unresolved schemas remain unconstrained.
+fn media_result_schema(schema: &Value, mapping: Option<&Value>) -> Value {
+    let Some(mapping) = mapping else {
+        return schema.clone();
+    };
+    let Ok(mapping) = plugin_framework::ManagedMcpMediaMapping::parse(mapping) else {
+        return json!({});
+    };
+    let mut current = schema;
+    for segment in mapping.structured_content_path.split('/').skip(1) {
+        let name = segment.replace("~1", "/").replace("~0", "~");
+        let next = if current.get("type").and_then(Value::as_str) == Some("array") {
+            name.parse::<usize>()
+                .ok()
+                .and_then(|_| current.get("items"))
+        } else {
+            current
+                .get("properties")
+                .and_then(|properties| properties.get(&name))
+        };
+        let Some(next) = next else {
+            return json!({});
+        };
+        current = next;
+    }
+    current.clone()
+}

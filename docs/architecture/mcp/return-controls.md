@@ -82,3 +82,19 @@ Tool 的 `basic` 步骤支持两个独立默认值，后端持久化并通过管
 预算包含结果内容的 JSON 结构、路径和续读元数据，不只是字符串正文。预算过小、不足以承载一个条目时，返回 `page_budget_too_small`，不静默丢弃正文；这类必要诊断以及 MCP 协议外壳不等同于业务正文预算。
 
 详情缓存沿用现有 10 分钟有效期与存储容量边界；缓存不可用、过期、路径不存在或游标不匹配均明确返回状态。结果读取与业务执行分离，`retry_original: false` 表示不能为了恢复详情重试原操作，尤其不能重复写入。
+
+
+## 声明式图片返回
+
+受管 operation 的 `mcp.output_mapping` 可声明原生 MCP 图片与独立 metadata：
+
+```json
+{
+  "mcp_content": [{"type": "image", "data_path": "/data", "mime_type_path": "/mime_type"}],
+  "structured_content_path": "/metadata"
+}
+```
+
+路径是显式 JSON Pointer，指向业务响应对象；图片字段与 metadata 路径不得重叠。宿主只按声明提取，不猜测 stdout 或其他字符串。支持 JPEG、PNG、GIF、WebP 的标准 MIME；缺失路径、非对象 metadata、空/非法 base64、非法 MIME 或 mapping 明确失败。图片以完整 base64 与 `mimeType` 进入 `content` 的原生 `image` item，不进入 `structuredContent`、文本分页或 ephemeral 缓存。`max_inline_chars` 和字段/范围选择只作用于 metadata，详情续读也只保存 metadata；低文本预算不截断图片。上游 MCP proxy 的原生非文本内容在 metadata 分页时继续保留。
+
+业务 `output_schema` 保留原响应契约。`mcp_get.result_schema` 使用声明 metadata 路径对应的真实业务子 schema；无法静态解析时返回未约束 schema，不伪造字段。省略 `mcp.output_mapping` 保持原有纯文本投影。

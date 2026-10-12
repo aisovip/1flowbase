@@ -1074,6 +1074,10 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
             }
         }
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+            let media_mapping = match result_delivery::media::mapping(&tool.output_mapping) {
+                Ok(mapping) => mapping,
+                Err(reason) => return Ok(media_mapping_error(reason)),
+            };
             let interface = match interface_catalog.bindable_interface(interface_id) {
                 Ok(interface) => interface,
                 Err(error) => return Ok(interface_error(&error.0)),
@@ -1105,18 +1109,31 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                 )
                 .await
             {
-                Ok(value) => Ok(VirtualToolOutcome::Success(
-                    result_delivery::deliver_result(
+                Ok(value) => {
+                    let (detail, media_content) = match media_mapping {
+                        Some(mapping) => match result_delivery::media::project(&mapping, &value) {
+                            Ok(result) => (
+                                result.structured_content.expect("media metadata"),
+                                result.content,
+                            ),
+                            Err(reason) => return Ok(media_mapping_error(reason)),
+                        },
+                        None => (value, json!([])),
+                    };
+                    let delivered = result_delivery::deliver_result(
                         &dependencies.result_delivery,
                         actor,
                         operation,
-                        value,
+                        detail,
                         inline_chars,
                         &selection,
                         tool,
                     )
-                    .await,
-                )),
+                    .await;
+                    Ok(VirtualToolOutcome::Success(
+                        result_delivery::media::retain_content(delivered, &media_content),
+                    ))
+                }
                 Err(debug_execute::McpDebugExecuteError::Api(error)) => Ok(interface_error(&error)),
                 Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
                     Ok(target_interface_failure(response).await)
@@ -1199,29 +1216,43 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
                     ))
                 }
             };
-            let detail = value
-                .get("structuredContent")
-                .cloned()
-                .unwrap_or_else(|| value.clone());
+            let has_media = value
+                .get("content")
+                .and_then(Value::as_array)
+                .is_some_and(|items| {
+                    items
+                        .iter()
+                        .any(|item| item.get("type").and_then(Value::as_str) != Some("text"))
+                });
+            let detail = value.get("structuredContent").cloned().unwrap_or_else(|| {
+                if has_media {
+                    json!({"content": value.get("content").and_then(Value::as_array).map(|items|
+                        items.iter().filter(|item| item.get("type").and_then(Value::as_str) == Some("text")).cloned().collect::<Vec<_>>()).unwrap_or_default()})
+                } else { value.clone() }
+            });
             if selection.is_default()
                 && !result_delivery::exceeds_inline_limit(&detail, inline_chars)
             {
                 Ok(VirtualToolOutcome::Success(value))
             } else {
-                Ok(VirtualToolOutcome::Success(
-                    result_delivery::deliver_result(
-                        &dependencies.result_delivery,
-                        actor,
-                        result_delivery::CompletedOperation::Write {
-                            operation_id: &tool.tool_id,
-                        },
-                        detail,
-                        inline_chars,
-                        &selection,
-                        tool,
-                    )
-                    .await,
-                ))
+                let delivered = result_delivery::deliver_result(
+                    &dependencies.result_delivery,
+                    actor,
+                    result_delivery::CompletedOperation::Write {
+                        operation_id: &tool.tool_id,
+                    },
+                    detail,
+                    inline_chars,
+                    &selection,
+                    tool,
+                )
+                .await;
+                let mut delivered =
+                    result_delivery::media::retain_content(delivered, &value["content"]);
+                if let Some(is_error) = value.get("isError") {
+                    delivered["isError"] = is_error.clone();
+                }
+                Ok(VirtualToolOutcome::Success(delivered))
             }
         }
     }
@@ -1395,3 +1426,11 @@ mod tests;
 #[cfg(test)]
 #[path = "_tests/target_error_diagnostics.rs"]
 mod target_error_diagnostics;
+
+fn media_mapping_error(reason: &str) -> VirtualToolOutcome {
+    VirtualToolOutcome::Error {
+        code: -32603,
+        message: "invalid_tool_configuration",
+        data: Some(json!({"field":"output_mapping", "reason":reason})),
+    }
+}

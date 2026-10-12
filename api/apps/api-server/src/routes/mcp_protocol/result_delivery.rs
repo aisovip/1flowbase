@@ -13,6 +13,9 @@ use crate::host_infrastructure::CacheStore;
 
 #[path = "result_delivery/selection.rs"]
 mod selection;
+
+#[path = "result_delivery/media.rs"]
+pub(crate) mod media;
 pub(crate) use selection::ResultSelection;
 
 #[path = "result_delivery/paging.rs"]

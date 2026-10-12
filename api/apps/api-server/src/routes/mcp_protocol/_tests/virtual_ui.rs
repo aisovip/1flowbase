@@ -463,3 +463,206 @@ async fn node_diagnostics_mcp_does_not_forward_auth_or_server_details() {
         assert!(!data.to_string().contains("private"));
     }
 }
+
+struct MediaFixtureDispatch {
+    value: Value,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl McpInterfaceDispatchPort for MediaFixtureDispatch {
+    async fn execute(
+        &self,
+        _headers: HeaderMap,
+        _interface: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        _server_bound_inputs: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        // The real debug executor treats declarations without properties as raw result projection.
+        assert!(body.output_mapping.get("properties").is_none());
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(self.value.clone())
+    }
+}
+
+fn media_fixture_interfaces() -> McpInterfaceCatalogSnapshot {
+    McpInterfaceCatalogSnapshot::new(vec![serde_json::from_value(json!({
+        "interface_id":"lookup","source":"static_api","method":"GET","path":"/fixture/image",
+        "name":"Read image","short_description":"Read image","parameter_descriptors":[],
+        "parameter_schema":{},"result_schema":{},"permission_code":null,"security":{},
+        "risk_level":"low","bindable":true,"disabled_reason":null
+    }))
+    .unwrap()])
+}
+
+fn media_fixture_dependencies() -> RuntimeInternalToolInvokerDependencies {
+    // GET delivery uses memory; continuation tolerates an unavailable optional durable receipt.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(10))
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    RuntimeInternalToolInvokerDependencies::new(
+        storage_durable_postgres::PgControlPlaneStore::new(pool),
+        Arc::new(storage_ephemeral::MokaCacheStore::new(
+            "mcp-media-fixture",
+            1024,
+        )),
+        String::new(),
+    )
+}
+
+#[tokio::test]
+async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_continues_metadata() {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD.encode(vec![91; 64_000]);
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].output_mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"});
+    catalog.tools[0].max_inline_chars = Some(1600);
+    let metadata = json!({"path":"/tmp/image.png","byte_count":64000,"description":"metadata words ".repeat(2000)});
+    let dispatch = MediaFixtureDispatch {
+        value: json!({"data":data,"mime_type":"image/png","metadata":metadata}),
+        calls: Default::default(),
+    };
+    let dependencies = media_fixture_dependencies();
+    let interfaces = media_fixture_interfaces();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let arguments = json!({"tool_id":"lookup","arguments":{"query":"image"}});
+    let result = call(McpCallRequest {
+        dependencies: &dependencies,
+        interface_catalog: &interfaces,
+        interface_dispatch: &dispatch,
+        headers: &HeaderMap::new(),
+        actor: &actor,
+        catalog: &catalog,
+        scope: &scope,
+        arguments: &arguments,
+        assistant_client: None,
+    })
+    .await
+    .unwrap();
+    let VirtualToolOutcome::Success(result) = result else {
+        panic!("image call should succeed")
+    };
+    let image = result["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type"] == "image")
+        .unwrap();
+    assert_eq!(image["data"], data);
+    assert_eq!(image["mimeType"], "image/png");
+    let structured = &result["structuredContent"];
+    assert!(structured.to_string().chars().count() <= 1600);
+    assert!(!structured.to_string().contains(&data));
+    assert_eq!(structured["detail"]["status"], "continuation_available");
+    let result_ref =
+        uuid::Uuid::parse_str(structured["detail"]["result_ref"].as_str().unwrap()).unwrap();
+    let page = result_delivery::read_result(
+        &dependencies.result_delivery,
+        &actor,
+        result_ref,
+        &json!({"response_fields":["/path","/byte_count"],"max_inline_chars":1600}),
+    )
+    .await;
+    assert_eq!(
+        page["structuredContent"]["entries"],
+        json!([{"path":"/byte_count","value":64000},{"path":"/path","value":"/tmp/image.png"}])
+    );
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unchanged() {
+    let dependencies = media_fixture_dependencies();
+    let interfaces = media_fixture_interfaces();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let mut catalog = catalog_with_server_bound_workspace();
+    let arguments = json!({"tool_id":"lookup","arguments":{"query":"image"}});
+    for source in [
+        json!({"data":"%%%","mime_type":"image/png","metadata":{}}),
+        json!({"data":"YQ==","mime_type":"text/plain","metadata":{}}),
+        json!({"mime_type":"image/png","metadata":{}}),
+    ] {
+        catalog.tools[0].output_mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"});
+        let dispatch = MediaFixtureDispatch {
+            value: source,
+            calls: Default::default(),
+        };
+        let result = call(McpCallRequest {
+            dependencies: &dependencies,
+            interface_catalog: &interfaces,
+            interface_dispatch: &dispatch,
+            headers: &HeaderMap::new(),
+            actor: &actor,
+            catalog: &catalog,
+            scope: &scope,
+            arguments: &arguments,
+            assistant_client: None,
+        })
+        .await
+        .unwrap();
+        assert!(matches!(
+            result,
+            VirtualToolOutcome::Error {
+                message: "invalid_tool_configuration",
+                ..
+            }
+        ));
+    }
+    let dispatch = MediaFixtureDispatch {
+        value: json!({"stdout":"ordinary text"}),
+        calls: Default::default(),
+    };
+    catalog.tools[0].output_mapping = json!({"mcp_content":[]});
+    let result = call(McpCallRequest {
+        dependencies: &dependencies,
+        interface_catalog: &interfaces,
+        interface_dispatch: &dispatch,
+        headers: &HeaderMap::new(),
+        actor: &actor,
+        catalog: &catalog,
+        scope: &scope,
+        arguments: &arguments,
+        assistant_client: None,
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        result,
+        VirtualToolOutcome::Error {
+            message: "invalid_tool_configuration",
+            ..
+        }
+    ));
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    catalog.tools[0].output_mapping = json!({"mappings":[]});
+    let result = call(McpCallRequest {
+        dependencies: &dependencies,
+        interface_catalog: &interfaces,
+        interface_dispatch: &dispatch,
+        headers: &HeaderMap::new(),
+        actor: &actor,
+        catalog: &catalog,
+        scope: &scope,
+        arguments: &arguments,
+        assistant_client: None,
+    })
+    .await
+    .unwrap();
+    let VirtualToolOutcome::Success(result) = result else {
+        panic!("plain result should succeed")
+    };
+    assert_eq!(
+        result["structuredContent"],
+        json!({"stdout":"ordinary text"})
+    );
+    assert!(result["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["type"] == "text"));
+}

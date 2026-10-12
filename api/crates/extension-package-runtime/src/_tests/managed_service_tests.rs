@@ -267,3 +267,46 @@ fn worker_retention_requires_supported_multiplex_actor_scope_capability() {
     value["managed_service"]["worker_lifetime"] = json!("per_call");
     assert!(parse(&value).is_err());
 }
+
+#[test]
+fn managed_mcp_media_mapping_roundtrips_and_rejects_invalid_declarations() {
+    let mapping = json!({"mcp_content":[{"type":"image","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"});
+    let mut value = fixture();
+    value["managed_service"]["operations"][0]["mcp"] =
+        json!({"name":"image.read","description":"Read image","output_mapping":mapping});
+    let parsed = parse(&value).unwrap();
+    let mcp = parsed.managed_service.unwrap().operations[0]
+        .mcp
+        .clone()
+        .unwrap();
+    assert_eq!(mcp.output_mapping, Some(mapping.clone()));
+    assert_eq!(
+        serde_json::to_value(&mcp).unwrap()["output_mapping"],
+        mapping
+    );
+    for invalid in [
+        json!({}),
+        json!({"mcp_content":[],"structured_content_path":"/metadata"}),
+        json!({"mcp_content":[{"type":"audio","data_path":"/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
+        json!({"mcp_content":[{"type":"image","data_path":"data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
+        json!({"mcp_content":[{"type":"image","data_path":"/bad~2","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
+        json!({"mcp_content":[{"type":"image","data_path":"/metadata/data","mime_type_path":"/mime_type"}],"structured_content_path":"/metadata"}),
+    ] {
+        value["managed_service"]["operations"][0]["mcp"]["output_mapping"] = invalid;
+        assert!(parse(&value).is_err());
+    }
+    value["managed_service"]["operations"][0]["mcp"]
+        .as_object_mut()
+        .unwrap()
+        .remove("output_mapping");
+    let parsed = parse(&value).unwrap();
+    let mcp = parsed.managed_service.unwrap().operations[0]
+        .mcp
+        .clone()
+        .unwrap();
+    assert!(mcp.output_mapping.is_none());
+    assert!(serde_json::to_value(mcp)
+        .unwrap()
+        .get("output_mapping")
+        .is_none());
+}
