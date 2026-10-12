@@ -41,3 +41,22 @@ fn duplex_input_and_event_credit_have_canonical_correlations() {
     )
     .is_err());
 }
+
+#[test]
+fn retention_control_is_process_local_and_rejects_identity_fields() {
+    let frame = MultiplexWorkerMessage::ResourceRetention {
+        sequence: 1,
+        retained_resources: u64::MAX,
+    };
+    let value = serde_json::to_value(&frame).unwrap();
+    assert_eq!(
+        serde_json::from_value::<MultiplexWorkerMessage>(value.clone()).unwrap(),
+        frame
+    );
+    assert!(value.get("call_id").is_none());
+    for field in ["actor_id", "workspace_id", "session_id", "call_id"] {
+        let mut forged = value.clone();
+        forged[field] = json!("forged");
+        assert!(serde_json::from_value::<MultiplexWorkerMessage>(forged).is_err());
+    }
+}

@@ -80,6 +80,7 @@ sys.stdin.read()
                 },
                 handler: "list".into(),
                 worker_idle_timeout_ms: None,
+                worker_retention: false,
                 interface_protocol: None,
                 contribution: ContributionDescriptor {
                     contribution_id: identity.contribution_id().clone(),
@@ -183,6 +184,17 @@ fn mount_service_with_limits(
     idle: Option<u64>,
     limits: PluginRuntimeLimits,
 ) -> ManagedExecutionHandle {
+    mount_service_with_options(workers, executable, contribution, idle, limits, false)
+}
+#[cfg(unix)]
+fn mount_service_with_options(
+    workers: &mut ManagedWorkers,
+    executable: &std::path::Path,
+    contribution: &str,
+    idle: Option<u64>,
+    limits: PluginRuntimeLimits,
+    worker_retention: bool,
+) -> ManagedExecutionHandle {
     let identity = ManagedExecutionIdentity::new(
         ManagedInstallationId::new("installation").unwrap(),
         ManagedWorkspaceId::new("system-scope").unwrap(),
@@ -207,6 +219,7 @@ fn mount_service_with_limits(
                 limits,
                 handler: contribution.into(),
                 worker_idle_timeout_ms: idle,
+                worker_retention,
                 interface_protocol: None,
                 contribution: ContributionDescriptor {
                     contribution_id: identity.contribution_id().clone(),
@@ -795,4 +808,208 @@ async fn actor_scope_reset_fences_unpolled_and_active_calls_across_actors_withou
     assert!(after_second["value"].is_null());
     reap_service(&mut workers, &open).await;
     reap_service(&mut workers, &execute).await;
+}
+
+#[cfg(unix)]
+fn retention_fixture() -> (Fixture, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!(
+        "retained-service-{}-{}",
+        std::process::id(),
+        time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let executable = root.join("worker.py");
+    std::fs::write(&executable, r#"#!/usr/bin/env python3
+import json, os, sys
+retained = False
+advertised = False
+for line in sys.stdin:
+    frame = json.loads(line)
+    if frame['kind'] == 'worker_capabilities':
+        assert frame['capabilities'] == ['runtime_worker_retention/v1']
+        advertised = True
+        continue
+    body = frame['request']['input']['input_payload']
+    if body.get('crash'): os._exit(1)
+    if body.get('retain'):
+        retained = True
+        print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':2,'retained_resources':1}),flush=True)
+        print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':1,'retained_resources':0}),flush=True)
+    if body.get('release'):
+        retained = False
+        print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':3,'retained_resources':0}),flush=True)
+        print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'resource_retention','sequence':2,'retained_resources':1}),flush=True)
+    print(json.dumps({'protocol':'stdio_json_multiplex_v1','kind':'response','call_id':frame['call_id'],'response':{'ok':True,'result':{'pid':os.getpid(),'retained':retained,'advertised':advertised}}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    (Fixture(root), executable)
+}
+#[tokio::test]
+#[cfg(unix)]
+async fn retained_worker_outlives_idle_and_release_reaps_while_stale_frames_are_ignored() {
+    let (_fixture, executable) = retention_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service_with_options(
+        &mut workers,
+        &executable,
+        "service.resource",
+        Some(40),
+        PluginRuntimeLimits::default(),
+        true,
+    );
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"retain":true}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        first["advertised"], true,
+        "Host capability advertisement must precede the first call"
+    );
+    let pid = first["pid"].as_i64().unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(160)).await;
+    assert!(
+        process_exists(pid),
+        "resource retention overrides only idle expiration"
+    );
+    let still = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        first, still,
+        "stale zero retention cannot close the actor worker"
+    );
+    workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"release":true}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while process_exists(pid) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    reap_service(&mut workers, &handle).await;
+}
+#[tokio::test]
+#[cfg(unix)]
+async fn explicit_worker_reset_overrides_retained_resources_and_keeps_mount_usable() {
+    let (_fixture, executable) = retention_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service_with_options(
+        &mut workers,
+        &executable,
+        "service.resource",
+        Some(1800000),
+        PluginRuntimeLimits::default(),
+        true,
+    );
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"retain":true}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    workers
+        .service_pool_for_handle(&handle)
+        .unwrap()
+        .unwrap()
+        .retire_all()
+        .await
+        .unwrap();
+    assert!(!process_exists(first["pid"].as_i64().unwrap()));
+    let fresh = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(fresh["retained"], false);
+    reap_service(&mut workers, &handle).await;
+}
+#[tokio::test]
+#[cfg(unix)]
+async fn undeclared_worker_retention_control_fails_closed() {
+    let (_fixture, executable) = retention_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service(&mut workers, &executable, "service.resource", Some(40));
+    assert!(workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"retain":true})
+        ))
+        .unwrap()
+        .await
+        .is_err());
+    reap_service(&mut workers, &handle).await;
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn failed_retained_worker_is_reaped_and_does_not_pin_actor_capacity() {
+    let (_fixture, executable) = retention_fixture();
+    let mut workers = ManagedWorkers::default();
+    let handle = mount_service_with_options(
+        &mut workers,
+        &executable,
+        "service.resource",
+        Some(40),
+        PluginRuntimeLimits::default(),
+        true,
+    );
+    let first = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"retain":true}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({"crash":true})
+        ))
+        .unwrap()
+        .await
+        .is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(160)).await;
+    assert!(!process_exists(first["pid"].as_i64().unwrap()));
+    let fresh = workers
+        .execute(service_request(
+            &handle,
+            Some("alice"),
+            serde_json::json!({}),
+        ))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(fresh["retained"], false);
+    reap_service(&mut workers, &handle).await;
 }

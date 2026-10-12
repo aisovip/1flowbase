@@ -31,7 +31,7 @@ pub use managed_hook::{
 };
 pub use multiplex::{
     serve, serve_duplex, serve_duplex_io, serve_io, MultiplexEmitter, MultiplexError,
-    MultiplexInput,
+    MultiplexInput, MultiplexResourceLease,
 };
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;

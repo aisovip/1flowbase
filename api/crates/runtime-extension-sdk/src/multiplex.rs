@@ -6,12 +6,13 @@ use std::{
     future::Future,
     io::{self, Read, Write},
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
     MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES,
+    RUNTIME_WORKER_RETENTION_V1,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -98,8 +99,36 @@ impl MultiplexInput {
     }
 }
 
+/// A process-local resource lease. Drop publishes a bounded, coalesced control update,
+/// including from a background task after the creating invocation has completed.
+#[derive(Debug)]
+pub struct MultiplexResourceLease {
+    retention: Arc<ResourceRetention>,
+}
+#[derive(Debug)]
+struct ResourceRetention {
+    state: Mutex<(u64, u64)>,
+    updates: watch::Sender<(u64, u64)>,
+    flushed: watch::Receiver<u64>,
+}
+impl Drop for MultiplexResourceLease {
+    fn drop(&mut self) {
+        let mut state = self
+            .retention
+            .state
+            .lock()
+            .expect("worker retention lock poisoned");
+        state.1 -= 1;
+        // Acquisitions reserve one sequence for their eventual release.
+        state.0 += 1;
+        self.retention.updates.send_replace(*state);
+    }
+}
+
 #[derive(Clone)]
 pub struct MultiplexEmitter {
+    retention: Arc<ResourceRetention>,
+    retention_supported: bool,
     call_id: String,
     output: mpsc::UnboundedSender<QueuedFrame>,
     byte_budget: Arc<Semaphore>,
@@ -113,6 +142,41 @@ pub struct MultiplexEmitter {
 }
 
 impl MultiplexEmitter {
+    /// Keep this worker alive while a business resource exists. Requires the installed
+    /// binding's runtime_worker_retention/v1 capability and the Host advertisement.
+    /// Returning the guard implies its acquisition was flushed ahead of this call's Response.
+    pub async fn retain_resource(&self) -> Result<MultiplexResourceLease, MultiplexError> {
+        if !self.live.get() || !self.retention_supported {
+            return Err(MultiplexError::Protocol);
+        }
+        let sequence = {
+            let mut state = self
+                .retention
+                .state
+                .lock()
+                .map_err(|_| MultiplexError::Protocol)?;
+            let count = state.1.checked_add(1).ok_or(MultiplexError::Protocol)?;
+            let sequence = state.0.checked_add(1).ok_or(MultiplexError::Protocol)?;
+            sequence
+                .checked_add(count)
+                .ok_or(MultiplexError::Protocol)?;
+            *state = (sequence, count);
+            self.retention.updates.send_replace(*state);
+            sequence
+        };
+        let guard = MultiplexResourceLease {
+            retention: self.retention.clone(),
+        };
+        let mut flushed = self.retention.flushed.clone();
+        while *flushed.borrow_and_update() < sequence {
+            flushed
+                .changed()
+                .await
+                .map_err(|_| MultiplexError::Backpressure)?;
+        }
+        Ok(guard)
+    }
+
     /// Sliding byte credit bounds unconsumed output without one network roundtrip per event.
     pub async fn event(&self, event: Value) -> Result<(), MultiplexError> {
         let _lock = self.event_lock.lock().await;
@@ -402,15 +466,34 @@ where
     let (_fatal_tx, mut fatal_rx) = watch::channel(false);
     let (panic_tx, mut panic_rx) = watch::channel(false);
     let (output_tx, mut output_rx) = mpsc::unbounded_channel::<QueuedFrame>();
+    let (retention_updates, mut retention_rx) = watch::channel((0_u64, 0_u64));
+    let (retention_flushed, flushed_rx) = watch::channel(0_u64);
+    let retention = Arc::new(ResourceRetention {
+        state: Mutex::new((0, 0)),
+        updates: retention_updates,
+        flushed: flushed_rx,
+    });
     let writer = tokio::task::spawn_local(async move {
         let mut output = BufWriter::with_capacity(OUTPUT_WRITE_BUFFER_BYTES, output);
         let mut pending: Option<QueuedFrame> = None;
         loop {
             let frame = match pending.take() {
                 Some(frame) => frame,
-                None => match output_rx.recv().await {
-                    Some(frame) => frame,
-                    None => break,
+                None => tokio::select! {
+                    biased;
+                    update = retention_rx.changed() => {
+                        if update.is_err() { break; }
+                        let (sequence, retained_resources) = *retention_rx.borrow_and_update();
+                        let bytes = encode_bytes(MultiplexWorkerMessage::ResourceRetention { sequence, retained_resources })?;
+                        output.write_all(&bytes).await?;
+                        output.flush().await?;
+                        retention_flushed.send_replace(sequence);
+                        continue;
+                    }
+                    frame = output_rx.recv() => match frame {
+                        Some(frame) => frame,
+                        None => break,
+                    },
                 },
             };
             // Coalesce ready frames within one physical buffer. Larger individual
@@ -436,7 +519,7 @@ where
             output.flush().await?;
             drop(batch);
         }
-        Ok::<_, io::Error>(())
+        Ok::<_, MultiplexError>(())
     });
     // Completed frames already hold the shared byte-budget permit. A count cap
     // would reject a burst of small independent calls for no memory benefit.
@@ -448,6 +531,7 @@ where
     // terminal encoding panics cannot leave an active call waiting forever.
     let mut active: HashMap<String, ActiveCall> = HashMap::new();
     let mut max_seen_call_id = 0_u64;
+    let mut retention_supported = false;
     let mut input_closed = false;
     // Retain partial bytes when another select branch wins; a local read buffer
     // inside the future would lose half a frame on unrelated call completion.
@@ -472,6 +556,13 @@ where
             frame = read_frame(&mut reader, &mut input_bytes), if !input_closed => {
                 let frame = match frame { Ok(Some(frame)) => frame, Ok(None) => { input_closed = true; continue; }, Err(error) => break Err(error) };
                 match frame {
+                    MultiplexHostMessage::WorkerCapabilities { capabilities } => {
+                        if max_seen_call_id != 0 || retention_supported
+                            || capabilities != [RUNTIME_WORKER_RETENTION_V1.to_string()] {
+                            break Err(MultiplexError::Protocol);
+                        }
+                        retention_supported = true;
+                    }
                     MultiplexHostMessage::Call { call_id, request } => {
                         let Some(id) = parse_call_id(&call_id) else { break Err(MultiplexError::Correlation); };
                         if id <= max_seen_call_id { break Err(MultiplexError::Correlation); }
@@ -482,6 +573,7 @@ where
                         let event_credit = Arc::new(Semaphore::new(MULTIPLEX_CALL_EVENT_BUDGET_BYTES));
                         let (input_tx, input_rx) = mpsc::unbounded_channel();
                         let emitter = MultiplexEmitter {
+                            retention: retention.clone(), retention_supported,
                             call_id: call_id.clone(), output: output_tx.clone(), byte_budget: byte_budget.clone(), callbacks: callbacks.clone(),
                             next_callback_id: Rc::new(Cell::new(0)), live: live.clone(), ack: ack.clone(), event_lock: Rc::new(tokio::sync::Mutex::new(())), event_credit: event_credit.clone(), next_event_id: Rc::new(Cell::new(0)),
                         };

@@ -251,3 +251,19 @@ fn operation_concurrency_defaults_to_serialized_and_parallel_is_explicit() {
         !parse(&value).unwrap().managed_service.unwrap().operations[0].requires_mutation_lock()
     );
 }
+
+#[test]
+fn worker_retention_requires_supported_multiplex_actor_scope_capability() {
+    let mut value = fixture();
+    value["managed_service"]["worker_lifetime"] = json!("actor_scope");
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]);
+    assert!(parse(&value).is_ok());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!(["runtime_worker_retention/v2"]);
+    assert!(parse(&value).is_err());
+    value["managed"]["execution_bindings"][0]["runtime"]["capabilities"] =
+        json!([extension_contracts::RUNTIME_WORKER_RETENTION_V1]);
+    value["managed_service"]["worker_lifetime"] = json!("per_call");
+    assert!(parse(&value).is_err());
+}

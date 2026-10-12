@@ -116,6 +116,11 @@ impl PackageLoader {
             execution_mode: binding.execution_mode,
             limits: binding.runtime.limits.clone(),
             handler: binding.handler.clone(),
+            worker_retention: binding
+                .runtime
+                .capabilities
+                .iter()
+                .any(|value| value == extension_contracts::RUNTIME_WORKER_RETENTION_V1),
             worker_idle_timeout_ms: manifest.managed_service.as_ref().and_then(|service| {
                 (service.worker_lifetime
                     == extension_package_runtime::ManagedServiceWorkerLifetime::ActorScope

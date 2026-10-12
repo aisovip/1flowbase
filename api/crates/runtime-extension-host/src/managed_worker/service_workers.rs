@@ -98,10 +98,11 @@ impl ServiceWorkers {
                 .clone()
                 .try_acquire_owned()
                 .map_err(|_| invalid("managed worker capacity exhausted"))?;
-            let worker = Arc::new(MultiplexProviderWorker::activate(
+            let worker = Arc::new(MultiplexProviderWorker::activate_with_retention(
                 binding.runtime_executable.clone(),
                 binding.limits.clone(),
                 epoch,
+                binding.worker_retention,
             )?);
             let entry = Arc::new(Entry {
                 worker,
@@ -204,7 +205,8 @@ impl ServiceWorkers {
                     .map_err(|_| invalid("service worker activity unavailable"))?;
                 if activity.active == 0
                     && (entry.worker.is_failed()
-                        || activity.last_used.elapsed() >= self.idle
+                        || (activity.last_used.elapsed() >= self.idle
+                            && entry.worker.retained_resources() == 0)
                         || activity.retiring)
                 {
                     activity.retiring = true;

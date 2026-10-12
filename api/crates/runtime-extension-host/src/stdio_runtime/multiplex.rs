@@ -2,10 +2,10 @@ use super::*;
 use extension_contracts::{
     MultiplexEnvelope, MultiplexHostMessage, MultiplexHostService, MultiplexWorkerMessage,
     PluginDataRequest, MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES,
-    MULTIPLEX_OUTPUT_BUDGET_BYTES,
+    MULTIPLEX_OUTPUT_BUDGET_BYTES, RUNTIME_WORKER_RETENTION_V1,
 };
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
 const QUEUE_CAPACITY: usize = 8;
@@ -77,6 +77,8 @@ struct ActiveCall {
 }
 
 struct ReaderContext {
+    retention_enabled: bool,
+    retained_resources: Arc<AtomicU64>,
     command_sender: mpsc::Sender<CommandMessage>,
     writes: mpsc::UnboundedSender<WriteFrame>,
     controls: mpsc::Sender<ControlFrame>,
@@ -119,6 +121,7 @@ impl Drop for CancelOnDrop {
 
 #[derive(Debug)]
 pub(crate) struct MultiplexProviderWorker {
+    retained_resources: Arc<AtomicU64>,
     control: ProviderWorkerProcessControl,
     commands: mpsc::Sender<CommandMessage>,
     writer_budget: Arc<Semaphore>,
@@ -132,6 +135,15 @@ impl MultiplexProviderWorker {
         limits: PluginRuntimeLimits,
         _generation: u64,
     ) -> FrameworkResult<Self> {
+        Self::activate_with_retention(path, limits, _generation, false)
+    }
+
+    pub(crate) fn activate_with_retention(
+        path: PathBuf,
+        limits: PluginRuntimeLimits,
+        _generation: u64,
+        retention_enabled: bool,
+    ) -> FrameworkResult<Self> {
         let process = spawn_worker_process(&path, &limits)?;
         let control = process.control.clone();
         let stdin = process.stdin;
@@ -139,6 +151,27 @@ impl MultiplexProviderWorker {
         let (commands, receiver) = mpsc::channel(QUEUE_CAPACITY);
         let (writes, write_receiver) = mpsc::unbounded_channel();
         let (controls, control_receiver) = mpsc::channel(QUEUE_CAPACITY);
+        if retention_enabled {
+            let bytes = encode(MultiplexHostMessage::WorkerCapabilities {
+                capabilities: vec![RUNTIME_WORKER_RETENTION_V1.to_string()],
+            })
+            .map_err(|_| {
+                PluginFrameworkError::invalid_provider_package("worker capability encoding failed")
+            })?;
+            controls
+                .try_send(ControlFrame {
+                    bytes,
+                    _permit: None,
+                    live: None,
+                })
+                .map_err(|_| {
+                    PluginFrameworkError::invalid_provider_package(
+                        "worker capability admission failed",
+                    )
+                })?;
+        }
+        let retained_resources = Arc::new(AtomicU64::new(0));
+        let reader_retention = retained_resources.clone();
         let writer_budget = Arc::new(Semaphore::new(WRITER_BYTES));
         let failed = Arc::new(AtomicBool::new(false));
         let actor_control = control.clone();
@@ -154,6 +187,8 @@ impl MultiplexProviderWorker {
                 stdout,
                 receiver,
                 ReaderContext {
+                    retention_enabled,
+                    retained_resources: reader_retention,
                     command_sender: reader_commands,
                     writes,
                     controls,
@@ -165,6 +200,7 @@ impl MultiplexProviderWorker {
             .await;
         });
         Ok(Self {
+            retained_resources,
             control,
             commands,
             writer_budget,
@@ -178,6 +214,9 @@ impl MultiplexProviderWorker {
     }
     pub(crate) fn is_failed(&self) -> bool {
         self.failed.load(Ordering::Acquire)
+    }
+    pub(crate) fn retained_resources(&self) -> u64 {
+        self.retained_resources.load(Ordering::Acquire)
     }
     pub(crate) fn limits(&self) -> &PluginRuntimeLimits {
         &self.limits
@@ -462,6 +501,9 @@ impl MultiplexProviderWorker {
                         retained_event_permits.push(permit);
                     }
                 }
+                MultiplexWorkerMessage::ResourceRetention { .. } => {
+                    return Err(transport_error("worker control on invocation lane"))
+                }
                 MultiplexWorkerMessage::Response { response, .. } => {
                     guard.armed = false;
                     if let Some(error) = first_error {
@@ -625,6 +667,8 @@ async fn run_reader(
     context: ReaderContext,
 ) {
     let ReaderContext {
+        retention_enabled,
+        retained_resources,
         command_sender,
         writes,
         controls,
@@ -637,14 +681,24 @@ async fn run_reader(
     let mut pending_frame = Vec::new();
     let mut active: HashMap<String, ActiveCall> = HashMap::new();
     let mut next_id = 0_u64;
+    let mut retention_sequence = 0_u64;
     let mut ticker = tokio::time::interval(Duration::from_millis(100));
     let reason = loop {
         tokio::select! {
             frame = read_frame(&mut reader, &mut pending_frame) => {
                 let (frame, frame_bytes) = match frame { Ok(Some(frame)) => frame, Ok(None) => break "multiplex worker stdout closed".to_string(), Err(error) => break error };
-                let id = match &frame { MultiplexWorkerMessage::Event { call_id, .. } | MultiplexWorkerMessage::Response { call_id, .. } | MultiplexWorkerMessage::Cancelled { call_id } | MultiplexWorkerMessage::Callback { call_id, .. } => call_id.clone() };
+                if let MultiplexWorkerMessage::ResourceRetention { sequence, retained_resources: count } = &frame {
+                    if !retention_enabled || *sequence == 0 { break "unsupported worker retention control".to_string(); }
+                    if *sequence > retention_sequence {
+                        retention_sequence = *sequence;
+                        retained_resources.store(*count, Ordering::Release);
+                    }
+                    continue;
+                }
+                let id = match &frame { MultiplexWorkerMessage::Event { call_id, .. } | MultiplexWorkerMessage::Response { call_id, .. } | MultiplexWorkerMessage::Cancelled { call_id } | MultiplexWorkerMessage::Callback { call_id, .. } => call_id.clone(), MultiplexWorkerMessage::ResourceRetention { .. } => unreachable!("retention is process-scoped") };
                 let Some(call) = active.get_mut(&id) else { break format!("unknown or duplicate multiplex call id: {id}"); };
                 match frame {
+                    MultiplexWorkerMessage::ResourceRetention { .. } => unreachable!("retention is process-scoped"),
                     MultiplexWorkerMessage::Callback { callback_id, service, request, .. } => {
                         let callback_sequence = match callback_id.parse::<u64>() { Ok(value) if value > call.max_callback_id && callback_id == value.to_string() => value, _ => break "invalid or duplicate multiplex callback id".to_string() };
                         if call.cancelling_since.is_some() { break "callback on cancelling multiplex call".to_string(); }
