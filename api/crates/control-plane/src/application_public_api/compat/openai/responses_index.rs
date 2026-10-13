@@ -74,8 +74,8 @@ impl ResponsesRequestIndex {
             .ok_or(ResponsesInputIndexError::RequestKind)?;
         let previous_response_id = match object.get("previous_response_id") {
             Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+            Some(Value::Null) | None => None,
             Some(_) => return Err(ResponsesInputIndexError::PreviousResponseId),
-            None => None,
         };
         let input = object
             .get("input")
