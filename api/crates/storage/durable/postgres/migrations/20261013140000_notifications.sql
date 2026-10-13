@@ -33,14 +33,14 @@ INSERT INTO notification_instances (id, workspace_id, type_code, display_name, i
 SELECT gen_random_uuid(), id, 'system', 'System notification', true FROM workspaces;
 
 -- Protected catalog metadata only. Dedicated notification services own access; no workspace
--- grant is created and generic API exposure remains disabled. Never register secret ciphertext.
+-- grant is created; generic CRUD is disabled by the core model contract. Never register secret ciphertext.
 INSERT INTO model_definitions (
     id, scope_kind, scope_id, source_kind, code, title, physical_table_name,
-    acl_namespace, audit_namespace, availability_status, status, api_exposure_status,
+    acl_namespace, audit_namespace, availability_status, status,
     owner_kind, is_protected, template_provider, template_code, template_version
 ) VALUES
-    ('00000000-2412-4000-8000-000000000001','system','00000000-0000-0000-0000-000000000000','main_source','notification_instances','Notification instances','notification_instances','state_model.notification_instances','audit.state_model.notification_instances','available','published','published_not_exposed','core',true,'core','general','v1'),
-    ('00000000-2412-4000-8000-000000000002','system','00000000-0000-0000-0000-000000000000','main_source','system_notifications','System notifications','system_notifications','state_model.system_notifications','audit.state_model.system_notifications','available','published','published_not_exposed','core',true,'core','general','v1')
+    ('00000000-2412-4000-8000-000000000001','system','00000000-0000-0000-0000-000000000000','main_source','notification_instances','Notification instances','notification_instances','state_model.notification_instances','audit.state_model.notification_instances','available','published','core',true,'core','general','v1'),
+    ('00000000-2412-4000-8000-000000000002','system','00000000-0000-0000-0000-000000000000','main_source','system_notifications','System notifications','system_notifications','state_model.system_notifications','audit.state_model.system_notifications','available','published','core',true,'core','general','v1')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO model_fields (id,data_model_id,scope_id,code,title,physical_column_name,field_kind,is_system,is_writable,is_required,api_required,is_unique,display_interface,display_options,sort_order,availability_status)
