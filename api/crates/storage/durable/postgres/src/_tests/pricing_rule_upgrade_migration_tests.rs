@@ -35,10 +35,15 @@ async fn pricing_cleanup_replaces_generated_model_rules_with_one_global_fallback
     before_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Pricing migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Pricing migration",
+    )
+    .await
+    .unwrap();
     let user_id = Uuid::now_v7();
     let account = format!("pricing-migration-{}", user_id.simple());
     sqlx::query(
@@ -77,7 +82,7 @@ async fn pricing_cleanup_replaces_generated_model_rules_with_one_global_fallback
                 array['legacy-free'],$4,$5,$5)"#,
     )
     .bind(Uuid::now_v7())
-    .bind(workspace.id)
+    .bind(workspace_id)
     .bind(installation_id)
     .bind(true)
     .bind(user_id)

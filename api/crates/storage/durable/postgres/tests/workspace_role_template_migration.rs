@@ -38,10 +38,15 @@ async fn ac_002_historical_workspace_role_templates_become_user_owned() {
         .unwrap();
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "historical-workspace")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "historical-workspace",
+    )
+    .await
+    .unwrap();
 
     for (code, default_member) in [("admin", false), ("member", true)] {
         sqlx::query(
@@ -55,7 +60,7 @@ async fn ac_002_historical_workspace_role_templates_become_user_owned() {
             "#,
         )
         .bind(Uuid::now_v7())
-        .bind(workspace.id)
+        .bind(workspace_id)
         .bind(code)
         .bind(default_member)
         .execute(store.pool())
@@ -76,7 +81,7 @@ async fn ac_002_historical_workspace_role_templates_become_user_owned() {
         order by code
         "#,
     )
-    .bind(workspace.id)
+    .bind(workspace_id)
     .fetch_all(store.pool())
     .await
     .unwrap();

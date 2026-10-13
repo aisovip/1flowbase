@@ -64,6 +64,7 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         .bind(message).bind(workspace.id).bind(instance).bind(actor).execute(&db).await.unwrap();
     let repository = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repository, select("notifications", true, false)).await;
+    let full_bytes = capture(&repository, select("notifications", true, true)).await;
     let preview = repository
         .preflight(reader(bytes.clone()), "source", "target")
         .await
@@ -83,6 +84,35 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         .execute(&db)
         .await
         .unwrap();
+    assert!(repository
+        .restore(reader(bytes.clone()), "wrong", "target", true)
+        .await
+        .is_err());
+    let unchanged: String =
+        sqlx::query_scalar("select display_name from notification_instances where id=$1")
+            .bind(instance)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        unchanged, "Changed",
+        "invalid source key must not overwrite target configuration"
+    );
+    let pending = repository
+        .prepare_restore(reader(full_bytes.clone()), "source", "target", true)
+        .await
+        .unwrap();
+    pending.rollback().await.unwrap();
+    let unchanged_inbox: String =
+        sqlx::query_scalar("select content from system_notifications where id=$1")
+            .bind(message)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        unchanged_inbox, "Target inbox",
+        "rollback must preserve target history"
+    );
     repository
         .restore(reader(bytes), "source", "target", true)
         .await
@@ -111,4 +141,24 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         .await
         .unwrap();
     assert_eq!(inbox, "Target inbox");
+    sqlx::query("update system_notifications set read_at=now() where id=$1")
+        .bind(message)
+        .execute(&db)
+        .await
+        .unwrap();
+    repository
+        .restore(reader(full_bytes), "source", "target", true)
+        .await
+        .unwrap();
+    let (content, read_at): (String, Option<chrono::DateTime<chrono::Utc>>) =
+        sqlx::query_as("select content,read_at from system_notifications where id=$1")
+            .bind(message)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(content, "Original inbox");
+    assert_eq!(
+        read_at, None,
+        "data restore must restore the unread acknowledgement state"
+    );
 }

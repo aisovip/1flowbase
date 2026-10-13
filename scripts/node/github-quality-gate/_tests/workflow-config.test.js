@@ -1384,3 +1384,18 @@ test('aggregate downloads current component artifacts without its own archived r
     assert.equal(path.matchesGlob('coverage-shadow-api-server-profraw-1', pattern), false);
   }
 });
+
+
+test('every full or scoped SDK worker prebuild exports the real notification process', () => {
+  const workflow = readQualityGateWorkflow();
+  const steps = workflow.split(/      - name: Build (?:API server|Host)(?: coverage)? worker fixtures\n/u).slice(1);
+  assert.equal(steps.length, 5);
+  for (const step of steps) {
+    const build = step.slice(0, step.indexOf('      - '));
+    assert.match(build, /cargo build --locked --manifest-path api\/Cargo.toml -p runtime-extension-sdk --example notification_worker/u);
+    assert.match(build, /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker"/u);
+    assert.match(build, /NOTIFICATION_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/notification_worker/u);
+  }
+  const runner = fs.readFileSync(path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js'), 'utf8');
+  assert.match(runner, /example: 'notification_worker', env: 'NOTIFICATION_WORKER_FIXTURE'/u);
+});
