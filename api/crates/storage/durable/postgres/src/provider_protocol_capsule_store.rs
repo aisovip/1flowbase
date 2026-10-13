@@ -18,7 +18,6 @@ pub struct PgProviderProtocolCapsuleStore {
     pool: PgPool,
     master_key: String,
     hard_retention: Duration,
-    max_plaintext_bytes: usize,
 }
 
 impl PgProviderProtocolCapsuleStore {
@@ -30,18 +29,16 @@ impl PgProviderProtocolCapsuleStore {
         pool: PgPool,
         master_key: impl Into<String>,
         hard_retention: Duration,
-        max_plaintext_bytes: usize,
     ) -> anyhow::Result<Self> {
         let master_key = master_key.into();
         anyhow::ensure!(
-            !master_key.is_empty() && hard_retention > Duration::ZERO && max_plaintext_bytes > 0,
+            !master_key.is_empty() && hard_retention > Duration::ZERO,
             "provider_protocol_capsule_policy_invalid"
         );
         Ok(Self {
             pool,
             master_key,
             hard_retention,
-            max_plaintext_bytes,
         })
     }
 
@@ -53,10 +50,8 @@ impl PgProviderProtocolCapsuleStore {
         value: Value,
     ) -> anyhow::Result<()> {
         let plaintext = serde_json::to_vec(&value)?;
-        anyhow::ensure!(
-            !plaintext.is_empty() && plaintext.len() <= self.max_plaintext_bytes,
-            "provider_protocol_capsule_too_large"
-        );
+        // Persist complete admitted context/history. Storage representation and
+        // real I/O errors remain explicit; guessed payload budgets lose recovery.
         let digest = format!("sha256:{:x}", Sha256::digest(&plaintext));
         let associated_data = Self::associated_data(flow_run_id, kind, &slot_key);
         let encrypted = encrypt_secret_json_with_aad(&value, &self.master_key, &associated_data)?;

@@ -22,3 +22,9 @@ Chat 类供应商要求 assistant 工具调用后紧邻完整工具回执集合�
 DeepSeek 插件只负责 Native 工具选择到 Chat Completions 的转换：`auto`、`none`、`required` 转为字符串，指定工具转为 `function` 对象。通知投影、子进程通信及恢复状态机由底座负责，插件无需实现 Responses 仿真。
 
 普通文本、标准函数工具及上述通知可以通过这条兼容路径工作。这不代表完整 Codex 功能兼容：自定义 grammar 工具、严格工具 schema、原生托管能力和无法跨供应商表达的私有推理仍遵循已有能力检查，不能靠字段丢弃模拟成功。
+
+## 协议恢复持久化与请求准入
+
+HTTP / WebSocket 的请求准入由协议适配层拥有；持久化协议上下文与 continuation 原生历史由 `PgProviderProtocolCapsuleStore` 保存完整内容，不能再猜测客户端载荷或宿主资源条件，添加更小的业务容量上限。已移除独立的 2 MiB capsule 拒绝条件，超过旧阈值的上下文和历史仍可加密保存、重启读取和原子消费。物理类型表示、实际数据库 / I/O 失败继续显式传播，不吞错或截断历史。
+
+此次修复保留 flow-run / capsule-kind / slot-key 的 AEAD 身份绑定、digest / size 完整性验证、已有过期策略与调用所属权限；数据容量和生命周期是独立维度。真实 PostgreSQL 回归对超过旧阈值的两种载荷逐值恢复，并检查密文、locator 与唯一消费语义。
