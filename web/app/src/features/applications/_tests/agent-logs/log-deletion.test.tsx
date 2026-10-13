@@ -208,12 +208,10 @@ test('custom date preview includes the entire end day and requires both dates', 
       'textbox'
     )[index];
     // Commit each controlled picker before the next picker reads its paired value.
-    await act(async () => {
-      input.focus();
-      fireEvent.change(input, { target: { value: date } });
-      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
-      input.blur();
-    });
+    await act(async () => input.focus());
+    fireEvent.change(input, { target: { value: date } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    await act(async () => input.blur());
   }
   await start();
   await waitFor(() =>
