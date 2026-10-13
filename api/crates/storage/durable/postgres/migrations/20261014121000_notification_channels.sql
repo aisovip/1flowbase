@@ -1,0 +1,1 @@
+CREATE INDEX system_notifications_channel_idx ON system_notifications(workspace_id,recipient_user_id,instance_id,created_at DESC,id DESC);

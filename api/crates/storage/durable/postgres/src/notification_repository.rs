@@ -69,6 +69,22 @@ fn send_log(row: PgRow) -> Result<domain::NotificationSendLog> {
         completed_at: row.get("completed_at"),
     })
 }
+fn parse_cursor(cursor: Option<String>) -> Result<Option<(OffsetDateTime, Uuid)>> {
+    cursor
+        .map(|cursor| -> Result<_> {
+            let (ts, id) = cursor
+                .split_once(':')
+                .ok_or(Error::InvalidInput("cursor"))?;
+            Ok((
+                OffsetDateTime::from_unix_timestamp_nanos(
+                    ts.parse().map_err(|_| Error::InvalidInput("cursor"))?,
+                )
+                .map_err(|_| Error::InvalidInput("cursor"))?,
+                Uuid::parse_str(id).map_err(|_| Error::InvalidInput("cursor"))?,
+            ))
+        })
+        .transpose()
+}
 pub(crate) fn aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
     format!("notification-instance:{workspace}:{id}").into_bytes()
 }
@@ -171,6 +187,56 @@ impl NotificationRepository for PgControlPlaneStore {
             page,
             page_size: size,
         })
+    }
+    async fn list_notification_channels(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        input: control_plane_contracts::ports::NotificationChannelListInput,
+    ) -> Result<domain::NotificationChannelPage> {
+        let size = input.page_size.unwrap_or(50);
+        if size == 0 || size > 100 {
+            return Err(Error::InvalidInput("page_size").into());
+        }
+        let cursor = parse_cursor(input.cursor)?;
+        let read_status = input.read_status.unwrap_or_default().as_str();
+        // Filter before choosing the latest message; aggregate unread facts independently.
+        // LEFT JOIN preserves inbox history after instance deletion. All stored inbox rows are
+        // system messages, so missing instance metadata has a formal system-type fallback.
+        let mut items = sqlx::query("WITH latest AS (SELECT DISTINCT ON (instance_id) instance_id,title,content,created_at FROM system_notifications WHERE workspace_id=$1 AND recipient_user_id=$2 AND ($3='all' OR ($3='unread' AND read_at IS NULL) OR ($3='read' AND read_at IS NOT NULL)) ORDER BY instance_id,created_at DESC,id DESC), unread AS (SELECT instance_id,count(*) AS unread_count FROM system_notifications WHERE workspace_id=$1 AND recipient_user_id=$2 AND read_at IS NULL GROUP BY instance_id) SELECT l.instance_id,coalesce(i.display_name,'Deleted notification channel') AS display_name,coalesce(i.type_code,'system') AS type_code,i.id IS NULL AS deleted,l.title,l.content,l.created_at,coalesce(u.unread_count,0) AS unread_count FROM latest l LEFT JOIN notification_instances i ON i.workspace_id=$1 AND i.id=l.instance_id LEFT JOIN unread u ON u.instance_id=l.instance_id WHERE ($4::timestamptz IS NULL OR (l.created_at,l.instance_id)<($4,$5)) ORDER BY l.created_at DESC,l.instance_id DESC LIMIT $6")
+            .bind(workspace_id).bind(user_id).bind(read_status).bind(cursor.map(|c|c.0)).bind(cursor.map(|c|c.1)).bind(i64::from(size)+1).fetch_all(self.pool()).await?.into_iter().map(|r|domain::NotificationChannel {
+                instance_id:r.get("instance_id"),display_name:r.get("display_name"),type_code:r.get("type_code"),deleted:r.get("deleted"),latest_title:r.get("title"),latest_content:r.get("content"),latest_created_at:r.get("created_at"),unread_count:r.get("unread_count"),
+            }).collect::<Vec<_>>();
+        let more = items.len() > size as usize;
+        items.truncate(size as usize);
+        let next_cursor = if more {
+            items.last().map(|r| {
+                format!(
+                    "{}:{}",
+                    r.latest_created_at.unix_timestamp_nanos(),
+                    r.instance_id
+                )
+            })
+        } else {
+            None
+        };
+        Ok(domain::NotificationChannelPage { items, next_cursor })
+    }
+    async fn mark_system_notification_unread(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<SystemNotificationRecord>> {
+        Ok(sqlx::query("UPDATE system_notifications SET read_at=NULL WHERE workspace_id=$1 AND recipient_user_id=$2 AND id=$3 RETURNING *").bind(workspace_id).bind(user_id).bind(id).fetch_optional(self.pool()).await?.map(message))
+    }
+    async fn mark_notification_channel_read(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<u64> {
+        Ok(sqlx::query("UPDATE system_notifications SET read_at=now() WHERE workspace_id=$1 AND recipient_user_id=$2 AND instance_id=$3 AND read_at IS NULL").bind(workspace_id).bind(user_id).bind(instance_id).execute(self.pool()).await?.rows_affected())
     }
     async fn bootstrap_system_notification_instances(&self) -> Result<()> {
         sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,display_name,is_builtin) SELECT gen_random_uuid(),id,'system','System notification',true FROM workspaces ON CONFLICT (workspace_id) WHERE is_builtin DO NOTHING").execute(self.pool()).await?;
@@ -290,26 +356,20 @@ impl NotificationRepository for PgControlPlaneStore {
         input: NotificationMessageListInput,
     ) -> Result<NotificationMessagePage> {
         let size = input.page_size.unwrap_or(50);
-        if size == 0 {
+        if size == 0 || size > 100 {
             return Err(Error::InvalidInput("page_size").into());
         }
-        let cursor = input
-            .cursor
-            .map(|cursor| -> Result<(OffsetDateTime, Uuid)> {
-                let (ts, id) = cursor
-                    .split_once(':')
-                    .ok_or(Error::InvalidInput("cursor"))?;
-                Ok((
-                    OffsetDateTime::from_unix_timestamp_nanos(
-                        ts.parse().map_err(|_| Error::InvalidInput("cursor"))?,
-                    )
-                    .map_err(|_| Error::InvalidInput("cursor"))?,
-                    Uuid::parse_str(id).map_err(|_| Error::InvalidInput("cursor"))?,
-                ))
+        let cursor = parse_cursor(input.cursor)?;
+        let read_status = input
+            .read_status
+            .unwrap_or(if input.unread_only {
+                domain::NotificationReadStatus::Unread
+            } else {
+                domain::NotificationReadStatus::All
             })
-            .transpose()?;
-        let mut rows=sqlx::query("SELECT * FROM system_notifications WHERE workspace_id=$1 AND recipient_user_id=$2 AND (NOT $3 OR read_at IS NULL) AND ($4::timestamptz IS NULL OR (created_at,id)<($4,$5)) ORDER BY created_at DESC,id DESC LIMIT $6")
-            .bind(workspace_id).bind(user_id).bind(input.unread_only).bind(cursor.map(|c|c.0)).bind(cursor.map(|c|c.1)).bind(i64::from(size)+1).fetch_all(self.pool()).await?.into_iter().map(message).collect::<Vec<_>>();
+            .as_str();
+        let mut rows = sqlx::query("SELECT * FROM system_notifications WHERE workspace_id=$1 AND recipient_user_id=$2 AND ($3='all' OR ($3='unread' AND read_at IS NULL) OR ($3='read' AND read_at IS NOT NULL)) AND ($4::timestamptz IS NULL OR (created_at,id)<($4,$5)) AND ($7::uuid IS NULL OR instance_id=$7) ORDER BY created_at DESC,id DESC LIMIT $6")
+            .bind(workspace_id).bind(user_id).bind(read_status).bind(cursor.map(|c|c.0)).bind(cursor.map(|c|c.1)).bind(i64::from(size)+1).bind(input.instance_id).fetch_all(self.pool()).await?.into_iter().map(message).collect::<Vec<_>>();
         let more = rows.len() > size as usize;
         rows.truncate(size as usize);
         let next_cursor = if more {
@@ -321,9 +381,7 @@ impl NotificationRepository for PgControlPlaneStore {
         Ok(NotificationMessagePage {
             items: rows,
             next_cursor,
-            unread_count: self
-                .system_notification_unread_count(workspace_id, user_id)
-                .await?,
+            unread_count: sqlx::query_scalar("SELECT count(*) FROM system_notifications WHERE workspace_id=$1 AND recipient_user_id=$2 AND read_at IS NULL AND ($3::uuid IS NULL OR instance_id=$3)").bind(workspace_id).bind(user_id).bind(input.instance_id).fetch_one(self.pool()).await?,
         })
     }
     async fn system_notification_unread_count(

@@ -697,6 +697,9 @@ fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
         "notifications.logs.list" => Some("List notification send logs"),
         "notifications.logs.get" => Some("Get notification send log"),
+        "notifications.channels.list" => Some("List my notification channels"),
+        "notifications.channels.read_all" => Some("Read my notification channel"),
+        "notifications.messages.unread" => Some("Mark my notification unread"),
         "notifications.types.list" => Some("List notification types"),
         "notifications.instances.list" => Some("List notification instances"),
         "notifications.instances.get" => Some("Get notification instance"),
@@ -882,6 +885,9 @@ fn compile_console_interface_metadata(
         let description = match interface_id.as_str() {
             "notifications.logs.list" => "Page safe send invocation facts in the current workspace using explicit log-read authorization.".to_owned(),
             "notifications.logs.get" => "Read one safe send invocation fact in the current workspace using explicit log-detail authorization.".to_owned(),
+            "notifications.channels.list" => "Page channels from the authenticated recipient inbox with filtered latest messages and independently aggregated unread counts.".to_owned(),
+            "notifications.channels.read_all" => "Mark unread inbox messages read only in the requested channel, current workspace and authenticated recipient.".to_owned(),
+            "notifications.messages.unread" => "Clear the read timestamp only for a message owned by the authenticated recipient in the current workspace.".to_owned(),
             "notifications.types.list" => "Return canonical notification types and valid recipient form options available in the current workspace.".to_owned(),
             "notifications.instances.list" => "List workspace notification instances with credential fields removed and explicit availability status.".to_owned(),
             "notifications.instances.get" => "Read one instance in the current workspace with stored credentials omitted.".to_owned(),

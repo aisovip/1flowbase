@@ -108,6 +108,40 @@ pub struct NotificationSendLogPage {
     pub page: u32,
     pub page_size: u32,
 }
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationReadStatus {
+    #[default]
+    All,
+    Unread,
+    Read,
+}
+impl NotificationReadStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Unread => "unread",
+            Self::Read => "read",
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationChannel {
+    pub instance_id: Uuid,
+    pub display_name: String,
+    pub type_code: String,
+    pub deleted: bool,
+    pub latest_title: String,
+    pub latest_content: String,
+    #[serde(with = "timestamp")]
+    pub latest_created_at: OffsetDateTime,
+    pub unread_count: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationChannelPage {
+    pub items: Vec<NotificationChannel>,
+    pub next_cursor: Option<String>,
+}
 mod timestamp {
     use super::*;
     use serde::{de::Error as _, Deserializer, Serializer};

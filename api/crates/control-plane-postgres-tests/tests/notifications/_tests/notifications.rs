@@ -77,6 +77,16 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         .read(&member_actor, root_page.items[0].id)
         .await
         .is_err());
+    assert!(service
+        .unread(&member_actor, root_page.items[0].id)
+        .await
+        .is_err());
+    assert_eq!(service.read_channel(&member_actor, id).await.unwrap(), 1);
+    assert_eq!(service.unread_count(&actor).await.unwrap(), 1);
+    service
+        .unread(&member_actor, member_page.items[0].id)
+        .await
+        .unwrap();
     let read = service
         .read(&member_actor, member_page.items[0].id)
         .await

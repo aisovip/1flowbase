@@ -16,6 +16,6 @@ SELECT gen_random_uuid(),m.id,m.scope_id,f.code,f.title,f.code,f.kind,true,false
 FROM model_definitions m JOIN (VALUES
  ('id','ID','string',true,0),('workspace_id','Workspace ID','many_to_one',true,1),('actor_user_id','Actor user ID','string',true,2),('instance_id','Instance ID','string',true,3),
  ('display_name','Display name','string',false,4),('type_code','Type code','string',false,5),('source','Source','string',true,6),('status','Status','string',true,7),
- ('failure_code','Failure code','string',false,8),('title','Title','string',false,9),('content','Content','text',false,10),('recipient_count','Recipient count','integer',false,11),
+ ('failure_code','Failure code','string',false,8),('title','Title','string',false,9),('content','Content','text',false,10),('recipient_count','Recipient count','number',false,11),
  ('created_at','Created at','datetime',true,12),('completed_at','Completed at','datetime',false,13)
 ) AS f(code,title,kind,required,position) ON true WHERE m.code='notification_send_logs' AND m.scope_kind='system';

@@ -11,6 +11,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "core.authenticated",
         &[
             "notifications.events.subscribe",
+            "notifications.channels.list",
+            "notifications.channels.read_all",
+            "notifications.messages.unread",
             "notifications.messages.list",
             "notifications.messages.read",
             "notifications.messages.read_all",

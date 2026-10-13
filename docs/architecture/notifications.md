@@ -1,6 +1,6 @@
 # 通知实例与插件发送
 
-通知有三个独立对象：类型描述、工作区通知实例、用户站内消息。设置页保存实例配置；工作流通知节点选择实例并提供本次输入。底座只内置 `system` 类别，其他类别由受管插件贡献。
+通知有四个独立对象：类型描述、工作区通知实例、用户站内消息、发送调用日志。设置页保存实例配置；工作流通知节点选择实例并提供本次输入。底座只内置 `system` 类别，其他类别由受管插件贡献。
 
 ## 数据与结果
 
@@ -55,3 +55,13 @@ node scripts/node/plugin/cli.js package api/plugins/fixtures/acme.notification \
 HTTP owner 是 `/api/console/notifications`：types、instances CRUD、`instances/{id}/send`、messages、unread-count、read、read-all 和 events。设置操作沿独立 console operations；本人消息与类型读取使用认证入口。业务 HTTP 经 Canonical Interface/typed Handler；events 是只读刷新协议控制入口。API、工作流复用同一个 `NotificationService`。
 
 测试以实际 package intake、PostgreSQL、独立授权与 SDK 二进制覆盖发送、schema 拒绝、秘密脱敏和不可用实例保留；测试路径与执行证据记录在当前任务的 `tmp/test-governance/`，源码或复现命令本身不代表测试已通过。
+
+## 发送日志与个人渠道
+
+每次授权工作区发送先持久化一个 `notification_send_logs` pending，再执行校验和发送；HTTP 与工作流通过 `NotificationSenderPort` 显式指定可信 `api` / `workflow` 来源，客户端 body 不接受来源字段。日志保留实例 UUID，无实例/用户外键，也不回填历史。实例缺失时名称、类型为空。日志 list/get 是独立设置 operation，按工作区授权与查询。
+
+站内消息与日志 success 在同一事务提交，安全 title/content 和去重后的 recipient_count 仅来自站内正文。插件调用不记录 config、input、result 或原始错误。发送前的缺失实例、停用、不可用类型/插件、输入/配置/收件人校验失败有固定 failure_code。插件错误可能已产生外部效果，记录 unknown/provider_result_unknown；成功返回后的输出 schema/秘密校验失败记录 unknown/provider_output_invalid。日志收尾写失败保留 pending，不能把不确定外部结果写成确定失败。
+
+`channels` 只聚合当前工作区当前用户的站内消息。`read_status=all|unread|read` 先过滤，再选渠道最新消息并按最新时间排序；每渠道 unread_count 独立计算全部未读事实。cursor 分页上限 100。消息接口支持 instance_id/read_status，保留 unread_only 兼容参数；显式 read_status 优先。删除实例后 left join 保留渠道，deleted=true，display_name='Deleted notification channel'，type_code='system'（历史消息表只保存系统站内消息）。
+
+`messages/{id}/unread` 清除本人消息 read_at；`channels/{instance_id}/read-all` 只标记本人该渠道消息，包含已删除渠道历史。两个写入口都发布同一 recipient/workspace SSE 刷新信号。旧全局 read-all 保留。

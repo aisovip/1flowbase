@@ -436,6 +436,35 @@ where
             .await?
             .ok_or_else(|| Error::NotFound("notification_send_log").into())
     }
+    pub async fn channels(
+        &self,
+        actor: &ActorContext,
+        input: crate::ports::NotificationChannelListInput,
+    ) -> Result<domain::NotificationChannelPage> {
+        self.ensure_actor(actor).await?;
+        self.repository
+            .list_notification_channels(actor.current_workspace_id, actor.user_id, input)
+            .await
+    }
+    pub async fn unread(&self, actor: &ActorContext, id: Uuid) -> Result<SystemNotificationRecord> {
+        self.ensure_actor(actor).await?;
+        let record = self
+            .repository
+            .mark_system_notification_unread(actor.current_workspace_id, actor.user_id, id)
+            .await?
+            .ok_or(Error::NotFound("notification_message"))?;
+        self.publish(actor.current_workspace_id, &[actor.user_id]);
+        Ok(record)
+    }
+    pub async fn read_channel(&self, actor: &ActorContext, instance_id: Uuid) -> Result<u64> {
+        self.ensure_actor(actor).await?;
+        let count = self
+            .repository
+            .mark_notification_channel_read(actor.current_workspace_id, actor.user_id, instance_id)
+            .await?;
+        self.publish(actor.current_workspace_id, &[actor.user_id]);
+        Ok(count)
+    }
     pub async fn messages(
         &self,
         actor: &ActorContext,

@@ -161,6 +161,36 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(!serde_json::to_string(&output)
         .unwrap()
         .contains("private-notification-token"));
+    // A provider can accept externally while the final durable log update fails. The caller
+    // receives an error, but the invocation must remain pending rather than become failure.
+    sqlx::query("CREATE FUNCTION reject_notification_log_finalize() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture finalize unavailable'; END $$").execute(state.store.pool()).await.unwrap();
+    sqlx::query("CREATE TRIGGER notification_log_finalize_fixture BEFORE UPDATE ON notification_send_logs FOR EACH ROW EXECUTE FUNCTION reject_notification_log_finalize()").execute(state.store.pool()).await.unwrap();
+    assert!(service
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"accepted-log-write-fails"})
+        )
+        .await
+        .is_err());
+    sqlx::query("DROP TRIGGER notification_log_finalize_fixture ON notification_send_logs")
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    let pending = service
+        .logs(
+            &actor,
+            control_plane::ports::NotificationLogListInput {
+                status: Some("pending".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(pending.total, 1);
+    assert!(pending.items[0].failure_code.is_none());
+    assert!(pending.items[0].completed_at.is_none());
     let changed = service
         .patch_instance(
             &actor,
@@ -270,8 +300,30 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert_eq!(count, 1);
     runtime.host.stop().await.unwrap();
     let logs = service.logs(&actor, Default::default()).await.unwrap();
+    assert_eq!(
+        logs.items.iter().filter(|l| l.status == "success").count(),
+        2
+    );
+    assert_eq!(
+        logs.items.iter().filter(|l| l.status == "unknown").count(),
+        3
+    );
+    assert_eq!(
+        logs.items
+            .iter()
+            .filter(|l| l.failure_code.as_deref() == Some("provider_output_invalid"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        logs.items
+            .iter()
+            .filter(|l| l.failure_code.as_deref() == Some("provider_result_unknown"))
+            .count(),
+        1
+    );
     let safe_json = serde_json::to_string(&logs).unwrap();
-    assert!(!safe_json.contains("private-token"));
+    assert!(!safe_json.contains("private-notification-token"));
     assert!(logs
         .items
         .iter()
