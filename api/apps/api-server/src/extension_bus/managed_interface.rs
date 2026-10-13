@@ -303,6 +303,7 @@ impl ManagedInterfaceInvocationFactory for ManagedInterfaceFactory {
             )
             .map_err(|_| "managed-deadline-invalid")?;
             frozen.principal = Some(RuntimeExecutionPrincipal {
+                caller: None,
                 workspace_id: workspace_id.to_string(),
                 actor_id: principal.user_id().map(|id| id.to_string()),
                 deadline_unix_ms,

@@ -206,6 +206,7 @@ impl ManagedWorkers {
         request: RuntimeManagedCapabilityRequest,
         plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
         plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
+        file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     ) -> Result<
         impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
         runtime_core::runtime_backend::RuntimeBackendError,
@@ -240,6 +241,25 @@ impl ManagedWorkers {
                 deadline_unix_ms: request.principal.deadline_unix_ms,
             },
             plugin_data,
+            file_import: if permissions.contains("file.import.resource") {
+                file_import
+                    .zip(request.principal.caller.clone())
+                    .map(|(port, caller)| {
+                        (
+                            runtime_core::runtime_backend::FileImportBinding {
+                                subject: request.handle.identity().subject().clone(),
+                                publisher_namespace: binding.publisher_namespace.clone(),
+                                plugin_code: binding.plugin_code.clone(),
+                                plugin_version: binding.plugin_version.clone(),
+                                caller,
+                                deadline_unix_ms: request.principal.deadline_unix_ms,
+                            },
+                            port,
+                        )
+                    })
+            } else {
+                None
+            },
             plugin_credentials: if permissions.contains("credential.manage") {
                 plugin_credentials.map(|port| {
                     (

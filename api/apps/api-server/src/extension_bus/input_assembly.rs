@@ -823,6 +823,7 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
             "service.execute",
             "plugin_data.owned.write",
             "credential.manage",
+            "file.import.resource",
         ]
         .into_iter()
         .map(PermissionCode::new)

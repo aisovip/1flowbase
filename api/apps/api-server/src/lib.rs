@@ -4,6 +4,7 @@ extern crate self as api_server;
 mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
+mod resource_import;
 
 pub mod app_state;
 pub mod application_public_docs;
@@ -671,13 +672,14 @@ async fn app_and_runtime_host_from_config(
     let runtime_sample_source = Arc::new(runtime_profile::RuntimeSampleSource::new(
         std::time::Duration::from_secs(1),
     ));
+    let file_import_port = Arc::new(resource_import::ApiFileImportPort::default());
     let runtime_extension_host = Arc::new(
         runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
             process_started_at,
             runtime_artifact_resolver,
             Arc::new(control_plane::plugin_management::ManagedPluginDataService::new(Arc::new(store.clone()), Arc::new(store.clone()))),
             Arc::clone(&runtime_sample_source),
-        )?.with_plugin_credentials(Arc::new(
+        )?.with_file_import(file_import_port.clone()).with_plugin_credentials(Arc::new(
             control_plane::plugin_management::ManagedPluginCredentialService::new(
                 Arc::new(store.clone()),
                 Arc::new(storage_durable_postgres::PgPluginCredentialRepository::new(
@@ -995,6 +997,7 @@ async fn app_and_runtime_host_from_config(
     let generation_publisher = managed_publication::ManagedGenerationPublisher::new(
         &state, config.clone(), generation_host_contributions, initial_router,
     )?;
+    file_import_port.bind(&generation_publisher)?;
     managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
     Ok((
         generation_publisher.ingress(),

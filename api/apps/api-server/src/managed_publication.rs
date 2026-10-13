@@ -3,7 +3,7 @@
 use std::{
     collections::BTreeMap,
     panic::AssertUnwindSafe,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, Weak},
 };
 
 use axum::{extract::Request, Router};
@@ -27,11 +27,18 @@ use crate::{
 pub(crate) struct PreparedGeneration {
     router: Router,
     stream_generation: String,
+    state: Weak<ApiState>,
     pub(crate) permission_catalog: control_plane_contracts::CompiledConsolePolicyCatalog,
 }
 
+struct PublishedGeneration {
+    router: Router,
+    /// Router owns this exact state; Host adapters retain only a weak generation reference.
+    state: Weak<ApiState>,
+}
+
 pub(crate) struct ManagedGenerationPublisher {
-    current: RwLock<Router>,
+    current: RwLock<PublishedGeneration>,
     native_interfaces: Vec<String>,
     // This template has an empty, independent boot registry: it must not retain the first
     // generation's managed snapshots after that generation's last request completes.
@@ -78,11 +85,22 @@ impl ManagedGenerationPublisher {
         );
         Ok(Arc::new(Self {
             native_interfaces,
-            current: RwLock::new(initial_router),
+            current: RwLock::new(PublishedGeneration {
+                router: initial_router,
+                state: Arc::downgrade(state),
+            }),
             template,
             config,
             host_contributions,
         }))
+    }
+
+    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
+        self.current
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .state
+            .upgrade()
     }
 
     pub(crate) fn interface_module(
@@ -113,6 +131,7 @@ impl ManagedGenerationPublisher {
                 .current
                 .read()
                 .unwrap_or_else(|poison| poison.into_inner())
+                .router
                 .clone();
             async move { router.oneshot(request).await }
         }))
@@ -204,6 +223,7 @@ impl ManagedGenerationPublisher {
                 state.console_operation_registry.inventory(),
             )?;
         Ok(PreparedGeneration {
+            state: Arc::downgrade(&state),
             stream_generation: crate::managed_services::stream_ticket::generation(&state)
                 .map_err(|error| error.0)?,
             permission_catalog,
@@ -220,7 +240,13 @@ impl ManagedGenerationPublisher {
                 .current
                 .write()
                 .unwrap_or_else(|poison| poison.into_inner());
-            std::mem::replace(&mut *current, prepared.router)
+            std::mem::replace(
+                &mut *current,
+                PublishedGeneration {
+                    router: prepared.router,
+                    state: prepared.state,
+                },
+            )
         };
         // Release the old router outside the publication lock; active requests own their clones.
         drop(previous);

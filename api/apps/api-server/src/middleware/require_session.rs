@@ -88,6 +88,11 @@ tokio::task_local! {
     static SERVER_DELEGATED_REQUEST_CONTEXT: RequestContext;
 }
 
+/// Trusted in-process delegation only; request headers cannot populate this context.
+pub(crate) fn server_delegated_request_context() -> Option<RequestContext> {
+    SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone).ok()
+}
+
 pub async fn with_server_delegated_request_context<F>(
     context: RequestContext,
     future: F,

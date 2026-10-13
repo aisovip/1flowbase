@@ -199,10 +199,13 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let deadline = i64::MAX;
                         let (sender, mut events) = mpsc::channel(16);
                         let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
+                        let caller = if binding.descriptor.required_permissions.iter().any(|permission| permission.as_str() == "file.import.resource") {
+                            crate::resource_import::capture_caller(&state, &principal).await?
+                        } else { None };
                         tokio::spawn(async move {
                             let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,
                                 crate::extension_bus::ManagedExecutionInput {
-                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
+                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { caller, workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
                                     config_payload: json!({}), input_payload: input.payload, duplex: Some(duplex),
                                 });
                             tokio::pin!(execution);

@@ -54,3 +54,6 @@ mod _tests;
 
 pub mod plugin_credential_contract;
 pub use plugin_credential_contract::*;
+
+pub mod file_import_contract;
+pub use file_import_contract::*;

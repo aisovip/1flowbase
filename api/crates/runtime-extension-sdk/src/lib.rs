@@ -57,3 +57,7 @@ pub use extension_contracts::{
     PluginCredentialError, PluginCredentialRequest, PluginCredentialResponse,
 };
 pub use plugin_credential::{PluginCredentialClient, PluginCredentialClientError};
+
+mod file_import;
+pub use extension_contracts::{FileImportError, FileImportRequest, FileImportResponse};
+pub use file_import::{FileImportClient, FileImportClientError};

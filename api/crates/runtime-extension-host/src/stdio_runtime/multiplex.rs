@@ -907,6 +907,35 @@ async fn execute_callback(
                 Err(error) => serde_json::json!({"error":error}),
             }
         }
+        MultiplexHostService::FileImportV1 => {
+            use extension_contracts::{FileImportError, FileImportRequest};
+            let result = async {
+                let request: FileImportRequest = serde_json::from_value(request)
+                    .map_err(|_| FileImportError::new("file_import_request_invalid"))?;
+                request.validate()?;
+                let (binding, port) = context
+                    .and_then(|context| context.file_import)
+                    .ok_or_else(|| FileImportError::new("file_import_not_granted"))?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(FileImportError::new("file_import_deadline_exceeded"));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| Err(FileImportError::new("file_import_deadline_exceeded")))
+            }
+            .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
         MultiplexHostService::PluginCredentialV1 => {
             use extension_contracts::{PluginCredentialError, PluginCredentialRequest};
             let result = async {
@@ -942,3 +971,7 @@ async fn execute_callback(
 #[cfg(test)]
 #[path = "../_tests/plugin_credential_callbacks.rs"]
 mod credential_tests;
+
+#[cfg(test)]
+#[path = "../_tests/file_import_callbacks.rs"]
+mod file_import_tests;

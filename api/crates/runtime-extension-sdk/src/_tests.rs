@@ -90,3 +90,6 @@ mod multiplex_duplex_tests;
 
 #[path = "_tests/multiplex/retention.rs"]
 mod retention;
+
+#[path = "_tests/file_import_client_tests.rs"]
+mod file_import_client_tests;

@@ -88,6 +88,7 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
     let publisher = ManagedGenerationPublisher::new(&state, config, vec![], initial).unwrap();
     // This is the one router retained by the host; never reconstruct it after publication.
     let ingress = publisher.ingress();
+    assert!(Arc::ptr_eq(&publisher.current_state().unwrap(), &state));
     let (cookie, _) = login_and_capture_cookie(&ingress, "root", "change-me").await;
     let original_pid = std::process::id();
     let mut service = fixture();
@@ -102,6 +103,14 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
     // Merely preparing a complete candidate must leave every serving projection unchanged.
     assert_unregistered(&ingress, &old_route, &cookie).await;
     publisher.publish(candidate);
+    assert!(publisher
+        .current_state()
+        .unwrap()
+        .console_surface_registry
+        .managed_services()
+        .iter()
+        .any(|current| current.installation_id == service.installation_id));
+    assert!(!Arc::ptr_eq(&publisher.current_state().unwrap(), &state));
     assert_eq!(
         request(&ingress, &old_route, "").await.0,
         StatusCode::UNAUTHORIZED
@@ -133,6 +142,13 @@ async fn hot_generation_same_ingress_swaps_routes_navigation_docs_and_mcp_atomic
             .await
             .unwrap(),
     );
+    assert!(publisher
+        .current_state()
+        .unwrap()
+        .console_surface_registry
+        .managed_services()
+        .iter()
+        .any(|current| current.installation_id == upgraded.installation_id));
     assert_unregistered(&ingress, &old_route, &cookie).await;
     assert_eq!(
         request(&ingress, &upgraded.declaration.operations[0].path, "")

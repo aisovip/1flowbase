@@ -68,6 +68,7 @@ pub enum MultiplexHostMessage {
 pub enum MultiplexHostService {
     PluginDataV1,
     PluginCredentialV1,
+    FileImportV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

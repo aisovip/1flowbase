@@ -105,6 +105,7 @@ fn request(
         handle,
         input: input.into(),
         principal: RuntimeExecutionPrincipal {
+            caller: None,
             workspace_id: "workspace-1".into(),
             actor_id: Some("actor-1".into()),
             deadline_unix_ms: now_ms() + 10_000,

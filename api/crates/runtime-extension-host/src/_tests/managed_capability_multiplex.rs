@@ -98,6 +98,7 @@ sys.stdin.read()
     let request = |scope: &str| RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            caller: None,
             workspace_id: scope.into(),
             actor_id: Some("actor".into()),
             deadline_unix_ms: (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
@@ -110,10 +111,10 @@ sys.stdin.read()
     };
     let port = Arc::new(DataPort::default());
     assert!(workers
-        .execute_with_services(request("foreign"), port.clone(), None)
+        .execute_with_services(request("foreign"), port.clone(), None, None)
         .is_err());
     let output = workers
-        .execute_with_services(request("system-scope"), port.clone(), None)
+        .execute_with_services(request("system-scope"), port.clone(), None, None)
         .unwrap()
         .await
         .unwrap();
@@ -126,7 +127,7 @@ sys.stdin.read()
     drop(calls);
     workers.unmount(&handle).unwrap();
     assert!(workers
-        .execute_with_services(request("system-scope"), port, None)
+        .execute_with_services(request("system-scope"), port, None, None)
         .is_err());
 }
 
@@ -243,6 +244,7 @@ fn service_request(
     RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            caller: None,
             workspace_id: "system-scope".into(),
             actor_id: actor.map(str::to_owned),
             deadline_unix_ms: (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)

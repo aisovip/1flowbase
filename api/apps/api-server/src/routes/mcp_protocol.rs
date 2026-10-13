@@ -28,7 +28,7 @@ use interface_operation::{
 pub(crate) mod client_context;
 mod input_schema;
 mod interface_operation;
-mod resources;
+pub(crate) mod resources;
 pub(crate) mod result_delivery;
 pub(crate) mod virtual_ui;
 
