@@ -821,6 +821,7 @@ fn request_cancel(id: &str, call: &mut ActiveCall, controls: &mpsc::Sender<Contr
     }
     call.cancelling_since = Some(Instant::now());
     call.live.store(false, Ordering::Release);
+    call.host_calls = None;
     for (_, task) in call.callbacks.drain() {
         task.abort();
     }
@@ -902,6 +903,18 @@ async fn execute_callback(
                 })
             }
             .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
+        MultiplexHostService::FileReadV1 => {
+            let result = match context.and_then(|c| c.file_read) {
+                Some(call) => call.execute(request).await,
+                None => Err(extension_contracts::FileReadError::new(
+                    "file_read_not_granted",
+                )),
+            };
             match result {
                 Ok(value) => serde_json::json!({"result":value}),
                 Err(error) => serde_json::json!({"error":error}),

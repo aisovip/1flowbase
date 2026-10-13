@@ -86,6 +86,7 @@ pub struct RuntimeExtensionHost {
     active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
     plugin_data: Arc<dyn PluginDataPort>,
+    pub(crate) file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
     pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     managed_hash_budget: Arc<tokio::sync::Semaphore>,
@@ -187,6 +188,7 @@ impl RuntimeExtensionHost {
             active_requests: Arc::new(Mutex::new(HashMap::new())),
             artifact_resolver,
             plugin_data,
+            file_read: None,
             file_import: None,
             plugin_credentials: None,
             managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -195,6 +197,14 @@ impl RuntimeExtensionHost {
 
     /// Composition-root injection before activation. The port must enforce live authority.
     /// Inject the trusted resource replay/file upload capability at composition time.
+    pub fn with_file_read(
+        mut self,
+        port: Arc<dyn runtime_core::runtime_backend::FileReadPort>,
+    ) -> Self {
+        self.file_read = Some(port);
+        self
+    }
+
     pub fn with_file_import(
         mut self,
         port: Arc<dyn runtime_core::runtime_backend::FileImportPort>,
@@ -1001,6 +1011,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                 Arc::clone(&self.plugin_data),
                 self.plugin_credentials.clone(),
                 self.file_import.clone(),
+                self.file_read.clone(),
             )?
         };
         Ok(Box::pin(async move {

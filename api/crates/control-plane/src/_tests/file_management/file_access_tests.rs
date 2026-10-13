@@ -181,6 +181,10 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
         Vec::<String>::new(),
     );
     assert!(service
+        .read(unauthorized.clone(), table_id, id)
+        .await
+        .is_err());
+    assert!(service
         .create_temporary_link(unauthorized, table_id, id, 60)
         .await
         .is_err());

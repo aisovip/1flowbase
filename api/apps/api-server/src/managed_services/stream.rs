@@ -199,8 +199,8 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let deadline = i64::MAX;
                         let (sender, mut events) = mpsc::channel(16);
                         let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
-                        let caller = if binding.descriptor.required_permissions.iter().any(|permission| permission.as_str() == "file.import.resource") {
-                            crate::resource_import::capture_caller(&state, &principal).await?
+                        let caller = if binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content")) {
+                            crate::resource_import::capture_caller(&state, &principal, &op.interface_id).await?
                         } else { None };
                         tokio::spawn(async move {
                             let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,

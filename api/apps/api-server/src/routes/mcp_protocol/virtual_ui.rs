@@ -1391,7 +1391,7 @@ fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
     arguments.get(field).and_then(Value::as_str)
 }
 
-pub(super) fn visible_tool<'a>(
+pub(crate) fn visible_tool<'a>(
     catalog: &'a domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     tool_id: &str,

@@ -32,7 +32,7 @@ fn context(port: Arc<Imports>) -> ProviderHostCallContext {
     context.file_import = Some((FileImportBinding {
         subject: ManagedContributionSubject::new(ManagedInstallationId::new("installation").unwrap(), ManagedWorkspaceId::new("system").unwrap(), ContributionId::new("import").unwrap()),
         publisher_namespace: "trusted".into(), plugin_code: "fixture".into(), plugin_version: "1.0.0".into(),
-        caller: RuntimeCallerContext { actor: serde_json::from_value(serde_json::json!({"user_id":"00000000-0000-0000-0000-000000000001","tenant_id":"00000000-0000-0000-0000-000000000000","current_workspace_id":"00000000-0000-0000-0000-000000000002","effective_display_role":"root","is_root":true,"permissions":[]})).unwrap(), session_version: 7, selected_mcp_instance_ids: Some(vec!["selected".into()]) },
+        caller: RuntimeCallerContext { actor: serde_json::from_value(serde_json::json!({"user_id":"00000000-0000-0000-0000-000000000001","tenant_id":"00000000-0000-0000-0000-000000000000","current_workspace_id":"00000000-0000-0000-0000-000000000002","effective_display_role":"root","is_root":true,"permissions":[]})).unwrap(), session_version: 7, session_identity: None, interface_id: "fixture".into(), selected_mcp_instance_ids: Some(vec!["selected".into()]) },
         deadline_unix_ms: now_unix_ms() + 5000,
     }, port));
     context
@@ -130,4 +130,10 @@ async fn callback_deadline_and_cancellation_drop_the_exact_active_import_future(
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
     assert!(!active.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn file_read_callback_without_injected_grant_is_denied() {
+    let response = execute_callback(MultiplexHostService::FileReadV1, serde_json::json!({"operation":"open","file_table_id":"00000000-0000-0000-0000-000000000001","record_id":"00000000-0000-0000-0000-000000000002"}), None).await;
+    assert_eq!(response["error"]["code"], "file_read_not_granted");
 }

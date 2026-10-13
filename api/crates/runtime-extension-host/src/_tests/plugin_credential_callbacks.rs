@@ -53,6 +53,7 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
             deadline_unix_ms: binding.deadline_unix_ms,
         },
         plugin_data: Arc::new(NoData),
+        file_read: None,
         file_import: None,
         plugin_credentials: Some((binding, port)),
     }

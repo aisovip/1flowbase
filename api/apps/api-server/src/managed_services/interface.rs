@@ -133,11 +133,19 @@ impl Adapter {
                 .descriptor
                 .required_permissions
                 .iter()
-                .any(|permission| permission.as_str() == "file.import.resource")
-            {
-                crate::resource_import::capture_caller(&state, principal)
-                    .await
-                    .map_err(|error| error.0)?
+                .any(|permission| {
+                    matches!(
+                        permission.as_str(),
+                        "file.import.resource" | "file.read.content"
+                    )
+                }) {
+                crate::resource_import::capture_caller(
+                    &state,
+                    principal,
+                    &op.declaration.interface_id,
+                )
+                .await
+                .map_err(|error| error.0)?
             } else {
                 None
             };

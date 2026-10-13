@@ -741,11 +741,31 @@ impl RuntimeBackendSlot {
     }
 }
 
+/// Host-only opaque session handle. Never implements serialization or reveals its Debug value.
+#[derive(Clone)]
+pub struct RuntimeSessionIdentity(String);
+impl RuntimeSessionIdentity {
+    pub fn new(identity: String) -> Self {
+        Self(identity)
+    }
+    pub fn expose_to_trusted_handler(&self) -> &str {
+        &self.0
+    }
+}
+impl std::fmt::Debug for RuntimeSessionIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RuntimeSessionIdentity([REDACTED])")
+    }
+}
+
 /// Real caller retained separately from PluginData's system execution workspace.
 #[derive(Debug, Clone)]
 pub struct RuntimeCallerContext {
     pub actor: domain::ActorContext,
     pub session_version: i64,
+    /// Host-only session handle; never serialized to a worker.
+    pub session_identity: Option<RuntimeSessionIdentity>,
+    pub interface_id: String,
     /// None for direct Console calls; Some(empty) deliberately grants no MCP instance.
     pub selected_mcp_instance_ids: Option<Vec<String>>,
 }
@@ -776,4 +796,26 @@ pub trait FileImportPort: Send + Sync {
         binding: &'a FileImportBinding,
         request: &'a extension_contracts::FileImportRequest,
     ) -> FileImportFuture<'a>;
+}
+
+/// File reads retain the same Host-only admitted identity, with an independent permission.
+pub type FileReadBinding = FileImportBinding;
+pub struct FileReadSource {
+    pub metadata: extension_contracts::FileReadMetadata,
+    pub reader: std::pin::Pin<Box<dyn tokio::io::AsyncRead + Send + Unpin>>,
+}
+pub type FileReadFuture<'a, T> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<T, extension_contracts::FileReadError>> + Send + 'a,
+    >,
+>;
+/// Host Service outside the six execution ports. Revalidate on every frame.
+pub trait FileReadPort: Send + Sync {
+    fn authorize<'a>(&'a self, binding: &'a FileReadBinding) -> FileReadFuture<'a, ()>;
+    fn open<'a>(
+        &'a self,
+        binding: &'a FileReadBinding,
+        file_table_id: &'a str,
+        record_id: &'a str,
+    ) -> FileReadFuture<'a, FileReadSource>;
 }
