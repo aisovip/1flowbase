@@ -222,6 +222,8 @@ pub(super) fn fixture(actor: ActorContext) -> (Arc<Authority>, FileImportBinding
         plugin_version: "1.0.0".into(),
         caller: runtime_core::runtime_backend::RuntimeCallerContext {
             actor,
+            interface_id: "fixture".into(),
+            session_identity: None,
             session_version: 7,
             selected_mcp_instance_ids: Some(vec!["selected".into()]),
         },

@@ -93,3 +93,6 @@ mod retention;
 
 #[path = "_tests/file_import_client_tests.rs"]
 mod file_import_client_tests;
+
+#[path = "_tests/file_read_client_tests.rs"]
+mod file_read_client_tests;

@@ -19,6 +19,14 @@ pub async fn authorize_resource_import(
     authority: &dyn PluginContributionAuthorityRepository,
     binding: &FileImportBinding,
 ) -> Result<Box<dyn ContributionAuthorityLease>, FileImportError> {
+    authorize_file_service(authority, binding, "file.import.resource").await
+}
+
+pub async fn authorize_file_service(
+    authority: &dyn PluginContributionAuthorityRepository,
+    binding: &FileImportBinding,
+    permission: &str,
+) -> Result<Box<dyn ContributionAuthorityLease>, FileImportError> {
     let denied = || FileImportError::new("file_import_authority_denied");
     let installation_id =
         uuid::Uuid::parse_str(binding.subject.installation_id().as_str()).map_err(|_| denied())?;
@@ -31,8 +39,9 @@ pub async fn authorize_resource_import(
         .lock_contribution_authority(&binding.subject)
         .await
         .map_err(|_| denied())?;
-    validate_resource_import_authority(
+    validate_file_service_authority(
         binding,
+        permission,
         lease.installation(installation_id).ok_or_else(denied)?,
         lease.snapshot(),
     )?;
@@ -41,6 +50,15 @@ pub async fn authorize_resource_import(
 
 pub fn validate_resource_import_authority(
     binding: &FileImportBinding,
+    installation: &domain::PluginInstallationRecord,
+    snapshot: &domain::PluginContributionAuthoritySnapshot,
+) -> Result<(), FileImportError> {
+    validate_file_service_authority(binding, "file.import.resource", installation, snapshot)
+}
+
+fn validate_file_service_authority(
+    binding: &FileImportBinding,
+    permission: &str,
     installation: &domain::PluginInstallationRecord,
     snapshot: &domain::PluginContributionAuthoritySnapshot,
 ) -> Result<(), FileImportError> {
@@ -69,7 +87,7 @@ pub fn validate_resource_import_authority(
         || !contribution
             .required_permissions
             .iter()
-            .any(|p| p.as_str() == "file.import.resource")
+            .any(|p| p.as_str() == permission)
     {
         return Err(denied());
     }

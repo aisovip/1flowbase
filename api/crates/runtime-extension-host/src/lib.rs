@@ -26,3 +26,5 @@ mod runtime_host;
 mod _tests;
 
 pub use runtime_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
+
+mod file_read_host;

@@ -161,3 +161,36 @@ async fn resource_import_reuses_upload_acl_and_preserves_full_object_and_metadat
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[tokio::test]
+async fn file_read_authority_requires_its_own_live_contract_and_never_borrows_import_grant() {
+    use crate::file_management::authorize_file_service;
+    let (authority, binding) = authority::fixture(actor_in_workspace(Uuid::now_v7()));
+    assert!(
+        authorize_file_service(authority.as_ref(), &binding, "file.read.content")
+            .await
+            .is_err()
+    );
+    {
+        let mut state = authority.state.lock().await;
+        state.installation.metadata_json["managed"]["module"]["contributions"][0]
+            ["required_permissions"] = json!(["service.execute", "file.read.content"]);
+        state.snapshot.authorizations[1].permission = "file.read.content".into();
+        state.snapshot.authorizations[1].permission_contract_id = "file-read".into();
+    }
+    authorize_file_service(authority.as_ref(), &binding, "file.read.content")
+        .await
+        .unwrap()
+        .release()
+        .await
+        .unwrap();
+    {
+        let mut state = authority.state.lock().await;
+        state.snapshot.authorizations[1].status = ContributionAuthorizationStatus::Revoked;
+    }
+    assert!(
+        authorize_file_service(authority.as_ref(), &binding, "file.read.content")
+            .await
+            .is_err()
+    );
+}

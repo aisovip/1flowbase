@@ -21,5 +21,6 @@ tokio.workspace = true
 tokio-util = { version = "0.7", features = ["time"] }
 tracing.workspace = true
 
-[dev-dependencies]
+base64.workspace = true
 sha2.workspace = true
+uuid.workspace = true

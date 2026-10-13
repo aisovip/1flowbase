@@ -156,6 +156,10 @@ impl HostContributionGrantPolicy {
                         request.permission_contract_id == "managed-service"
                             && request.resource_scope == ContributionResourceScope::System
                     }
+                    "file.read.content" => {
+                        request.permission_contract_id == "file-read"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
                     "file.import.resource" => {
                         request.permission_contract_id == "file-import"
                             && request.resource_scope == ContributionResourceScope::System

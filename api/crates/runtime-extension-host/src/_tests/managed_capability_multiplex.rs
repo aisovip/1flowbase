@@ -111,10 +111,10 @@ sys.stdin.read()
     };
     let port = Arc::new(DataPort::default());
     assert!(workers
-        .execute_with_services(request("foreign"), port.clone(), None, None)
+        .execute_with_services(request("foreign"), port.clone(), None, None, None)
         .is_err());
     let output = workers
-        .execute_with_services(request("system-scope"), port.clone(), None, None)
+        .execute_with_services(request("system-scope"), port.clone(), None, None, None)
         .unwrap()
         .await
         .unwrap();
@@ -127,7 +127,7 @@ sys.stdin.read()
     drop(calls);
     workers.unmount(&handle).unwrap();
     assert!(workers
-        .execute_with_services(request("system-scope"), port, None, None)
+        .execute_with_services(request("system-scope"), port, None, None, None)
         .is_err());
 }
 

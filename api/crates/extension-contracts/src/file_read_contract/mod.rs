@@ -63,8 +63,7 @@ pub enum FileReadResponse {
         ticket: String,
     },
 }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("{code}")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileReadError {
     pub code: String,
@@ -74,3 +73,13 @@ impl FileReadError {
         Self { code: code.into() }
     }
 }
+
+impl std::fmt::Display for FileReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.code)
+    }
+}
+impl std::error::Error for FileReadError {}
+
+#[cfg(test)]
+mod _tests;
