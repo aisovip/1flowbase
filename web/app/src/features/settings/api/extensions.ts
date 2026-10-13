@@ -10,6 +10,7 @@ import {
   getConsoleInstalledMcpExtensionIntegrityChallenge,
   getConsoleExtensionRiskChallenge,
   installConsoleExtension,
+  uploadConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   previewConsoleInstalledMcpExtension,
@@ -192,5 +193,6 @@ export function applySettingsBuiltinMcpTemplate(
 }
 
 export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };
+export const uploadSettingsExtension = uploadConsoleExtension;
 export { getConsoleInstalledMcpExtensionConflict as getSettingsInstalledMcpExtensionConflict };
 export { getConsoleInstalledMcpExtensionIntegrityChallenge as getSettingsInstalledMcpExtensionIntegrityChallenge };

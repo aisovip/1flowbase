@@ -959,7 +959,8 @@
       "web/app/src/features/settings/api/ui-management.ts",
       "web/app/src/features/settings/api/extensions.ts",
       "web/packages/api-client/src/console/extensions.ts",
-      "web/app/src/app/router.tsx"
+      "web/app/src/app/router.tsx",
+      "web/app/src/features/settings/components/extension-center/ExtensionUploadModal.tsx"
     ],
     "boundaryNodes": [
       {
