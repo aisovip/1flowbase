@@ -61,6 +61,12 @@ export function NotificationInstanceDrawer({
     [instance]
   );
   const unavailable = !!instance && !instance.available;
+  const unavailableTitle =
+    instance?.unavailable_reason === 'instance_disabled'
+      ? t('instance_disabled')
+      : instance?.unavailable_reason === 'plugin_unavailable'
+        ? t('plugin_unavailable')
+        : t('type_unavailable');
   return (
     <SchemaFormDrawer
       key={JSON.stringify([selected?.type_code, selected?.installation_id])}
@@ -124,7 +130,7 @@ export function NotificationInstanceDrawer({
             />
           </label>
           {unavailable && (
-            <Alert type="warning" title={t('type_unavailable')} />
+            <Alert type="warning" title={unavailableTitle} />
           )}
           {!selected && instance && (
             <Alert type="info" title={t('config_unavailable')} />
