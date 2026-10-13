@@ -15,7 +15,6 @@ import InboxOutlined from '@ant-design/icons/es/icons/InboxOutlined';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import {
-  consoleFileContentPath,
   fetchConsoleFileRecords,
   fetchConsoleFileTables,
   uploadConsoleFile,
@@ -32,6 +31,7 @@ import {
 import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import { useNativeBlockSurface } from '../../lib/native-modules/native-block-surface-context';
+import { FileTemporaryAccessModal } from './FileTemporaryAccessModal';
 
 export interface FileTableViewProps {
   fileTableCode: string;
@@ -51,6 +51,11 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   const [page, setPage] = useState(1);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [publicTarget, setPublicTarget] = useState<{
+    record: ConsoleFileRecord;
+    tableId: string;
+    workspaceId: string | undefined;
+  }>();
   const uploads = useRef(new Set<AbortController>());
   useEffect(() => {
     const controllers = uploads.current;
@@ -73,7 +78,9 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   });
   useEffect(() => {
     setPage(1);
+    setPublicTarget(undefined);
   }, [fileTableCode, workspaceId]);
+  useEffect(() => setPublicTarget(undefined), [csrfToken]);
 
   const columns = useMemo<DataTableColumn<ConsoleFileRecord>[]>(
     () => [
@@ -84,11 +91,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         width: 280,
         render: (_, record) =>
           table ? (
-            <a
-              href={consoleFileContentPath(table.id, record.id)}
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href={record.url} target="_blank" rel="noreferrer">
               {record.filename}
             </a>
           ) : (
@@ -109,6 +112,34 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         width: 220
       },
       {
+        key: 'url',
+        dataIndex: 'url',
+        title: i18nText('frontstage', 'files.url'),
+        width: 360,
+        render: (_, record) => (
+          <a href={record.url} target="_blank" rel="noreferrer">
+            {record.url}
+          </a>
+        )
+      },
+      {
+        key: 'actions',
+        title: i18nText('frontstage', 'files.actions'),
+        width: 140,
+        render: (_, record) => (
+          <Button
+            type="link"
+            disabled={!table || !csrfToken}
+            onClick={() =>
+              table &&
+              setPublicTarget({ record, tableId: table.id, workspaceId })
+            }
+          >
+            {i18nText('frontstage', 'files.temporary_public')}
+          </Button>
+        )
+      },
+      {
         key: 'created_at',
         dataIndex: 'created_at',
         title: i18nText('frontstage', 'files.created_at'),
@@ -116,7 +147,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         render: (_, record) => formatDateTime(record.created_at)
       }
     ],
-    [table]
+    [table, csrfToken, workspaceId]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,
@@ -217,6 +248,19 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
           }
         />
       </DataTableLayout>
+      {publicTarget &&
+      publicTarget.tableId === table?.id &&
+      publicTarget.workspaceId === workspaceId &&
+      csrfToken ? (
+        <FileTemporaryAccessModal
+          key={`${publicTarget.tableId}:${publicTarget.record.id}:${workspaceId}`}
+          fileTableId={publicTarget.tableId}
+          recordId={publicTarget.record.id}
+          filename={publicTarget.record.filename}
+          csrfToken={csrfToken}
+          onClose={() => setPublicTarget(undefined)}
+        />
+      ) : null}
       <Modal
         open={uploadOpen}
         title={i18nText('frontstage', 'files.upload')}

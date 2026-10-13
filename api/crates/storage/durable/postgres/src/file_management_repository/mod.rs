@@ -1,3 +1,4 @@
+mod access;
 mod backup_export;
 
 use anyhow::Result;
@@ -69,6 +70,14 @@ fn map_file_table(row: sqlx::postgres::PgRow) -> Result<domain::FileTableRecord>
 
 #[async_trait]
 impl FileManagementRepository for PgControlPlaneStore {
+    async fn get_file_record_for_access(
+        &self,
+        file_table_id: Uuid,
+        record_id: Uuid,
+        scope_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        access::get_file_record_for_access(self, file_table_id, record_id, scope_id).await
+    }
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

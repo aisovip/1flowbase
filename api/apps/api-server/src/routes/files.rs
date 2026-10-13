@@ -1,3 +1,6 @@
+#[path = "files/public/mod.rs"]
+pub(crate) mod public;
+
 use std::sync::Arc;
 
 use axum::{
@@ -7,7 +10,6 @@ use axum::{
     response::Response,
     Json, Router,
 };
-use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use storage_durable_postgres::MainDurableStore;
@@ -35,6 +37,16 @@ pub struct UploadedFileResponse {
     pub record: serde_json::Value,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct CreateTemporaryFileLinkInput {
+    pub expires_in_seconds: i64,
+}
+#[derive(Serialize, ToSchema)]
+pub struct TemporaryFileLinkResponse {
+    pub url: String,
+    pub expires_at: String,
+}
+
 #[derive(ToSchema)]
 #[allow(dead_code)]
 struct UploadFileMultipartBody {
@@ -50,6 +62,11 @@ enum BusinessFilesInput {
         content_type: Option<String>,
         bytes: Vec<u8>,
     },
+    CreateTemporaryLink {
+        file_table_id: String,
+        record_id: String,
+        expires_in_seconds: i64,
+    },
     ReadContent {
         file_table_id: String,
         record_id: String,
@@ -60,6 +77,12 @@ impl InterfaceContract for BusinessFilesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CreateTemporaryLink")),
+                ("file_table_id", mp::text_schema()),
+                ("record_id", mp::text_schema()),
+                ("expires_in_seconds", mp::count_schema()),
+            ]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("Upload")),
                 (
@@ -85,6 +108,16 @@ impl InterfaceContract for BusinessFilesInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::CreateTemporaryLink {
+                file_table_id,
+                record_id,
+                expires_in_seconds,
+            } => mp::object_value(&[
+                ("variant", serde_json::json!("CreateTemporaryLink")),
+                ("file_table_id", mp::text(file_table_id)?),
+                ("record_id", mp::text(record_id)?),
+                ("expires_in_seconds", serde_json::json!(expires_in_seconds)),
+            ]),
             Self::Upload {
                 file_table_id: _field_file_table_id,
                 content_type: _field_content_type,
@@ -130,20 +163,19 @@ impl InterfaceContract for BusinessFilesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-struct FileContentOutput {
-    content_type: String,
-    bytes: Vec<u8>,
-}
+type FileContentOutput = control_plane::file_management::FileContent;
 
 enum BusinessFilesOutput {
     Uploaded(UploadedFileResponse),
     Content(FileContentOutput),
+    TemporaryLink(TemporaryFileLinkResponse),
 }
 
 impl InterfaceContract for BusinessFilesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("TemporaryLink"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("Uploaded")),
                 (
@@ -161,6 +193,9 @@ impl InterfaceContract for BusinessFilesOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::TemporaryLink(_) => {
+                mp::object_value(&[("variant", serde_json::json!("TemporaryLink"))])
+            }
             Self::Uploaded(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Uploaded".to_owned())),
                 (
@@ -186,6 +221,7 @@ struct BusinessFilesAdapter {
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    grants: Arc<dyn control_plane::ports::EphemeralKvStore>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -196,6 +232,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
     ConsoleRouteAssembly::new()
+        .route(
+            "/files/:file_table_id/records/:record_id/access-links",
+            console_post(create_temporary_file_link, Authenticated),
+        )
         .route("/files/upload", console_post(upload_file, Authenticated))
         .route(
             "/files/:file_table_id/records/:record_id/content",
@@ -204,6 +244,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "files.access_links.create",
+        binding_id: "http.console.files.access-links.create.v1",
+        method: "POST",
+        path: "/api/console/files/:file_table_id/records/:record_id/access-links",
+        mutating: true,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "files.upload",
         binding_id: "http.console.files.upload.v1",
@@ -224,6 +271,7 @@ pub(crate) fn compile_registry(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    grants: Arc<dyn control_plane::ports::EphemeralKvStore>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -236,6 +284,7 @@ pub(crate) fn compile_registry(
             store,
             file_storage_registry,
             runtime_engine,
+            grants,
         }),
     )
 }
@@ -250,6 +299,10 @@ fn invalid_input(field: &'static str) -> ApiError {
 }
 
 fn map_runtime_error(error: anyhow::Error) -> ApiError {
+    let error = match error.downcast::<storage_object::FileStorageError>() {
+        Ok(error) => return map_file_storage_error(error),
+        Err(error) => error,
+    };
     if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
         error.downcast_ref::<runtime_core::runtime_acl::RuntimeAclError>()
     {
@@ -301,6 +354,17 @@ fn map_file_storage_error(error: storage_object::FileStorageError) -> ApiError {
 }
 
 impl BusinessFilesAdapter {
+    fn access_service(
+        &self,
+    ) -> control_plane::file_management::FileAccessService<MainDurableStore> {
+        control_plane::file_management::FileAccessService::new(
+            self.store.clone(),
+            self.file_storage_registry.clone(),
+            self.runtime_engine.clone(),
+            self.grants.clone(),
+        )
+    }
+
     async fn execute_inner(
         &self,
         principal: &UserPrincipal,
@@ -341,85 +405,38 @@ impl BusinessFilesAdapter {
                 file_table_id,
                 record_id,
             } => {
-                let file_table = self
-                    .store
-                    .get_file_table(parse_uuid(&file_table_id, "file_table_id")?)
-                    .await?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "file_table",
-                    ))?;
-                let model = self
-                    .store
-                    .get_model_definition(
-                        actor.current_workspace_id,
-                        file_table.model_definition_id,
-                    )
-                    .await?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "model_definition",
-                    ))?;
-                let scope_grant = control_plane::model_definition::ModelDefinitionService::new(
-                    self.store.clone(),
-                )
-                .load_runtime_scope_grant(
-                    &actor,
-                    model.id,
-                    runtime_core::runtime_acl::RuntimeDataAction::View,
-                )
-                .await?;
-                let record = self
-                    .runtime_engine
-                    .get_record(runtime_core::runtime_engine::RuntimeGetInput {
+                let content = self
+                    .access_service()
+                    .read(
                         actor,
-                        model_code: model.code,
-                        record_id,
-                        scope_grant,
-                    })
+                        parse_uuid(&file_table_id, "file_table_id")?,
+                        parse_uuid(&record_id, "record_id")?,
+                    )
                     .await
-                    .map_err(map_runtime_error)?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "runtime_record",
-                    ))?;
-                let storage_id = record
-                    .get("storage_id")
-                    .and_then(|value| value.as_str())
-                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "storage_id",
-                    ))?;
-                let object_path = record.get("path").and_then(|value| value.as_str()).ok_or(
-                    control_plane::errors::ControlPlaneError::InvalidInput("path"),
-                )?;
-                let storage = self
-                    .store
-                    .get_file_storage(parse_uuid(storage_id, "storage_id")?)
-                    .await?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "file_storage",
-                    ))?;
-                let driver = self.file_storage_registry.get(&storage.driver_type).ok_or(
-                    control_plane::errors::ControlPlaneError::Conflict(
-                        "storage_driver_not_registered",
-                    ),
-                )?;
-                let open = driver
-                    .open_read(storage_object::OpenReadInput {
-                        config_json: &storage.config_json,
-                        object_path,
-                    })
+                    .map_err(map_runtime_error)?;
+                Ok(BusinessFilesOutput::Content(content))
+            }
+            BusinessFilesInput::CreateTemporaryLink {
+                file_table_id,
+                record_id,
+                expires_in_seconds,
+            } => {
+                let link = self
+                    .access_service()
+                    .create_temporary_link(
+                        actor,
+                        parse_uuid(&file_table_id, "file_table_id")?,
+                        parse_uuid(&record_id, "record_id")?,
+                        expires_in_seconds,
+                    )
                     .await
-                    .map_err(map_file_storage_error)?;
-                Ok(BusinessFilesOutput::Content(FileContentOutput {
-                    content_type: open
-                        .content_type
-                        .or_else(|| {
-                            record
-                                .get("mimetype")
-                                .and_then(|value| value.as_str())
-                                .map(str::to_string)
-                        })
-                        .unwrap_or_else(|| "application/octet-stream".into()),
-                    bytes: open.bytes,
-                }))
+                    .map_err(map_runtime_error)?;
+                Ok(BusinessFilesOutput::TemporaryLink(
+                    TemporaryFileLinkResponse {
+                        url: link.url,
+                        expires_at: link.expires_at,
+                    },
+                ))
             }
         }
     }
@@ -518,9 +535,81 @@ pub async fn read_file_content(
     let BusinessFilesOutput::Content(content) = output else {
         unreachable!("file content binding returned a different output")
     };
-    Ok(Response::builder()
+    content_response(content)
+}
+
+#[utoipa::path(post, path = "/api/console/files/{file_table_id}/records/{record_id}/access-links",
+    params(("file_table_id" = String, Path), ("record_id" = String, Path)),
+    request_body = CreateTemporaryFileLinkInput,
+    responses((status = 201, body = TemporaryFileLinkResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
+pub async fn create_temporary_file_link(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((file_table_id, record_id)): Path<(String, String)>,
+    Json(input): Json<CreateTemporaryFileLinkInput>,
+) -> Result<
+    (
+        StatusCode,
+        HeaderMap,
+        Json<ApiSuccess<TemporaryFileLinkResponse>>,
+    ),
+    ApiError,
+> {
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.files.access-links.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        BusinessFilesInput::CreateTemporaryLink {
+            file_table_id,
+            record_id,
+            expires_in_seconds: input.expires_in_seconds,
+        },
+    )
+    .await?;
+    let BusinessFilesOutput::TemporaryLink(link) = output else {
+        unreachable!("file link binding returned a different output")
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok((StatusCode::CREATED, headers, Json(ApiSuccess::new(link))))
+}
+
+pub(crate) fn content_response(content: FileContentOutput) -> Result<Response, ApiError> {
+    use axum::http::header;
+    // A user-controlled filename cannot create response headers or executable same-origin content.
+    let encoded_filename: String =
+        url::form_urlencoded::byte_serialize(content.filename.as_bytes()).collect();
+    let reader = content
+        .reader
+        .into_inner()
+        .map_err(|_| anyhow::anyhow!("file reader transfer failed"))?;
+    let stream = futures_util::stream::try_unfold(reader, |mut reader| async move {
+        let mut buffer = vec![0u8; storage_object::FILE_STORAGE_STREAM_BUFFER_BYTES];
+        let read = tokio::io::AsyncReadExt::read(&mut reader, &mut buffer).await?;
+        if read == 0 {
+            return Ok::<_, std::io::Error>(None);
+        }
+        buffer.truncate(read);
+        Ok(Some((axum::body::Bytes::from(buffer), reader)))
+    });
+    Response::builder()
         .status(StatusCode::OK)
         .header(CONTENT_TYPE, content.content_type)
-        .body(Body::from(content.bytes))
-        .unwrap())
+        .header(header::CONTENT_LENGTH, content.content_length)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!(
+                "attachment; filename*=UTF-8''{}",
+                encoded_filename.replace('+', "%20")
+            ),
+        )
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CONTENT_SECURITY_POLICY, "sandbox")
+        .header(header::REFERRER_POLICY, "no-referrer")
+        .body(Body::from_stream(stream))
+        .map_err(Into::into)
 }

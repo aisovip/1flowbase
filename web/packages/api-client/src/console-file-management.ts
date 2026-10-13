@@ -61,6 +61,28 @@ export interface ConsoleFileRecord extends Record<string, unknown> {
   mimetype: string;
   created_at: string;
   storage_id: string;
+  url: string;
+}
+
+export interface TemporaryFileLink {
+  url: string;
+  expires_at: string;
+}
+
+export function createConsoleTemporaryFileLink(
+  fileTableId: string,
+  recordId: string,
+  input: { expires_in_seconds: number },
+  csrfToken: string,
+  signal?: AbortSignal
+) {
+  return apiFetch<TemporaryFileLink>({
+    path: `/api/console/files/${encodeURIComponent(fileTableId)}/records/${encodeURIComponent(recordId)}/access-links`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    signal
+  });
 }
 
 export function fetchConsoleFileRecords(

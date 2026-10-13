@@ -91,7 +91,7 @@ fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
             ("attachments", Some("mimetype"), "MIME Type"),
             ("attachments", Some("path"), "Storage Path"),
             ("attachments", Some("meta"), "Metadata"),
-            ("attachments", Some("url"), "Cached URL"),
+            ("attachments", Some("url"), "Access URL"),
             ("attachments", Some("storage_id"), "Storage ID"),
         ]
     );

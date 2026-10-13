@@ -1,3 +1,4 @@
+mod access_service;
 mod backup_export;
 mod backup_restore;
 mod bootstrap;
@@ -6,6 +7,7 @@ mod table_service;
 mod template;
 mod upload_service;
 
+pub use access_service::*;
 pub use backup_export::*;
 pub use backup_restore::*;
 pub use bootstrap::*;

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 
 import {
+  createConsoleTemporaryFileLink,
   createConsoleFileStorage,
   createConsoleFileTable,
   deleteConsoleFileStorage,
@@ -49,6 +50,25 @@ describe('console-file-management client', () => {
     expect(result.contentType).toBeUndefined();
     expect((result.rawBody as FormData).get('file')).toBe(file);
     expect((result.rawBody as FormData).get('file_table_id')).toBe('table-1');
+  });
+
+  test('temporary access preserves IDs, expiration, CSRF and cancellation', async () => {
+    const controller = new AbortController();
+    await expect(
+      createConsoleTemporaryFileLink(
+        'table/1',
+        'record 1',
+        { expires_in_seconds: 123 },
+        'csrf',
+        controller.signal
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/files/table%2F1/records/record%201/access-links',
+      method: 'POST',
+      body: { expires_in_seconds: 123 },
+      csrfToken: 'csrf',
+      signal: controller.signal
+    });
   });
 
   test('clearing a binding sends null rather than an invalid UUID', async () => {

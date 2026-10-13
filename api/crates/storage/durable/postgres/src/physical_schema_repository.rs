@@ -198,7 +198,7 @@ pub fn is_platform_runtime_column(column_name: &str) -> bool {
     PLATFORM_RUNTIME_COLUMNS.contains(&column_name)
 }
 
-fn quote_identifier(value: &str) -> Result<String> {
+pub(crate) fn quote_identifier(value: &str) -> Result<String> {
     if !value
         .chars()
         .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')

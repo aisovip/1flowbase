@@ -18,9 +18,9 @@ pub const FILE_METADATA_FIELDS: &[(&str, &str, crate::ModelFieldKind, bool)] = &
     ("extname", "Extension", crate::ModelFieldKind::String, false),
     ("size", "Size", crate::ModelFieldKind::Number, true),
     ("mimetype", "MIME Type", crate::ModelFieldKind::String, true),
-    ("path", "Storage Path", crate::ModelFieldKind::String, true),
+    ("path", "Storage Path", crate::ModelFieldKind::Text, true),
     ("meta", "Metadata", crate::ModelFieldKind::Json, true),
-    ("url", "Cached URL", crate::ModelFieldKind::String, false),
+    ("url", "Access URL", crate::ModelFieldKind::Text, true),
     (
         "storage_id",
         "Storage ID",
@@ -32,6 +32,7 @@ pub const FILE_METADATA_FIELDS: &[(&str, &str, crate::ModelFieldKind, bool)] = &
 /// Produced after an object-storage driver successfully writes the object.
 #[derive(Debug, Clone, Serialize)]
 pub struct UploadedFileMetadata {
+    pub id: Uuid,
     pub title: String,
     pub filename: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,6 +44,11 @@ pub struct UploadedFileMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     pub storage_id: Uuid,
+}
+
+/// Stable same-origin entry point; it never grants anonymous access.
+pub fn file_content_url(file_table_id: Uuid, record_id: Uuid) -> String {
+    format!("/api/console/files/{file_table_id}/records/{record_id}/content")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

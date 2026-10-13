@@ -37,6 +37,7 @@ pub struct RegisteredInfrastructureProvider {
 pub struct HostInfrastructureRegistry {
     providers: BTreeMap<String, RegisteredInfrastructureProvider>,
     session_store: Option<Arc<dyn SessionStore>>,
+    ephemeral_kv_store: Option<Arc<dyn control_plane::ports::EphemeralKvStore>>,
     cache_store: Option<Arc<dyn CacheStore>>,
     published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
     published_publication_cache: Option<Arc<dyn PublishedPublicationCache>>,
@@ -49,6 +50,18 @@ pub struct HostInfrastructureRegistry {
 }
 
 impl HostInfrastructureRegistry {
+    pub fn set_ephemeral_kv_store(
+        &mut self,
+        store: Arc<dyn control_plane::ports::EphemeralKvStore>,
+    ) {
+        self.ephemeral_kv_store = Some(store);
+    }
+
+    pub fn ephemeral_kv_store(&self) -> Arc<dyn control_plane::ports::EphemeralKvStore> {
+        self.ephemeral_kv_store
+            .clone()
+            .expect("ephemeral KV store must be installed before use")
+    }
     pub fn register_default_provider(
         &mut self,
         contract: impl Into<String>,

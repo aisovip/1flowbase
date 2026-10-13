@@ -240,6 +240,19 @@
     "table_unavailable": "文件表不可用，请检查文件表配置和访问权限。",
     "upload_unavailable": "无法开始上传，请刷新页面后重试。",
     "upload_success": "{{filename}} 上传成功",
-    "upload_failed": "文件上传失败，请重试。"
+    "upload_failed": "文件上传失败，请重试。",
+    "url": "访问路径",
+    "actions": "操作",
+    "temporary_public": "临时公开",
+    "temporary_public_hint": "有效期内，任何持有链接的人均可访问此文件。",
+    "expires_in_seconds": "有效期（秒）",
+    "positive_duration": "请输入正整数秒数",
+    "generate_link": "生成链接",
+    "temporary_url": "临时访问链接",
+    "expires_at": "到期时间：{{time}}",
+    "copy_link": "复制链接",
+    "link_copied": "链接已复制",
+    "copy_failed": "复制失败，请手动复制链接",
+    "link_failed": "生成临时链接失败"
   }
 }

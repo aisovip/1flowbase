@@ -3,6 +3,33 @@ use storage_ephemeral::{EphemeralKvStore, MemoryKvStore};
 use time::Duration;
 
 #[tokio::test]
+async fn memory_kv_reclaims_unvisited_expired_tokens_and_retains_touched_keys() {
+    let store = MemoryKvStore::new("file-access-test");
+    for index in 0..20 {
+        store
+            .set_json(
+                &format!("expired:{index}"),
+                json!(index),
+                Some(Duration::milliseconds(10)),
+            )
+            .await
+            .unwrap();
+    }
+    store
+        .set_json("renewed", json!(true), Some(Duration::milliseconds(10)))
+        .await
+        .unwrap();
+    assert!(store.touch("renewed", Duration::seconds(60)).await.unwrap());
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    store
+        .set_json("new", json!(true), Some(Duration::seconds(60)))
+        .await
+        .unwrap();
+    assert_eq!(store.entry_count_for_test().await, 2);
+    assert_eq!(store.get_json("renewed").await.unwrap(), Some(json!(true)));
+}
+
+#[tokio::test]
 async fn memory_kv_store_expires_entries_on_read() {
     let store = MemoryKvStore::new("flowbase:test");
     store

@@ -125,6 +125,16 @@ pub struct CreateFileTableRegistrationInput {
 
 #[async_trait]
 pub trait FileManagementRepository: Send + Sync {
+    /// Trusted capability lookup: caller must hold a validated file grant.
+    async fn get_file_record_for_access(
+        &self,
+        file_table_id: Uuid,
+        record_id: Uuid,
+        scope_id: Uuid,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        let _ = (file_table_id, record_id, scope_id);
+        anyhow::bail!("get_file_record_for_access not implemented")
+    }
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

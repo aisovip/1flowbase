@@ -147,6 +147,7 @@ where
             })
             .await?;
         let metadata = domain::file_management::UploadedFileMetadata {
+            id: file_id,
             title: command.original_filename.clone(),
             filename: command.original_filename,
             extname: (!extname.is_empty()).then_some(extname),
@@ -154,34 +155,22 @@ where
             mimetype,
             path: stored.path,
             meta: stored.metadata_json,
-            url: stored.url,
+            url: Some(domain::file_management::file_content_url(
+                file_table.id,
+                file_id,
+            )),
             storage_id: storage.id,
         };
-        let record = if domain::file_management::is_file_data_model_template(
-            &model.template_provider,
-            &model.template_code,
-            &model.template_version,
-        ) {
-            self.runtime_engine
-                .create_uploaded_file_record(
-                    runtime_core::runtime_engine::RuntimeUploadedFileInput {
-                        actor: command.actor,
-                        model_code: model.code,
-                        metadata,
-                        scope_grant: Some(scope_grant),
-                    },
-                )
-                .await?
-        } else {
-            self.runtime_engine
-                .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
-                    actor: command.actor,
-                    model_code: model.code,
-                    payload: serde_json::to_value(metadata)?,
-                    scope_grant: Some(scope_grant),
-                })
-                .await?
-        };
+        // This host-only entry covers registered legacy file tables as well as core/file/v1.
+        let record = self
+            .runtime_engine
+            .create_uploaded_file_record(runtime_core::runtime_engine::RuntimeUploadedFileInput {
+                actor: command.actor,
+                model_code: model.code,
+                metadata,
+                scope_grant: Some(scope_grant),
+            })
+            .await?;
 
         Ok(UploadedFileView {
             file_table_id: file_table.id,

@@ -42,6 +42,7 @@ pub struct MemoryFileManagementRepository {
     file_tables: Arc<RwLock<HashMap<Uuid, FileTableRecord>>>,
     models: Arc<Mutex<HashMap<Uuid, ModelDefinitionRecord>>>,
     grants: Arc<Mutex<Vec<ScopeDataModelGrantRecord>>>,
+    file_records: Arc<Mutex<HashMap<(Uuid, Uuid), serde_json::Value>>>,
 }
 
 impl MemoryFileManagementRepository {
@@ -52,7 +53,16 @@ impl MemoryFileManagementRepository {
             file_tables: Arc::new(RwLock::new(HashMap::new())),
             models: Arc::new(Mutex::new(HashMap::new())),
             grants: Arc::default(),
+            file_records: Arc::default(),
         }
+    }
+
+    pub fn insert_file_record(&self, table: Uuid, record: serde_json::Value) {
+        let id = Uuid::parse_str(record["id"].as_str().unwrap()).unwrap();
+        self.file_records
+            .lock()
+            .unwrap()
+            .insert((table, id), record);
     }
 
     pub async fn insert_file_storage(&self, record: FileStorageRecord) {
@@ -77,6 +87,21 @@ impl MemoryFileManagementRepository {
 
 #[async_trait]
 impl FileManagementRepository for MemoryFileManagementRepository {
+    async fn get_file_record_for_access(
+        &self,
+        table: Uuid,
+        id: Uuid,
+        scope_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(self
+            .file_records
+            .lock()
+            .unwrap()
+            .get(&(table, id))
+            .filter(|record| record["scope_id"].as_str() == Some(scope_id.to_string().as_str()))
+            .cloned())
+    }
+
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
         let mut actor = self.actor.clone();
         actor.user_id = actor_user_id;

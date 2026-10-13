@@ -39,6 +39,11 @@ fn file_owner_routes_compile_from_exact_assemblies() {
     assert_eq!(
         actual,
         vec![
+            (
+                "POST",
+                "/api/console/files/:file_table_id/records/:record_id/access-links",
+                "authenticated"
+            ),
             ("POST", "/api/console/files/upload", "authenticated",),
             (
                 "GET",
@@ -174,4 +179,31 @@ fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
             "files" | "file_storages" | "file_tables"
         )
     }));
+}
+
+#[test]
+fn temporary_file_contracts_compile_without_projecting_credentials() {
+    use crate::routes::files::public::interface::{
+        TemporaryFileInput, TemporaryFileOutput, TemporaryFileTargetError,
+    };
+    use interface_runtime::InterfaceContract;
+
+    fn compile<T: InterfaceContract>() {
+        extension_contracts::ManagedProjectionContract {
+            contract_id: T::CONTRACT_ID.to_owned(),
+            contract_version: T::CONTRACT_VERSION.to_owned(),
+            schema: T::managed_projection_schema().expect("managed projection schema"),
+        }
+        .compile_for_registration()
+        .expect("temporary file contract must pass boot compilation");
+    }
+    compile::<TemporaryFileInput>();
+    compile::<TemporaryFileOutput>();
+    compile::<TemporaryFileTargetError>();
+    let key = control_plane::file_management::FileAccessKey::from_token(
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+    .unwrap();
+    let projection = TemporaryFileInput(key).project_for_managed_hook().unwrap();
+    assert_eq!(projection, serde_json::json!({}));
 }

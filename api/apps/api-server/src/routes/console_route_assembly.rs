@@ -694,6 +694,7 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "files.access_links.create" => Some("Create a temporary public file link"),
         "applications.logs.delete" => Some("Delete imported agent log records"),
         "applications.logs.delete.preview" => Some("Count imported logs in a deletion scope"),
         "applications.logs.delete.jobs.create" => Some("Start a persistent log deletion"),
@@ -863,6 +864,7 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "files.access_links.create" => "Check the current caller file record read permission and create an ephemeral, time-limited link usable without login. Does not modify the stored stable access path.".to_owned(),
             "get_current_run_context" => "Resolve client-declared MCP thread and turn metadata against readable log applications in the current workspace. Return explicit missing, invalid, conflicting, absent or ambiguous states without guessing a run identity.".to_owned(),
             "applications.runtime.record.conversation.messages.list" | "list_record_conversation_messages" => "Read the latest five main-session turns initially. Normalize child anchors to their canonical main conversation. Page older or newer main turns with before/after cursors bound to this authorized conversation; child and foreign cursors are rejected. Return projected system/user/final messages and each real record trajectory locator. Subagent events are available through the canonical conversation timeline with their original provenance.".to_owned(),
             "applications.runtime.conversations.query" => "Query canonical conversations in readable applications of the current workspace. Filter main task facts, aggregate each member task once, and return exact totals with numbered paging and the latest main record locator. Sort only declared fields.".to_owned(),

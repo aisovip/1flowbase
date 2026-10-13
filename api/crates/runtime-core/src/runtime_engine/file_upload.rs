@@ -15,13 +15,17 @@ impl RuntimeEngine {
     ) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        // Registration and storage selection are checked by the host FileUploadService.
+        // Generic record CRUD cannot construct this command (including its server-generated id).
+        if metadata.source_kind != domain::DataModelSourceKind::MainSource {
+            return Err(anyhow!("file_upload_requires_main_source"));
+        }
         if !domain::file_management::is_file_data_model_template(
             &metadata.template_provider,
             &metadata.template_code,
             &metadata.template_version,
-        ) || metadata.source_kind != domain::DataModelSourceKind::MainSource
-        {
-            return Err(anyhow!("file_upload_requires_file_template"));
+        ) {
+            ensure_runtime_record_action_allowed(&metadata, RuntimeDataAction::Create)?;
         }
         let access_scope = resolve_access_scope(
             &input.actor,

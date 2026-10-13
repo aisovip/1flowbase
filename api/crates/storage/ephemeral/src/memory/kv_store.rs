@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -9,7 +12,7 @@ use crate::EphemeralKvStore;
 #[derive(Clone)]
 pub struct MemoryKvStore {
     namespace: String,
-    inner: Arc<RwLock<HashMap<String, MemoryEntry>>>,
+    inner: Arc<RwLock<MemoryState>>,
 }
 
 #[derive(Clone)]
@@ -18,11 +21,56 @@ struct MemoryEntry {
     expires_at: Option<OffsetDateTime>,
 }
 
+#[derive(Default)]
+struct MemoryState {
+    entries: HashMap<String, MemoryEntry>,
+    expirations: BTreeSet<(OffsetDateTime, String)>,
+}
+
+impl std::ops::Deref for MemoryState {
+    type Target = HashMap<String, MemoryEntry>;
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+
+impl MemoryState {
+    fn insert(&mut self, key: String, entry: MemoryEntry) {
+        self.remove(&key);
+        if let Some(deadline) = entry.expires_at {
+            self.expirations.insert((deadline, key.clone()));
+        }
+        self.entries.insert(key, entry);
+    }
+    fn remove(&mut self, key: &str) {
+        if let Some(entry) = self.entries.remove(key) {
+            if let Some(deadline) = entry.expires_at {
+                self.expirations.remove(&(deadline, key.to_owned()));
+            }
+        }
+    }
+    // Expired unique tokens are reclaimed on the next store operation, even if never revisited.
+    fn purge_expired(&mut self) {
+        let now = OffsetDateTime::now_utc();
+        while self
+            .expirations
+            .first()
+            .is_some_and(|(deadline, _)| *deadline <= now)
+        {
+            let (_, key) = self
+                .expirations
+                .pop_first()
+                .expect("expiry index contains a deadline");
+            self.entries.remove(&key);
+        }
+    }
+}
+
 impl MemoryKvStore {
     pub fn new(namespace: impl Into<String>) -> Self {
         Self {
             namespace: namespace.into(),
-            inner: Arc::new(RwLock::new(HashMap::new())),
+            inner: Arc::new(RwLock::new(MemoryState::default())),
         }
     }
 
@@ -46,12 +94,23 @@ impl MemoryKvStore {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub async fn entry_count_for_test(&self) -> usize {
+        self.inner.read().await.entries.len()
+    }
+
     pub async fn clear_namespace(&self) {
         let prefix = format!("{}:", self.namespace);
-        self.inner
-            .write()
-            .await
-            .retain(|key, _| !key.starts_with(&prefix));
+        let mut map = self.inner.write().await;
+        map.purge_expired();
+        let keys: Vec<_> = map
+            .keys()
+            .filter(|key| key.starts_with(&prefix))
+            .cloned()
+            .collect();
+        for key in keys {
+            map.remove(&key);
+        }
     }
 }
 
@@ -63,7 +122,9 @@ impl EphemeralKvStore for MemoryKvStore {
         value: serde_json::Value,
         ttl: Option<time::Duration>,
     ) -> anyhow::Result<()> {
-        self.inner.write().await.insert(
+        let mut map = self.inner.write().await;
+        map.purge_expired();
+        map.insert(
             self.namespaced_key(key),
             MemoryEntry {
                 value,
@@ -76,6 +137,7 @@ impl EphemeralKvStore for MemoryKvStore {
     async fn get_json(&self, key: &str) -> anyhow::Result<Option<serde_json::Value>> {
         let namespaced_key = self.namespaced_key(key);
         let mut map = self.inner.write().await;
+        map.purge_expired();
         let Some(entry) = map.get(&namespaced_key).cloned() else {
             return Ok(None);
         };
@@ -99,7 +161,8 @@ impl EphemeralKvStore for MemoryKvStore {
     async fn touch(&self, key: &str, ttl: time::Duration) -> anyhow::Result<bool> {
         let namespaced_key = self.namespaced_key(key);
         let mut map = self.inner.write().await;
-        let Some(entry) = map.get_mut(&namespaced_key) else {
+        map.purge_expired();
+        let Some(mut entry) = map.get(&namespaced_key).cloned() else {
             return Ok(false);
         };
 
@@ -112,6 +175,7 @@ impl EphemeralKvStore for MemoryKvStore {
         }
 
         entry.expires_at = Some(OffsetDateTime::now_utc() + ttl);
+        map.insert(namespaced_key, entry);
         Ok(true)
     }
 
@@ -123,6 +187,7 @@ impl EphemeralKvStore for MemoryKvStore {
     ) -> anyhow::Result<bool> {
         let namespaced_key = self.namespaced_key(key);
         let mut map = self.inner.write().await;
+        map.purge_expired();
 
         if let Some(entry) = map.get(&namespaced_key) {
             if entry
@@ -155,6 +220,7 @@ impl EphemeralKvStore for MemoryKvStore {
 
         let namespaced_key = self.namespaced_key(key);
         let mut map = self.inner.write().await;
+        map.purge_expired();
         let now = OffsetDateTime::now_utc();
         let existing = map.get(&namespaced_key).cloned();
         let active_entry =

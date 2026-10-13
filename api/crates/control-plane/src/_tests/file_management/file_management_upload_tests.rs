@@ -65,11 +65,14 @@ impl RuntimeRecordRepository for TestRuntimeRecordRepository {
         &self,
         metadata: &ModelMetadata,
         actor_user_id: Uuid,
-        _scope_id: Uuid,
+        scope_id: Uuid,
         payload: Value,
     ) -> Result<Value> {
         let mut record = payload.as_object().cloned().unwrap_or_default();
-        record.insert("id".into(), serde_json::json!(Uuid::now_v7().to_string()));
+        record.insert("scope_id".into(), serde_json::json!(scope_id));
+        record
+            .entry("id")
+            .or_insert_with(|| serde_json::json!(Uuid::now_v7().to_string()));
         record.insert(
             "created_by".into(),
             serde_json::json!(actor_user_id.to_string()),
@@ -107,11 +110,11 @@ impl RuntimeRecordRepository for TestRuntimeRecordRepository {
     }
 }
 
-fn temp_root(name: &str) -> PathBuf {
+pub(super) fn temp_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("{name}-{}", Uuid::now_v7()))
 }
 
-fn model_definition(
+pub(super) fn model_definition(
     model_id: Uuid,
     scope_kind: DataModelScopeKind,
     scope_id: Uuid,
@@ -142,7 +145,7 @@ fn model_definition(
     }
 }
 
-fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine> {
+pub(super) fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine> {
     let registry = RuntimeModelRegistry::default();
     registry.rebuild(vec![ModelMetadata {
         model_id: model.id,
@@ -170,7 +173,7 @@ fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine>
     ))
 }
 
-fn actor_in_workspace(workspace_id: Uuid) -> ActorContext {
+pub(super) fn actor_in_workspace(workspace_id: Uuid) -> ActorContext {
     ActorContext::scoped(
         Uuid::now_v7(),
         workspace_id,
@@ -182,7 +185,7 @@ fn actor_in_workspace(workspace_id: Uuid) -> ActorContext {
     )
 }
 
-fn scope_grant(model_id: Uuid, scope_id: Uuid) -> ScopeDataModelGrantRecord {
+pub(super) fn scope_grant(model_id: Uuid, scope_id: Uuid) -> ScopeDataModelGrantRecord {
     ScopeDataModelGrantRecord {
         id: Uuid::now_v7(),
         scope_kind: DataModelScopeKind::Workspace,

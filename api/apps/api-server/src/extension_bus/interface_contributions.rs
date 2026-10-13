@@ -1013,13 +1013,20 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-business-files",
-            &["files.upload", "files.content.download"],
+            &["files.upload", "files.content.download", "files.access_links.create"],
             &["api-server.console-business-files"],
             crate::routes::files::compile_registry(
                 state.store.clone(),
                 state.file_storage_registry.clone(),
                 state.runtime_engine.clone(),
+                state.infrastructure.ephemeral_kv_store(),
             )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.temporary-files",
+            &["public.files.temporary.read"],
+            &["api-server.temporary-files"],
+            crate::routes::files::public::compile_registry(state)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-data-sources",

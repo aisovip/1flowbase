@@ -107,6 +107,9 @@ fn install_compatibility_local_infrastructure_services(registry: &mut HostInfras
 }
 
 fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructureRegistry) {
+    registry.set_ephemeral_kv_store(Arc::new(storage_ephemeral::MemoryKvStore::new(
+        "flowbase:file-access",
+    )));
     registry.set_session_store(Arc::new(MokaSessionStore::new(
         SESSION_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,

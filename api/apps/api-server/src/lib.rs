@@ -329,7 +329,7 @@ fn publish_external_endpoint_catalog(
 pub fn app() -> Router {
     base_router(true, true)
         .layer(development_cors_layer())
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
@@ -353,7 +353,7 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
         .expect("external endpoint catalog must publish before router construction");
     router
         .layer(development_cors_layer())
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
@@ -396,6 +396,7 @@ fn console_router_with_assembly(
             routes::application_public_api::ex::route_assembly(),
         )
         .merge(routes::client_collectors::route_assembly())
+        .merge(routes::files::public::route_assembly())
         .merge(routes::mcp_oauth::route_assembly())
         .nest("/api", routes::mcp_protocol::route_assembly())
         .nest("/api", routes::webmcp::route_assembly())
@@ -469,7 +470,16 @@ fn app_with_state_and_config_and_console_route_assembly(
         .expect("external endpoint catalog must publish before router construction");
     router
         .layer(cors_layer(config))
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
+}
+
+fn safe_http_trace_span(request: &axum::http::Request<axum::body::Body>) -> tracing::Span {
+    let uri = if request.uri().path() == "/api/public/files/content" {
+        request.uri().path().to_owned()
+    } else {
+        request.uri().to_string()
+    };
+    tracing::debug_span!("request", method = %request.method(), uri = %uri, version = ?request.version())
 }
 
 pub async fn app_from_env() -> Result<Router> {
