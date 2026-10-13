@@ -17,8 +17,41 @@ pub struct NotificationMessageListInput {
     pub unread_only: bool,
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationLogListInput {
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+    pub instance_id: Option<Uuid>,
+    pub type_code: Option<String>,
+    pub status: Option<String>,
+    pub source: Option<domain::NotificationSource>,
+    pub created_from: Option<String>,
+    pub created_to: Option<String>,
+}
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    async fn create_notification_send_log(
+        &self,
+        log: domain::NotificationSendLog,
+    ) -> anyhow::Result<()>;
+    async fn complete_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        status: &str,
+        failure_code: Option<&str>,
+    ) -> anyhow::Result<()>;
+    async fn list_notification_send_logs(
+        &self,
+        workspace_id: Uuid,
+        input: NotificationLogListInput,
+    ) -> anyhow::Result<domain::NotificationSendLogPage>;
+    async fn get_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> anyhow::Result<Option<domain::NotificationSendLog>>;
     async fn bootstrap_system_notification_instances(&self) -> anyhow::Result<()>;
     async fn list_notification_instances(
         &self,
@@ -55,6 +88,7 @@ pub trait NotificationRepository: Send + Sync {
         workspace_id: Uuid,
         instance_id: Uuid,
         recipients: &[Uuid],
+        send_log_id: Uuid,
         title: &str,
         content: &str,
     ) -> anyhow::Result<Vec<domain::SystemNotificationRecord>>;

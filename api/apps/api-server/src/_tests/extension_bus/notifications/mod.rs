@@ -146,7 +146,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(instance.record.config_json.get("token").is_none());
     assert_eq!(instance.record.configured_secret_fields, ["token"]);
     let output = service
-        .send(&actor, id, json!({"text":"hello"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"hello"}),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -170,7 +175,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert_eq!(changed.record.configured_secret_fields, ["token"]);
     assert_eq!(
         service
-            .send(&actor, id, json!({"text":"saved"}))
+            .send(
+                &actor,
+                domain::NotificationSource::Api,
+                id,
+                json!({"text":"saved"})
+            )
             .await
             .unwrap()
             .result["delivery_id"],
@@ -182,13 +192,21 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         json!({"text":"fixture-secret-output"}),
         json!({"text":"fixture-provider-error"}),
     ] {
-        let error = service.send(&actor, id, input).await.unwrap_err();
+        let error = service
+            .send(&actor, domain::NotificationSource::Api, id, input)
+            .await
+            .unwrap_err();
         assert!(!error.to_string().contains("private-notification-token"));
     }
     let mut foreign = actor.clone();
     foreign.current_workspace_id = Uuid::now_v7();
     assert!(service
-        .send(&foreign, id, json!({"text":"foreign"}))
+        .send(
+            &foreign,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"foreign"})
+        )
         .await
         .is_err());
     service
@@ -203,7 +221,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         .await
         .unwrap();
     assert!(service
-        .send(&actor, id, json!({"text":"disabled"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"disabled"})
+        )
         .await
         .is_err());
     service
@@ -228,7 +251,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(!retained.available);
     assert_eq!(retained.record.config_json["channel"], "alerts");
     assert!(service
-        .send(&actor, id, json!({"text":"unavailable"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"unavailable"})
+        )
         .await
         .is_err());
     let count: i64 = sqlx::query_scalar(
@@ -241,4 +269,11 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     .unwrap();
     assert_eq!(count, 1);
     runtime.host.stop().await.unwrap();
+    let logs = service.logs(&actor, Default::default()).await.unwrap();
+    let safe_json = serde_json::to_string(&logs).unwrap();
+    assert!(!safe_json.contains("private-token"));
+    assert!(logs
+        .items
+        .iter()
+        .all(|log| log.title.is_none() && log.content.is_none()));
 }

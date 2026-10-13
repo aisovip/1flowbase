@@ -68,6 +68,46 @@ pub struct NotificationRecipientOption {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationSource {
+    Api,
+    Workflow,
+}
+impl NotificationSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "api",
+            Self::Workflow => "workflow",
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationSendLog {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub instance_id: Uuid,
+    pub display_name: Option<String>,
+    pub type_code: Option<String>,
+    pub source: NotificationSource,
+    pub status: String,
+    pub failure_code: Option<String>,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub recipient_count: Option<i64>,
+    #[serde(with = "timestamp")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "optional_timestamp")]
+    pub completed_at: Option<OffsetDateTime>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationSendLogPage {
+    pub items: Vec<NotificationSendLog>,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+}
 mod timestamp {
     use super::*;
     use serde::{de::Error as _, Deserializer, Serializer};
@@ -173,6 +213,28 @@ pub(crate) fn system_notification_model_contract() -> crate::BuiltinDataModelCon
             "content",
             "read_at",
             "created_at",
+        ],
+    )
+}
+
+pub(crate) fn notification_send_log_model_contract() -> crate::BuiltinDataModelContract {
+    notification_model_contract(
+        "notification_send_logs",
+        &[
+            "id",
+            "workspace_id",
+            "actor_user_id",
+            "instance_id",
+            "display_name",
+            "type_code",
+            "source",
+            "status",
+            "failure_code",
+            "title",
+            "content",
+            "recipient_count",
+            "created_at",
+            "completed_at",
         ],
     )
 }

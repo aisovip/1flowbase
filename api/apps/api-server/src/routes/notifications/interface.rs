@@ -27,6 +27,8 @@ pub(crate) enum NotificationInput {
     UnreadCount,
     Read(Uuid),
     ReadAll,
+    Logs(control_plane::ports::NotificationLogListInput),
+    Log(Uuid),
 }
 impl InterfaceContract for NotificationInput {
     const CONTRACT_ID: &'static str = "console-notifications-input";
@@ -41,7 +43,7 @@ impl InterfaceContract for NotificationInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List(_)=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all"}}),
+            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List(_)=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all",Self::Logs(_)=>"logs",Self::Log(_)=>"log"}}),
         )
     }
 }
@@ -86,9 +88,11 @@ impl Adapter {
                 self.service.delete_instance(actor, id).await?;
                 Value::Null
             }
-            NotificationInput::Send(id, input) => {
-                serde_json::to_value(self.service.send(actor, id, input).await?)?
-            }
+            NotificationInput::Send(id, input) => serde_json::to_value(
+                self.service
+                    .send(actor, domain::NotificationSource::Api, id, input)
+                    .await?,
+            )?,
             NotificationInput::Messages(input) => {
                 serde_json::to_value(self.service.messages(actor, input).await?)?
             }
@@ -98,6 +102,10 @@ impl Adapter {
             NotificationInput::Read(id) => {
                 serde_json::to_value(self.service.read(actor, id).await?)?
             }
+            NotificationInput::Logs(input) => {
+                serde_json::to_value(self.service.logs(actor, input).await?)?
+            }
+            NotificationInput::Log(id) => serde_json::to_value(self.service.log(actor, id).await?)?,
             NotificationInput::ReadAll => {
                 serde_json::json!({"updated_count":self.service.read_all(actor).await?})
             }
@@ -132,6 +140,20 @@ pub(crate) fn compile_registry(
     )
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "notifications.logs.list",
+        binding_id: "http.console.notifications.logs.list.v1",
+        method: "GET",
+        path: "/api/console/notifications/logs",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "notifications.logs.get",
+        binding_id: "http.console.notifications.logs.get.v1",
+        method: "GET",
+        path: "/api/console/notifications/logs/:log_id",
+        mutating: false,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "notifications.types.list",
         binding_id: "http.console.notifications.types.list.v1",

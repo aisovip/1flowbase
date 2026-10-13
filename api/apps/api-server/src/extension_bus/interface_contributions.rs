@@ -497,7 +497,7 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-notifications",
-            &["notifications.types.list","notifications.instances.list","notifications.instances.get","notifications.instances.create","notifications.instances.update","notifications.instances.delete","notifications.instances.send","notifications.messages.list","notifications.messages.unread_count","notifications.messages.read","notifications.messages.read_all"],
+            &["notifications.types.list","notifications.instances.list","notifications.instances.get","notifications.instances.create","notifications.instances.update","notifications.instances.delete","notifications.instances.send","notifications.logs.list","notifications.logs.get","notifications.messages.list","notifications.messages.unread_count","notifications.messages.read","notifications.messages.read_all"],
             &["api-server.console-notifications"],
             crate::routes::notifications::interface::compile_registry(state.notification_service.clone())?,
         ),

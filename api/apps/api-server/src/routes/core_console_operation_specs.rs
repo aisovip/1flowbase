@@ -100,6 +100,8 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("notifications.instances.update", "system.notifications"),
     settings("notifications.instances.delete", "system.notifications"),
     settings("notifications.instances.send", "system.notifications"),
+    settings("notifications.logs.list", "system.notifications"),
+    settings("notifications.logs.get", "system.notifications"),
     authenticated_operation("notifications.types.list", "core.authenticated"),
     authenticated_operation("notifications.messages.list", "core.authenticated"),
     authenticated_operation("notifications.messages.unread_count", "core.authenticated"),

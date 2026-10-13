@@ -241,6 +241,16 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
         "notification_instances" => field_code != "installation_id",
         "system_notifications" => field_code != "read_at",
+        "notification_send_logs" => !matches!(
+            field_code,
+            "display_name"
+                | "type_code"
+                | "failure_code"
+                | "title"
+                | "content"
+                | "recipient_count"
+                | "completed_at"
+        ),
         "attachments" => !matches!(field_code, "title" | "extname" | "url" | "preview_url"),
         "users" => !matches!(
             field_code,
@@ -950,6 +960,7 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
     Some(match code {
         "notification_instances" => crate::notifications::notification_instance_model_contract(),
         "system_notifications" => crate::notifications::system_notification_model_contract(),
+        "notification_send_logs" => crate::notifications::notification_send_log_model_contract(),
         "attachments" => BuiltinDataModelContract {
             code: "attachments",
             physical_table_name: "attachments",

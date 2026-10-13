@@ -24,6 +24,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()
         .route(
+            "/notifications/logs",
+            console_get(logs, Op("notifications.logs.list".into())),
+        )
+        .route(
+            "/notifications/logs/:log_id",
+            console_get(log, Op("notifications.logs.get".into())),
+        )
+        .route(
             "/notifications/types",
             console_get(types, Op("notifications.types.list".into())),
         )
@@ -71,7 +79,13 @@ async fn invoke(
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
     let credential = match &input {
-        Input::Types | Input::List(_) | Input::Get(_) | Input::Messages(_) | Input::UnreadCount => {
+        Input::Types
+        | Input::List(_)
+        | Input::Get(_)
+        | Input::Messages(_)
+        | Input::UnreadCount
+        | Input::Logs(_)
+        | Input::Log(_) => {
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
         }
         Input::Create(_)
@@ -198,4 +212,19 @@ pub async fn messages(
         }),
     )
     .await
+}
+
+pub async fn logs(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<control_plane::ports::NotificationLogListInput>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "logs.list", Input::Logs(query)).await
+}
+pub async fn log(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "logs.get", Input::Log(id)).await
 }

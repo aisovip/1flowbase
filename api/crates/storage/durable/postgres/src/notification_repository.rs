@@ -47,12 +47,131 @@ fn message(row: PgRow) -> SystemNotificationRecord {
         created_at: row.get("created_at"),
     }
 }
+fn send_log(row: PgRow) -> Result<domain::NotificationSendLog> {
+    Ok(domain::NotificationSendLog {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        actor_user_id: row.get("actor_user_id"),
+        instance_id: row.get("instance_id"),
+        display_name: row.get("display_name"),
+        type_code: row.get("type_code"),
+        source: match row.get::<String, _>("source").as_str() {
+            "api" => domain::NotificationSource::Api,
+            "workflow" => domain::NotificationSource::Workflow,
+            _ => return Err(Error::Conflict("notification_log_source").into()),
+        },
+        status: row.get("status"),
+        failure_code: row.get("failure_code"),
+        title: row.get("title"),
+        content: row.get("content"),
+        recipient_count: row.get("recipient_count"),
+        created_at: row.get("created_at"),
+        completed_at: row.get("completed_at"),
+    })
+}
 pub(crate) fn aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
     format!("notification-instance:{workspace}:{id}").into_bytes()
 }
 
 #[async_trait]
 impl NotificationRepository for PgControlPlaneStore {
+    async fn create_notification_send_log(&self, log: domain::NotificationSendLog) -> Result<()> {
+        sqlx::query("INSERT INTO notification_send_logs (id,workspace_id,actor_user_id,instance_id,display_name,type_code,source,status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)")
+            .bind(log.id).bind(log.workspace_id).bind(log.actor_user_id).bind(log.instance_id).bind(log.display_name).bind(log.type_code).bind(log.source.as_str()).bind(log.created_at).execute(self.pool()).await?;
+        Ok(())
+    }
+    async fn complete_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        status: &str,
+        failure_code: Option<&str>,
+    ) -> Result<()> {
+        let count = sqlx::query("UPDATE notification_send_logs SET status=$3,failure_code=$4,completed_at=now() WHERE workspace_id=$1 AND id=$2 AND status='pending'")
+            .bind(workspace_id).bind(id).bind(status).bind(failure_code).execute(self.pool()).await?.rows_affected();
+        if count != 1 {
+            return Err(Error::Conflict("notification_log_state").into());
+        }
+        Ok(())
+    }
+    async fn get_notification_send_log(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<domain::NotificationSendLog>> {
+        sqlx::query("SELECT * FROM notification_send_logs WHERE workspace_id=$1 AND id=$2")
+            .bind(workspace_id)
+            .bind(id)
+            .fetch_optional(self.pool())
+            .await?
+            .map(send_log)
+            .transpose()
+    }
+    async fn list_notification_send_logs(
+        &self,
+        workspace_id: Uuid,
+        input: control_plane_contracts::ports::NotificationLogListInput,
+    ) -> Result<domain::NotificationSendLogPage> {
+        let page = input.page.unwrap_or(1);
+        let size = input.page_size.unwrap_or(50);
+        if page == 0 || size == 0 || size > 100 {
+            return Err(Error::InvalidInput("pagination").into());
+        }
+        if input
+            .status
+            .as_deref()
+            .is_some_and(|s| !["pending", "success", "failure", "unknown"].contains(&s))
+        {
+            return Err(Error::InvalidInput("status").into());
+        }
+        let parse_time = |s: Option<String>| -> Result<Option<OffsetDateTime>> {
+            s.map(|s| {
+                OffsetDateTime::parse(&s, &time::format_description::well_known::Rfc3339)
+                    .map_err(|_| Error::InvalidInput("created_at").into())
+            })
+            .transpose()
+        };
+        let from = parse_time(input.created_from)?;
+        let to = parse_time(input.created_to)?;
+        if from.zip(to).is_some_and(|(a, b)| a > b) {
+            return Err(Error::InvalidInput("created_at").into());
+        }
+        let predicate = " FROM notification_send_logs WHERE workspace_id=$1 AND ($2::uuid IS NULL OR instance_id=$2) AND ($3::text IS NULL OR type_code=$3) AND ($4::text IS NULL OR status=$4) AND ($5::text IS NULL OR source=$5) AND ($6::timestamptz IS NULL OR created_at >= $6) AND ($7::timestamptz IS NULL OR created_at <= $7)";
+        let source = input.source.map(|s| s.as_str());
+        let total: i64 = sqlx::query_scalar(&format!("SELECT count(*){predicate}"))
+            .bind(workspace_id)
+            .bind(input.instance_id)
+            .bind(&input.type_code)
+            .bind(&input.status)
+            .bind(source)
+            .bind(from)
+            .bind(to)
+            .fetch_one(self.pool())
+            .await?;
+        let items = sqlx::query(&format!(
+            "SELECT *{predicate} ORDER BY created_at DESC,id DESC LIMIT $8 OFFSET $9"
+        ))
+        .bind(workspace_id)
+        .bind(input.instance_id)
+        .bind(&input.type_code)
+        .bind(&input.status)
+        .bind(source)
+        .bind(from)
+        .bind(to)
+        .bind(i64::from(size))
+        .bind(i64::from(page - 1) * i64::from(size))
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(send_log)
+        .collect::<Result<Vec<_>>>()?;
+        Ok(domain::NotificationSendLogPage {
+            items,
+            total,
+            page,
+            page_size: size,
+        })
+    }
     async fn bootstrap_system_notification_instances(&self) -> Result<()> {
         sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,display_name,is_builtin) SELECT gen_random_uuid(),id,'system','System notification',true FROM workspaces ON CONFLICT (workspace_id) WHERE is_builtin DO NOTHING").execute(self.pool()).await?;
         Ok(())
@@ -137,6 +256,7 @@ impl NotificationRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         instance_id: Uuid,
         recipients: &[Uuid],
+        send_log_id: Uuid,
         title: &str,
         content: &str,
     ) -> Result<Vec<SystemNotificationRecord>> {
@@ -154,6 +274,11 @@ impl NotificationRepository for PgControlPlaneStore {
         let mut records = Vec::with_capacity(recipients.len());
         for user_id in recipients {
             records.push(message(sqlx::query("INSERT INTO system_notifications (id,workspace_id,instance_id,recipient_user_id,title,content) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *").bind(Uuid::now_v7()).bind(workspace_id).bind(instance_id).bind(user_id).bind(title).bind(content).fetch_one(&mut *tx).await?));
+        }
+        let updated = sqlx::query("UPDATE notification_send_logs SET status='success',title=$3,content=$4,recipient_count=$5,completed_at=now() WHERE workspace_id=$1 AND id=$2 AND instance_id=$6 AND status='pending'")
+            .bind(workspace_id).bind(send_log_id).bind(title).bind(content).bind(recipients.len() as i64).bind(instance_id).execute(&mut *tx).await?.rows_affected();
+        if updated != 1 {
+            return Err(Error::Conflict("notification_log_state").into());
         }
         tx.commit().await?;
         Ok(records)
