@@ -7,7 +7,8 @@ use crate::{
     },
 };
 use control_plane::notifications::{
-    CreateNotificationInstance, NotificationSenderPort, PatchNotificationInstance,
+    CreateNotificationInstance, NotificationInstanceListInput, NotificationSenderPort,
+    PatchNotificationInstance,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
@@ -16,7 +17,7 @@ use uuid::Uuid;
 
 pub(crate) enum NotificationInput {
     Types,
-    List,
+    List(NotificationInstanceListInput),
     Get(Uuid),
     Create(CreateNotificationInstance),
     Patch(Uuid, PatchNotificationInstance),
@@ -40,7 +41,7 @@ impl InterfaceContract for NotificationInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all"}}),
+            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List(_)=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all"}}),
         )
     }
 }
@@ -69,8 +70,8 @@ impl Adapter {
         let actor = principal.actor();
         let value = match input {
             NotificationInput::Types => serde_json::to_value(self.service.types(actor).await?)?,
-            NotificationInput::List => {
-                serde_json::to_value(self.service.list_instances(actor).await?)?
+            NotificationInput::List(input) => {
+                serde_json::to_value(self.service.query_instances(actor, input).await?)?
             }
             NotificationInput::Get(id) => {
                 serde_json::to_value(self.service.get_instance(actor, id).await?)?

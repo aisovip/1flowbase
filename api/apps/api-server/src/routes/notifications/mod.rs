@@ -71,7 +71,7 @@ async fn invoke(
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
     let credential = match &input {
-        Input::Types | Input::List | Input::Get(_) | Input::Messages(_) | Input::UnreadCount => {
+        Input::Types | Input::List(_) | Input::Get(_) | Input::Messages(_) | Input::UnreadCount => {
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
         }
         Input::Create(_)
@@ -104,8 +104,9 @@ pub async fn types(
 pub async fn list(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<control_plane::notifications::NotificationInstanceListInput>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    invoke(state, headers, "instances.list", Input::List).await
+    invoke(state, headers, "instances.list", Input::List(query)).await
 }
 pub async fn unread(
     State(state): State<Arc<ApiState>>,

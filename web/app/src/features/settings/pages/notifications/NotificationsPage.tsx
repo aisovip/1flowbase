@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
+  Dropdown,
   Empty,
   Flex,
   Grid,
@@ -12,10 +16,13 @@ import {
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
-import type { NotificationInstance } from '@1flowbase/api-client';
+import type {
+  NotificationInstance,
+  NotificationInstanceListInput,
+  NotificationType
+} from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../state/navigation-query-scope';
-import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import {
   notificationInstancesOptions,
   notificationTypesOptions,
@@ -29,15 +36,34 @@ import {
 } from '../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import { NotificationInstanceDrawer } from './NotificationInstanceDrawer';
+import { NotificationInstanceFilters } from './NotificationInstanceFilters';
+import './notifications-page.css';
 
 export function NotificationsPage() {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const client = useQueryClient();
-  const instances = useQuery(notificationInstancesOptions(scope));
+  const [filters, setFilters] = useState<NotificationInstanceListInput>({});
+  const instances = useQuery(notificationInstancesOptions(scope, filters));
   const types = useQuery(notificationTypesOptions(scope));
-  const [editing, setEditing] = useState<NotificationInstance | 'new'>();
+  const [editing, setEditing] = useState<{
+    instance?: NotificationInstance;
+    type?: NotificationType;
+  }>();
+  const editInstance = useCallback(
+    (instance: NotificationInstance) => {
+      setEditing({
+        instance,
+        type: types.data?.find(
+          (type) =>
+            type.type_code === instance.type_code &&
+            type.installation_id === instance.installation_id
+        )
+      });
+    },
+    [types.data]
+  );
   const refresh = () =>
     client.invalidateQueries({ queryKey: notificationQueryKey(scope) });
   const status = useMutation({
@@ -73,8 +99,19 @@ export function NotificationsPage() {
   const [page, setPage] = useState(1);
   useEffect(() => {
     setEditing(undefined);
+    setFilters({});
     setPage(1);
   }, [scope]);
+  const {
+    mutate: changeStatus,
+    isPending: statusPending,
+    variables: statusVariables
+  } = status;
+  const {
+    mutateAsync: deleteInstance,
+    isPending: deletePending,
+    variables: deleteVariables
+  } = remove;
   const columns = useMemo<Array<DataTableColumn<NotificationInstance>>>(
     () => [
       {
@@ -84,7 +121,11 @@ export function NotificationsPage() {
         dataIndex: 'display_name',
         mobileRole: 'title',
         render: (_, item) => (
-          <Button type="link" onClick={() => setEditing(item)}>
+          <Button
+            type="link"
+            className="notifications-page__name"
+            onClick={() => editInstance(item)}
+          >
             {item.display_name}
           </Button>
         )
@@ -125,21 +166,31 @@ export function NotificationsPage() {
         title: t('actions'),
         render: (_, item) => (
           <Space wrap>
-            <Button onClick={() => setEditing(item)}>{t('edit')}</Button>
+            <Button
+              type="link"
+              className="notifications-page__action"
+              onClick={() => editInstance(item)}
+            >
+              {t('edit')}
+            </Button>
             <Button
               danger={item.status === 'enabled'}
-              loading={status.isPending && status.variables?.id === item.id}
-              onClick={() => status.mutate(item)}
+              type="link"
+              className="notifications-page__action"
+              loading={statusPending && statusVariables?.id === item.id}
+              onClick={() => changeStatus(item)}
             >
               {item.status === 'enabled' ? t('disable') : t('enable')}
             </Button>
             <Popconfirm
               title={t('delete_confirm')}
-              onConfirm={() => remove.mutateAsync(item.id)}
+              onConfirm={() => deleteInstance(item.id)}
             >
               <Button
                 danger
-                loading={remove.isPending && remove.variables === item.id}
+                type="link"
+                className="notifications-page__action"
+                loading={deletePending && deleteVariables === item.id}
               >
                 {t('delete')}
               </Button>
@@ -150,14 +201,15 @@ export function NotificationsPage() {
     ],
     [
       t,
+      editInstance,
       availability,
       types.data,
-      status.mutate,
-      status.isPending,
-      status.variables,
-      remove.mutateAsync,
-      remove.isPending,
-      remove.variables
+      changeStatus,
+      statusPending,
+      statusVariables,
+      deleteInstance,
+      deletePending,
+      deleteVariables
     ]
   );
   const configuration = usePersistedDataTableConfiguration({
@@ -165,32 +217,63 @@ export function NotificationsPage() {
     storageKey: 'notifications.instances.columns'
   });
   return (
-    <SettingsSectionSurface
-      toolbar={
-        <Flex gap="small" wrap justify="space-between" align="center">
-          <Typography.Text strong>{t('instances')}</Typography.Text>
-          <Space wrap>
-            <Button onClick={() => void refresh()}>{t('refresh')}</Button>
-            <Button
-              type="primary"
-              disabled={!types.data?.some((type) => type.available)}
-              onClick={() => setEditing('new')}
-            >
-              {t('create_instance')}
-            </Button>
-          </Space>
-        </Flex>
-      }
-      status={
-        (instances.isError ||
-          types.isError ||
-          status.isError ||
-          remove.isError) && (
-          <Alert type="error" showIcon title={t('instances_failed')} />
-        )
-      }
-    >
+    <section className="notifications-page">
+      <Typography.Title level={4} className="notifications-page__title">
+        {t('management')}
+      </Typography.Title>
+      {(instances.isError ||
+        types.isError ||
+        status.isError ||
+        remove.isError) && (
+        <Alert type="error" showIcon title={t('instances_failed')} />
+      )}
       <DataTable<NotificationInstance>
+        className="notifications-page__table"
+        toolbar={
+          <Flex gap="small" wrap justify="space-between" align="center">
+            <NotificationInstanceFilters
+              types={types.data ?? []}
+              value={filters}
+              onChange={(value) => {
+                setFilters(value);
+                setPage(1);
+              }}
+            />
+            <Space wrap>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={instances.isFetching && !instances.isPending}
+                onClick={() => void refresh()}
+              >
+                {t('refresh')}
+              </Button>
+              <Dropdown
+                trigger={['click']}
+                disabled={!types.data?.some((type) => type.available)}
+                menu={{
+                  items: (types.data ?? [])
+                    .filter((type) => type.available)
+                    .map((type) => ({
+                      key: JSON.stringify([
+                        type.type_code,
+                        type.installation_id
+                      ]),
+                      label: type.display_name,
+                      onClick: () => setEditing({ type })
+                    }))
+                }}
+              >
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  disabled={!types.data?.some((type) => type.available)}
+                >
+                  {t('create')} <DownOutlined />
+                </Button>
+              </Dropdown>
+            </Space>
+          </Flex>
+        }
         columns={columns}
         configuration={configuration}
         rowKey="id"
@@ -201,7 +284,7 @@ export function NotificationsPage() {
         mobileList={
           mobile
             ? {
-                resetKey: scope,
+                resetKey: JSON.stringify([scope, filters]),
                 hasMore: page * 20 < (instances.data?.length ?? 0),
                 loading: instances.isPending,
                 failed: instances.isError,
@@ -214,13 +297,28 @@ export function NotificationsPage() {
         pageSize={20}
         total={instances.data?.length ?? 0}
         onPageChange={setPage}
-        emptyText={<Empty description={t('no_instances')} />}
+        emptyText={
+          mobile ? (
+            t('no_instances')
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t('no_instances')}
+            />
+          )
+        }
       />
       {editing && (
         <NotificationInstanceDrawer
-          key={editing === 'new' ? 'new' : editing.id}
-          instance={editing === 'new' ? undefined : editing}
-          types={types.data ?? []}
+          key={
+            editing.instance?.id ??
+            JSON.stringify([
+              editing.type?.type_code,
+              editing.type?.installation_id
+            ])
+          }
+          instance={editing.instance}
+          type={editing.type}
           onClose={() => setEditing(undefined)}
           onSaved={() => {
             setEditing(undefined);
@@ -228,6 +326,6 @@ export function NotificationsPage() {
           }}
         />
       )}
-    </SettingsSectionSurface>
+    </section>
   );
 }

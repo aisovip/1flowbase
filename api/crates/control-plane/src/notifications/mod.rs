@@ -85,6 +85,14 @@ pub struct PatchNotificationInstance {
     pub config_json: Option<Value>,
 }
 
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationInstanceListInput {
+    pub display_name: Option<String>,
+    pub type_code: Option<String>,
+    pub status: Option<NotificationInstanceStatus>,
+}
+
 pub struct NotificationService<R> {
     repository: R,
     master_key: String,
@@ -251,13 +259,36 @@ where
         })
     }
     pub async fn list_instances(&self, actor: &ActorContext) -> Result<Vec<NotificationInstance>> {
+        self.query_instances(actor, NotificationInstanceListInput::default())
+            .await
+    }
+    pub async fn query_instances(
+        &self,
+        actor: &ActorContext,
+        input: NotificationInstanceListInput,
+    ) -> Result<Vec<NotificationInstance>> {
         self.manage(actor, "notifications.instances.list").await?;
+        let display_name = input
+            .display_name
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .to_lowercase();
         let mut output = Vec::new();
         for record in self
             .repository
             .list_notification_instances(actor.current_workspace_id)
             .await?
         {
+            if !record.display_name.to_lowercase().contains(&display_name)
+                || input
+                    .type_code
+                    .as_ref()
+                    .is_some_and(|code| code != &record.type_code)
+                || input.status.is_some_and(|status| status != record.status)
+            {
+                continue;
+            }
             output.push(self.project_instance(actor, record).await?);
         }
         Ok(output)

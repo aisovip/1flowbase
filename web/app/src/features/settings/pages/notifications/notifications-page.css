@@ -1,0 +1,44 @@
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+.notifications-page .notifications-page__title {
+  margin: 0;
+}
+
+.notifications-page .notifications-page__table {
+  flex: none;
+  padding: 16px;
+  gap: 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.notifications-page__name {
+  padding-inline: 0;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.notifications-page__action {
+  padding-inline: 0;
+}
+
+.notifications-page__filters {
+  width: min(300px, calc(100vw - 64px));
+}
+
+@media (max-width: 767px) {
+  .notifications-page .notifications-page__table {
+    padding: 12px;
+  }
+}

@@ -100,6 +100,7 @@ export interface SchemaFormDrawerProps {
     context: SchemaFormDrawerContext
   ) => void;
   extraActions?: SchemaFormDrawerAction[];
+  footerAlign?: 'start' | 'end';
 }
 
 const DEFAULT_SCHEMA_FORM_DRAWER_WIDTH = 560;
@@ -219,6 +220,7 @@ export function SchemaFormDrawer({
   defaultWidth,
   disabled = false,
   extraActions = [],
+  footerAlign = 'start',
   initialValues,
   leadingContent,
   maxWidth = DEFAULT_SCHEMA_FORM_DRAWER_MAX_WIDTH,
@@ -368,9 +370,9 @@ export function SchemaFormDrawer({
 
   const footer = (
     <Flex
-      className="schema-form-drawer__footer"
+      className={`schema-form-drawer__footer${footerAlign === 'end' ? ' schema-form-drawer__footer--end' : ''}`}
       gap="small"
-      justify={leftActions.length > 0 ? 'space-between' : 'start'}
+      justify={leftActions.length > 0 ? 'space-between' : footerAlign}
       wrap
     >
       <Space wrap>
@@ -400,6 +402,15 @@ export function SchemaFormDrawer({
             {action.label}
           </Button>
         ))}
+        {footerAlign === 'end' && (
+          <Button
+            aria-label={resolvedCancelText}
+            disabled={isSubmitting}
+            onClick={confirmClose}
+          >
+            {resolvedCancelText}
+          </Button>
+        )}
         <Button
           aria-label={resolvedSubmitText}
           disabled={disabled || submitDisabled}
@@ -409,13 +420,15 @@ export function SchemaFormDrawer({
         >
           {resolvedSubmitText}
         </Button>
-        <Button
-          aria-label={resolvedCancelText}
-          disabled={isSubmitting}
-          onClick={confirmClose}
-        >
-          {resolvedCancelText}
-        </Button>
+        {footerAlign === 'start' && (
+          <Button
+            aria-label={resolvedCancelText}
+            disabled={isSubmitting}
+            onClick={confirmClose}
+          >
+            {resolvedCancelText}
+          </Button>
+        )}
       </Space>
     </Flex>
   );

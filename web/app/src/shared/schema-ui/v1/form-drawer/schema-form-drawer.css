@@ -29,9 +29,18 @@
   width: 100%;
 }
 
+.schema-form-drawer__footer--end {
+  justify-content: flex-end;
+}
+
 @media (max-width: 640px) {
   .schema-form-drawer__footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .schema-form-drawer__footer--end {
+    align-items: center;
+    flex-direction: row;
   }
 }

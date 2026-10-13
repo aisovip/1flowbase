@@ -54,11 +54,28 @@ export interface CreateNotificationInstance {
 export type UpdateNotificationInstance = Partial<
   Pick<CreateNotificationInstance, 'display_name' | 'status' | 'config_json'>
 >;
+export interface NotificationInstanceListInput {
+  display_name?: string;
+  type_code?: string;
+  status?: NotificationInstance['status'];
+}
 const path = '/api/console/notifications';
 export const listNotificationTypes = (signal?: AbortSignal) =>
   apiFetch<NotificationType[]>({ path: `${path}/types`, signal });
-export const listNotificationInstances = (signal?: AbortSignal) =>
-  apiFetch<NotificationInstance[]>({ path: `${path}/instances`, signal });
+export function listNotificationInstances(
+  input: NotificationInstanceListInput = {},
+  signal?: AbortSignal
+) {
+  const search = new URLSearchParams();
+  if (input.display_name) search.set('display_name', input.display_name);
+  if (input.type_code) search.set('type_code', input.type_code);
+  if (input.status) search.set('status', input.status);
+  const query = search.size ? `?${search}` : '';
+  return apiFetch<NotificationInstance[]>({
+    path: `${path}/instances${query}`,
+    signal
+  });
+}
 export const getNotificationInstance = (id: string, signal?: AbortSignal) =>
   apiFetch<NotificationInstance>({
     path: `${path}/instances/${encodeURIComponent(id)}`,

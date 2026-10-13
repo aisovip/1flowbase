@@ -2377,5 +2377,107 @@
         "containerSelector": ".notification-inbox .ant-drawer-body"
       }
     ]
+  },
+  {
+    "id": "page.settings-notifications.desktop",
+    "kind": "page",
+    "title": "Notification Settings Desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
+      "web/app/src/features/settings/pages/notifications/notifications-page.css",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "page",
+        "selector": ".notifications-page",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "table",
+        "selector": ".notifications-page__table",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "table-contained",
+        "type": "within_container",
+        "subjectSelector": ".notifications-page__table",
+        "containerSelector": ".notifications-page"
+      },
+      {
+        "id": "toolbar-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notifications-page__table .data-table__toolbar"
+      }
+    ]
+  },
+  {
+    "id": "page.settings-notifications.mobile",
+    "kind": "page",
+    "title": "Notification Settings Mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
+      "web/app/src/features/settings/pages/notifications/notifications-page.css",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "page",
+        "selector": ".notifications-page",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "table",
+        "selector": ".notifications-page__table",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "table-contained",
+        "type": "within_container",
+        "subjectSelector": ".notifications-page__table",
+        "containerSelector": ".notifications-page"
+      },
+      {
+        "id": "toolbar-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notifications-page__table .data-table__toolbar"
+      }
+    ]
   }
 ]

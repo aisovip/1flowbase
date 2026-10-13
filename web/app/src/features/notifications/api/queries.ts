@@ -5,6 +5,7 @@ import {
   listNotificationMessages,
   listNotificationTypes
 } from '@1flowbase/api-client';
+import type { NotificationInstanceListInput } from '@1flowbase/api-client';
 export {
   createNotificationInstance,
   updateNotificationInstance,
@@ -15,10 +16,13 @@ export {
 } from '@1flowbase/api-client';
 export const notificationQueryKey = (scope: string) =>
   ['notifications', scope] as const;
-export const notificationInstancesOptions = (scope: string) =>
+export const notificationInstancesOptions = (
+  scope: string,
+  input: NotificationInstanceListInput = {}
+) =>
   queryOptions({
-    queryKey: [...notificationQueryKey(scope), 'instances'],
-    queryFn: ({ signal }) => listNotificationInstances(signal)
+    queryKey: [...notificationQueryKey(scope), 'instances', input],
+    queryFn: ({ signal }) => listNotificationInstances(input, signal)
   });
 export const notificationTypesOptions = (scope: string) =>
   queryOptions({

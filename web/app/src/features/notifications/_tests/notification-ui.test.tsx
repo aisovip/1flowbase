@@ -4,8 +4,7 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
-  cleanup
+  waitFor
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -15,7 +14,6 @@ import type {
 } from '@1flowbase/api-client';
 import { useAuthStore, resetAuthStore } from '../../../state/auth-store';
 import { NotificationsPage } from '../../settings/pages/notifications/NotificationsPage';
-import { NotificationInstanceDrawer } from '../../settings/pages/notifications/NotificationInstanceDrawer';
 import { NotificationBell } from '../components/NotificationBell';
 
 class SignalStream {
@@ -77,6 +75,8 @@ const initialInstance: NotificationInstance = {
   updated_at: '2026-10-13T00:00:00Z'
 };
 let instance: NotificationInstance;
+let catalog: NotificationType[];
+let filteredInstances: NotificationInstance[] | undefined;
 let read_at: string | null;
 let rejectRead: boolean;
 let calls: Array<{
@@ -95,6 +95,8 @@ function renderUI(ui: ReactNode) {
 }
 beforeEach(() => {
   instance = { ...initialInstance };
+  catalog = [type];
+  filteredInstances = undefined;
   read_at = null;
   rejectRead = false;
   calls = [];
@@ -128,8 +130,18 @@ beforeEach(() => {
         created_at: instance.created_at
       };
       let data: unknown;
-      if (url.endsWith('/types')) data = [type];
-      else if (url.endsWith('/instances')) data = [instance];
+      if (url.endsWith('/types')) data = catalog;
+      else if (url.endsWith('/instances') && method === 'POST') {
+        instance = {
+          ...instance,
+          ...body,
+          configured_secret_fields: []
+        } as NotificationInstance;
+        data = instance;
+      } else if (url.includes('/notifications/instances') && method === 'GET')
+        data = url.includes('?')
+          ? (filteredInstances ?? [instance])
+          : [instance];
       else if (url.includes('/instances/') && method === 'PATCH') {
         instance = { ...instance, ...body } as NotificationInstance;
         data = instance;
@@ -161,7 +173,6 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
-  cleanup();
   client?.clear();
   resetAuthStore();
   vi.unstubAllGlobals();
@@ -169,30 +180,34 @@ afterEach(() => {
 
 describe('notification management and inbox AC-001/003/004/006', () => {
   test('creates only from available canonical notification types', async () => {
-    const onSaved = vi.fn();
-    renderUI(
-      <NotificationInstanceDrawer
-        types={[
-          { ...type, config_form: { schema_version: '1.0.0', fields: [] } },
-          {
-            ...type,
-            type_code: 'external',
-            display_name: 'Unavailable external',
-            available: false
-          }
-        ]}
-        onClose={vi.fn()}
-        onSaved={onSaved}
-      />
+    catalog = [
+      { ...type, config_form: { schema_version: '1.0.0', fields: [] } },
+      {
+        ...type,
+        type_code: 'external',
+        display_name: 'Unavailable external',
+        available: false
+      }
+    ];
+    renderUI(<NotificationsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
-    fireEvent.change(screen.getByRole('textbox', { name: '实例名称' }), {
+    fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('menuitem', { name: '系统通知' }));
+    expect(
+      screen.queryByRole('combobox', { name: '通知类型' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+      '系统通知'
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'New notifications' }
     });
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
-    expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByText('系统通知'));
-    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await screen.findByRole('button', { name: 'New notifications' });
     expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
       type_code: 'system',
       installation_id: null,
@@ -200,21 +215,80 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       config_json: {}
     });
   });
+  test('keeps the selected installation identity when two installations contribute the same type', async () => {
+    catalog = [
+      {
+        ...type,
+        type_code: 'acme/mail',
+        installation_id: 'installation-a',
+        display_name: 'Mail A',
+        config_form: { schema_version: '1.0.0', fields: [] }
+      },
+      {
+        ...type,
+        type_code: 'acme/mail',
+        installation_id: 'installation-b',
+        display_name: 'Mail B',
+        config_form: { schema_version: '1.0.0', fields: [] }
+      }
+    ];
+    renderUI(<NotificationsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mail B' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+      target: { value: 'Team mail' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await screen.findByRole('button', { name: 'Team mail' });
+    expect(calls.find((call) => call.method === 'POST')?.body).toMatchObject({
+      type_code: 'acme/mail',
+      installation_id: 'installation-b'
+    });
+  });
+  test('applies canonical query conditions and renders backend results, then clears the conditions', async () => {
+    renderUI(<NotificationsPage />);
+    await screen.findByRole('button', { name: '系统站内通知' });
+    fireEvent.click(screen.getByRole('button', { name: /筛选/ }));
+    fireEvent.change(await screen.findByRole('textbox', { name: '渠道名称' }), {
+      target: { value: 'does not exist' }
+    });
+    filteredInstances = [];
+    fireEvent.click(screen.getByRole('button', { name: /^应\s*用$/u }));
+    await screen.findByText('暂无通知渠道');
+    const filtered = calls.find((call) => call.url.includes('display_name='));
+    expect(
+      new URL(filtered!.url, 'http://localhost').searchParams.get(
+        'display_name'
+      )
+    ).toBe('does not exist');
+    fireEvent.click(screen.getByRole('button', { name: /筛选/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^清\s*除$/u }));
+    await screen.findByRole('button', { name: '系统站内通知' });
+    expect(screen.getByRole('button', { name: /筛选/ })).toHaveTextContent(
+      '筛选'
+    );
+    expect(screen.getByRole('button', { name: /筛选/ })).not.toHaveTextContent(
+      '(1)'
+    );
+  });
   test('edits the real settings drawer, preserves omitted secrets, and reloads saved names', async () => {
     renderUI(<NotificationsPage />);
     fireEvent.click(await screen.findByRole('button', { name: /^编\s*辑$/u }));
-    const name = await screen.findByRole('textbox', { name: '实例名称' });
+    const name = await screen.findByRole('textbox', { name: '渠道名称' });
     fireEvent.change(name, { target: { value: '团队通知' } });
     const token = document.querySelector('input[type="password"]');
     expect(token).toBeTruthy();
     expect(token).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
     await screen.findByRole('button', { name: '团队通知' });
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.body).toEqual({ display_name: '团队通知', config_json: {} });
     fireEvent.click(screen.getByRole('button', { name: /^编\s*辑$/u }));
     expect(
-      await screen.findByRole('textbox', { name: '实例名称' })
+      await screen.findByRole('textbox', { name: '渠道名称' })
     ).toHaveValue('团队通知');
   });
   test('disables the instance using its backend status and shows plugin unavailability without dropping it', async () => {

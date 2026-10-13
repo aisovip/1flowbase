@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Input, Select, Space, Typography } from 'antd';
+import { Alert, Form, Input, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type {
   NotificationInstance,
@@ -18,30 +18,23 @@ import { useAuthStore } from '../../../../state/auth-store';
 
 export function NotificationInstanceDrawer({
   instance,
-  types,
+  type,
   onClose,
   onSaved
 }: {
   instance?: NotificationInstance;
-  types: NotificationType[];
+  type?: NotificationType;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { t } = useTranslation('notifications');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const [display_name, setDisplayName] = useState(instance?.display_name ?? '');
-  const [selected, setSelected] = useState<NotificationType | undefined>(() =>
-    types.find(
-      (type) =>
-        type.type_code === instance?.type_code &&
-        type.installation_id === instance?.installation_id
-    )
-  );
   const [nameError, setNameError] = useState(false);
   const schema = useMemo<PluginFormSchema>(() => {
-    if (!selected) return { schema_version: '1.0.0', fields: [] };
+    if (!type) return { schema_version: '1.0.0', fields: [] };
     // Canonical wire schema is the same PluginFormSchema consumed by schema UI.
-    const form = selected.config_form as PluginFormSchema;
+    const form = type.config_form as PluginFormSchema;
     return {
       ...form,
       fields: form.fields.map((field) =>
@@ -55,7 +48,7 @@ export function NotificationInstanceDrawer({
           : field
       )
     };
-  }, [instance, selected, t]);
+  }, [instance, type, t]);
   const initialValues = useMemo(
     () => instance?.config_json as SchemaFormValues | undefined,
     [instance]
@@ -69,75 +62,50 @@ export function NotificationInstanceDrawer({
         : t('type_unavailable');
   return (
     <SchemaFormDrawer
-      key={JSON.stringify([selected?.type_code, selected?.installation_id])}
       open
       title={instance ? t('edit_instance') : t('create_instance')}
+      rootClassName="notification-instance-drawer"
+      footerAlign="end"
       schema={schema}
       initialValues={initialValues}
-      width="min(560px, 100vw)"
+      width="min(720px, 100vw)"
+      submitText={t('submit')}
+      cancelText={t('cancel')}
       leadingContent={
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-          <label>
-            <Typography.Text>{t('display_name')}</Typography.Text>
-            <Input
-              value={display_name}
-              onChange={(event) => {
-                setDisplayName(event.target.value);
-                setNameError(false);
-              }}
-              aria-label={t('display_name')}
-              status={nameError ? 'error' : undefined}
-            />
-            {nameError && (
-              <Typography.Text type="danger">
-                {t('name_required')}
-              </Typography.Text>
-            )}
-          </label>
-          <label>
-            <Typography.Text>{t('type')}</Typography.Text>
-            <Select
-              aria-label={t('type')}
-              disabled={!!instance}
-              style={{ width: '100%' }}
-              value={
-                selected
-                  ? JSON.stringify([
-                      selected.type_code,
-                      selected.installation_id
-                    ])
-                  : undefined
-              }
-              options={types
-                .filter((type) => instance || type.available)
-                .map((type) => ({
-                  label: type.display_name,
-                  value: JSON.stringify([type.type_code, type.installation_id])
-                }))}
-              onChange={(value) => {
-                const [type_code, installation_id] = JSON.parse(value) as [
-                  string,
-                  string | null
-                ];
-                setSelected(
-                  types.find(
-                    (type) =>
-                      type.type_code === type_code &&
-                      type.installation_id === installation_id
-                  )
-                );
-              }}
-            />
-          </label>
-          {unavailable && (
-            <Alert type="warning" title={unavailableTitle} />
-          )}
-          {!selected && instance && (
+          <Form layout="vertical" component={false}>
+            <Form.Item
+              label={t('display_name')}
+              required
+              validateStatus={nameError ? 'error' : undefined}
+              help={nameError ? t('name_required') : undefined}
+            >
+              <Input
+                autoFocus
+                value={display_name}
+                onChange={(event) => {
+                  setDisplayName(event.target.value);
+                  setNameError(false);
+                }}
+                aria-label={t('display_name')}
+                autoComplete="off"
+              />
+            </Form.Item>
+            <Form.Item label={t('type')}>
+              <Input
+                readOnly
+                value={type?.display_name ?? instance?.type_code}
+                aria-label={t('type')}
+              />
+            </Form.Item>
+          </Form>
+          {unavailable && <Alert type="warning" title={unavailableTitle} />}
+          {!type && instance && (
             <Alert type="info" title={t('config_unavailable')} />
           )}
         </Space>
       }
-      submitDisabled={!display_name.trim() || (!instance && !selected)}
+      submitDisabled={!display_name.trim() || (!instance && !type?.available)}
       onCancel={onClose}
       onBeforeSubmit={() => {
         if (!display_name.trim()) {
@@ -161,16 +129,16 @@ export function NotificationInstanceDrawer({
             instance.id,
             {
               display_name: display_name.trim(),
-              ...(selected ? { config_json } : {})
+              ...(type ? { config_json } : {})
             },
             csrfToken
           );
-        } else if (selected) {
+        } else if (type?.available) {
           await createNotificationInstance(
             {
               display_name: display_name.trim(),
-              type_code: selected.type_code,
-              installation_id: selected.installation_id,
+              type_code: type.type_code,
+              installation_id: type.installation_id,
               config_json
             },
             csrfToken

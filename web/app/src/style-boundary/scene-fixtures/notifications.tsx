@@ -1,6 +1,69 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { NotificationMessage } from '@1flowbase/api-client';
+import type {
+  NotificationInstance,
+  NotificationMessage,
+  NotificationType
+} from '@1flowbase/api-client';
 import { NotificationBell } from '../../features/notifications/components/NotificationBell';
+import { NotificationsPage } from '../../features/settings/pages/notifications/NotificationsPage';
+
+const notificationType: NotificationType = {
+  type_code: 'system',
+  display_name: '系统站内通知',
+  description: null,
+  config_schema: {},
+  config_form: { schema_version: '1.0.0', fields: [] },
+  input_schema: {},
+  input_form: { schema_version: '1.0.0', fields: [] },
+  output_schema: {},
+  contribution_id: 'system',
+  installation_id: null,
+  available: true,
+  unavailable_reason: null
+};
+const notificationInstance: NotificationInstance = {
+  id: 'notification-instance',
+  workspace_id: 'workspace-1',
+  type_code: 'system',
+  installation_id: null,
+  display_name: '团队工作流通知渠道',
+  status: 'enabled',
+  config_json: {},
+  configured_secret_fields: [],
+  available: true,
+  unavailable_reason: null,
+  created_at: '2026-10-13T00:00:00Z',
+  updated_at: '2026-10-13T00:00:00Z'
+};
+
+export function seedStyleBoundaryNotificationSettingsFetch() {
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url,
+      window.location.origin
+    );
+    const payload =
+      url.pathname === '/api/console/notifications/types'
+        ? [notificationType]
+        : url.pathname === '/api/console/notifications/instances'
+          ? [notificationInstance]
+          : undefined;
+    if (payload !== undefined)
+      return new Response(JSON.stringify({ data: payload, meta: null }), {
+        headers: { 'content-type': 'application/json' }
+      });
+    return originalFetch(input, init);
+  };
+}
+
+export function NotificationSettingsStyleBoundaryScene() {
+  return <NotificationsPage />;
+}
 
 const messages: NotificationMessage[] = [
   {
