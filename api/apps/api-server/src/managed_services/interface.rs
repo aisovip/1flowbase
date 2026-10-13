@@ -129,12 +129,25 @@ impl Adapter {
             {
                 return Err(Error::Conflict("managed_service_generation_mismatch").into());
             }
+            let caller = if binding
+                .descriptor
+                .required_permissions
+                .iter()
+                .any(|permission| permission.as_str() == "file.import.resource")
+            {
+                crate::resource_import::capture_caller(&state, principal)
+                    .await
+                    .map_err(|error| error.0)?
+            } else {
+                None
+            };
             let output = composition
                 .execute_snapshot(
                     snapshot.clone(),
                     domain::SYSTEM_SCOPE_ID,
                     &contribution_id,
                     runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+                        caller,
                         workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
                         actor_id: Some(principal.actor().user_id.to_string()),
                         deadline_unix_ms: deadline,

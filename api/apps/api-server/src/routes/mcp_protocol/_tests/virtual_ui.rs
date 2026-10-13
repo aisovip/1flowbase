@@ -478,6 +478,10 @@ impl McpInterfaceDispatchPort for MediaFixtureDispatch {
         body: McpDebugExecuteBody,
         _server_bound_inputs: McpServerBoundInputs,
     ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        assert_eq!(
+            crate::resource_import::selected_mcp_scope(),
+            Some(vec!["selected".into()])
+        );
         // The real debug executor treats declarations without properties as raw result projection.
         assert!(body.output_mapping.get("properties").is_none());
         self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -862,7 +866,7 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
     let catalog = readable_resource_catalog();
     let actor =
         domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
-    let reference = resources::ResourceReference {
+    let reference = resources::ResourceReference(extension_contracts::ResourceReference {
         v: 1,
         user_id: actor.user_id,
         workspace_id: actor.current_workspace_id,
@@ -871,7 +875,7 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
         des_id: catalog.tools[0].des_id.clone(),
         arguments: json!({"query":"file"}),
         resource_uri: "file:///tmp/file.bin".into(),
-    };
+    });
     let uri = reference.encode().unwrap();
     let dependencies = media_fixture_dependencies();
     let interfaces = media_fixture_interfaces();

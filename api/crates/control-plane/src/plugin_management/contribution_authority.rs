@@ -163,6 +163,10 @@ impl HostContributionGrantPolicy {
                         request.permission_contract_id == "managed-service"
                             && request.resource_scope == ContributionResourceScope::System
                     }
+                    "file.import.resource" => {
+                        request.permission_contract_id == "file-import"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
                     "credential.manage" => {
                         request.permission_contract_id == "plugin-credential"
                             && request.resource_scope == ContributionResourceScope::System

@@ -97,6 +97,7 @@ dependencies = [
  "jsonschema",
  "observability",
  "orchestration-runtime",
+ "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
  "rand_core 0.6.4",
@@ -1463,6 +1464,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "url",
+ "uuid",
 ]
 
 [[package]]

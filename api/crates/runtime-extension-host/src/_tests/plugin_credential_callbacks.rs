@@ -4,7 +4,7 @@ use extension_contracts::{
     PluginCredentialResponse,
 };
 use std::sync::Mutex;
-struct Credentials(Mutex<Vec<PluginCredentialBinding>>);
+pub(super) struct Credentials(pub(super) Mutex<Vec<PluginCredentialBinding>>);
 impl PluginCredentialPort for Credentials {
     fn execute<'a>(
         &'a self,
@@ -29,7 +29,7 @@ impl PluginDataPort for NoData {
         Box::pin(async { panic!("credential callback reached data port") })
     }
 }
-fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
+pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
     let binding = PluginCredentialBinding {
         contribution_id: "ssh.settings".into(),
         installation_id: "installation".into(),
@@ -53,6 +53,7 @@ fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
             deadline_unix_ms: binding.deadline_unix_ms,
         },
         plugin_data: Arc::new(NoData),
+        file_import: None,
         plugin_credentials: Some((binding, port)),
     }
 }

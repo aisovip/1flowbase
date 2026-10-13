@@ -19,3 +19,6 @@ mod provider_external_context_tests;
 mod multiplex_duplex_tests;
 
 mod notification_contract_tests;
+
+#[path = "file_import/contract.rs"]
+mod file_import_contract_tests;

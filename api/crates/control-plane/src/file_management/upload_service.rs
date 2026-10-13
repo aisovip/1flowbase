@@ -120,6 +120,15 @@ where
                     ),
                 )?;
 
+        // Reject disabled or mismatched scope authority before object storage has side effects.
+        // The record owner repeats this check when it creates the metadata record.
+        runtime_core::runtime_acl::resolve_access_scope(
+            &command.actor,
+            runtime_core::runtime_acl::RuntimeDataAction::Create,
+            model.id,
+            Some(&scope_grant),
+        )?;
+
         let file_id = Uuid::now_v7();
         let extname = std::path::Path::new(&command.original_filename)
             .extension()

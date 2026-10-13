@@ -80,6 +80,18 @@ impl MemoryFileManagementRepository {
             .insert(model.id, model);
     }
 
+    pub fn set_scope_grant_enabled(&self, model_id: Uuid, enabled: bool) {
+        for grant in self
+            .grants
+            .lock()
+            .expect("grant lock poisoned")
+            .iter_mut()
+            .filter(|grant| grant.data_model_id == model_id)
+        {
+            grant.enabled = enabled;
+        }
+    }
+
     pub fn insert_scope_grant(&self, grant: ScopeDataModelGrantRecord) {
         self.grants.lock().expect("grant lock poisoned").push(grant);
     }

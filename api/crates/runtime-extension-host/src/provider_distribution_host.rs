@@ -162,6 +162,7 @@ fn distribution_host_calls(
             deadline_unix_ms: principal.deadline_unix_ms,
         },
         plugin_data,
+        file_import: None,
         plugin_credentials: None,
     }))
 }

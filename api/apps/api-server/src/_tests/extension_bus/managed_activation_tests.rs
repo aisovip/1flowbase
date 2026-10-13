@@ -62,6 +62,7 @@ fn package_bytes(root: &Path) -> Vec<u8> {
 
 pub(super) fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
     RuntimeExecutionPrincipal {
+        caller: None,
         workspace_id: workspace.to_string(),
         actor_id: Some(actor.to_string()),
         deadline_unix_ms: ((time::OffsetDateTime::now_utc() + time::Duration::seconds(30))

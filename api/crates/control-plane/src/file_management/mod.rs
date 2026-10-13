@@ -20,3 +20,6 @@ pub use upload_service::*;
 
 #[cfg(test)]
 mod _tests;
+
+mod resource_import;
+pub use resource_import::*;

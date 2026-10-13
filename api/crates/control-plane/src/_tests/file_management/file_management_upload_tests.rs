@@ -28,6 +28,16 @@ pub(super) struct TestRuntimeRecordRepository {
     records: Mutex<HashMap<String, Vec<Value>>>,
 }
 
+impl TestRuntimeRecordRepository {
+    pub(super) fn record_count(&self, model_code: &str) -> usize {
+        self.records
+            .lock()
+            .unwrap()
+            .get(model_code)
+            .map_or(0, Vec::len)
+    }
+}
+
 #[async_trait]
 impl RuntimeRecordRepository for TestRuntimeRecordRepository {
     async fn list_records(
@@ -153,6 +163,12 @@ pub(super) fn model_definition(
 }
 
 pub(super) fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<RuntimeEngine> {
+    runtime_engine_and_records_for_model(model).0
+}
+
+pub(super) fn runtime_engine_and_records_for_model(
+    model: &ModelDefinitionRecord,
+) -> (Arc<RuntimeEngine>, Arc<TestRuntimeRecordRepository>) {
     let registry = RuntimeModelRegistry::default();
     registry.rebuild(vec![ModelMetadata {
         model_id: model.id,
@@ -174,10 +190,11 @@ pub(super) fn runtime_engine_for_model(model: &ModelDefinitionRecord) -> Arc<Run
         resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
     }]);
 
-    Arc::new(RuntimeEngine::new(
-        registry,
-        Arc::new(TestRuntimeRecordRepository::default()),
-    ))
+    let records = Arc::new(TestRuntimeRecordRepository::default());
+    (
+        Arc::new(RuntimeEngine::new(registry, records.clone())),
+        records,
+    )
 }
 
 pub(super) fn actor_in_workspace(workspace_id: Uuid) -> ActorContext {

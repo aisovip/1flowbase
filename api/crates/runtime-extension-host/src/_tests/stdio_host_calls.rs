@@ -68,6 +68,7 @@ fn host_call_context(port: Arc<CapturingPluginDataPort>) -> ProviderHostCallCont
             deadline_unix_ms: now_unix_ms() + 10_000,
         },
         plugin_data: port,
+        file_import: None,
         plugin_credentials: None,
     }
 }

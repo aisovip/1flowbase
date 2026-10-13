@@ -74,6 +74,12 @@ pub(crate) struct VirtualMcpScope {
 }
 
 impl VirtualMcpScope {
+    pub(crate) fn from_instance_ids(instance_ids: Vec<String>) -> Self {
+        Self { instance_ids }
+    }
+    pub(crate) fn instance_ids(&self) -> &[String] {
+        &self.instance_ids
+    }
     #[cfg(test)]
     pub(crate) fn selected(
         catalog: &domain::McpCatalogSnapshot,
@@ -1139,16 +1145,18 @@ pub(super) async fn call_inner(
                 input_mapping: tool.input_mapping.clone(),
                 output_mapping: tool.output_mapping.clone(),
             };
-            match interface_dispatch
-                .execute(
+            match crate::resource_import::with_selected_scope(
+                scope.instance_ids().to_vec(),
+                interface_dispatch.execute(
                     headers.clone(),
                     interface,
                     body,
                     McpServerBoundInputs {
                         workspace_id: instance.workspace_id,
                     },
-                )
-                .await
+                ),
+            )
+            .await
             {
                 Ok(value) => {
                     let (detail, media_content) = match media_mapping {

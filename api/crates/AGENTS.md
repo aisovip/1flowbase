@@ -55,6 +55,7 @@
 - Provider Distribution Rule 属于 `RuntimeExecutionPort` 的 typed operation，不新增第七 Port；Host 只执行插件 decision，`orchestration-runtime` 独占 eligible target 校验、retry 与 Provider invocation。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。
 - Plugin Managed Data Model 只接受 manifest 的 additive desired state；`control-plane-contracts` 持有窄 Port，`plugin-framework` 编译 plan，PostgreSQL adapter 独占 catalog/DDL/ownership。目标业务表不得维护 `extension_field_slot` 或第二套 allowlist；RuntimeExtension 不得获得 SQL 或数据库连接。
+- `FileImportPort` 位于 `runtime-core`，持有 Host-only `ActorContext` 与选定 MCP instance scope；request/response/locator codec 位于无 domain 依赖的 `extension-contracts`，SDK 只消费 wire。来源回读与目标文件写分别由 API composition / `control-plane` 授权。
 - `PluginDataPort` 是 Host Service，不进入 RuntimeBackend 六 Port。worker frame 不携带 plugin/workspace/actor 身份；Host 从 manifest 与内部 execution principal 注入，PostgreSQL adapter 仅按 ownership ledger 解析物理对象。
 
 ## Evidence And Stop

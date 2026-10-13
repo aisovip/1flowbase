@@ -77,6 +77,10 @@ pub struct StreamingProviderOutput {
 pub(crate) struct ProviderHostCallContext {
     pub binding: PluginDataBinding,
     pub plugin_data: Arc<dyn PluginDataPort>,
+    pub file_import: Option<(
+        runtime_core::runtime_backend::FileImportBinding,
+        Arc<dyn runtime_core::runtime_backend::FileImportPort>,
+    )>,
     pub plugin_credentials: Option<(
         extension_contracts::PluginCredentialBinding,
         Arc<dyn extension_contracts::PluginCredentialPort>,

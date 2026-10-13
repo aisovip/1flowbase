@@ -72,6 +72,8 @@ impl RuntimeTargetId {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeExecutionPrincipal {
+    /// Host-only caller delegation; never serialized to a worker.
+    pub caller: Option<RuntimeCallerContext>,
     pub workspace_id: String,
     pub actor_id: Option<String>,
     pub deadline_unix_ms: i64,
@@ -737,4 +739,41 @@ impl RuntimeBackendSlot {
             .cloned()
             .ok_or(RuntimeBackendError::MissingBackend)
     }
+}
+
+/// Real caller retained separately from PluginData's system execution workspace.
+#[derive(Debug, Clone)]
+pub struct RuntimeCallerContext {
+    pub actor: domain::ActorContext,
+    pub session_version: i64,
+    /// None for direct Console calls; Some(empty) deliberately grants no MCP instance.
+    pub selected_mcp_instance_ids: Option<Vec<String>>,
+}
+#[derive(Debug, Clone)]
+pub struct FileImportBinding {
+    pub subject: extension_contracts::ManagedContributionSubject,
+    pub publisher_namespace: String,
+    pub plugin_code: String,
+    pub plugin_version: String,
+    pub caller: RuntimeCallerContext,
+    pub deadline_unix_ms: i64,
+}
+pub type FileImportFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<
+                    extension_contracts::FileImportResponse,
+                    extension_contracts::FileImportError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+/// Host Service, outside RuntimeBackend's six execution ports. Worker JSON carries no binding.
+pub trait FileImportPort: Send + Sync {
+    fn execute<'a>(
+        &'a self,
+        binding: &'a FileImportBinding,
+        request: &'a extension_contracts::FileImportRequest,
+    ) -> FileImportFuture<'a>;
 }
