@@ -7,23 +7,50 @@ use axum::{
 use std::{
     collections::HashMap,
     convert::Infallible,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
-use tokio::sync::broadcast;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 #[derive(Default)]
 pub struct NotificationEventHub {
-    channels: Mutex<HashMap<(Uuid, Uuid), broadcast::Sender<()>>>,
+    channels: Mutex<HashMap<(Uuid, Uuid), watch::Sender<()>>>,
+}
+struct NotificationSubscription {
+    hub: Weak<NotificationEventHub>,
+    key: (Uuid, Uuid),
+    receiver: watch::Receiver<()>,
+}
+impl Drop for NotificationSubscription {
+    fn drop(&mut self) {
+        if let Some(hub) = self.hub.upgrade() {
+            let mut channels = hub
+                .channels
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if channels
+                .get(&self.key)
+                .is_some_and(|sender| sender.receiver_count() <= 1)
+            {
+                channels.remove(&self.key);
+            }
+        }
+    }
 }
 impl NotificationEventHub {
-    fn subscribe(&self, workspace: Uuid, user: Uuid) -> broadcast::Receiver<()> {
-        self.channels
+    fn subscribe(self: &Arc<Self>, workspace: Uuid, user: Uuid) -> NotificationSubscription {
+        let receiver = self
+            .channels
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .entry((workspace, user))
-            .or_insert_with(|| broadcast::channel(16).0)
-            .subscribe()
+            .or_insert_with(|| watch::channel(()).0)
+            .subscribe();
+        NotificationSubscription {
+            hub: Arc::downgrade(self),
+            key: (workspace, user),
+            receiver,
+        }
     }
 }
 impl control_plane::notifications::NotificationEventPublisher for NotificationEventHub {
@@ -51,9 +78,9 @@ pub async fn events(
     let stream =
         futures_util::stream::unfold((receiver, true), |(mut receiver, initial)| async move {
             if !initial {
-                match receiver.recv().await {
-                    Ok(()) | Err(broadcast::error::RecvError::Lagged(_)) => {}
-                    Err(broadcast::error::RecvError::Closed) => return None,
+                match receiver.receiver.changed().await {
+                    Ok(()) => {}
+                    Err(_) => return None,
                 }
             }
             Some((
@@ -63,3 +90,7 @@ pub async fn events(
         });
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
+
+#[cfg(test)]
+#[path = "_tests/events.rs"]
+mod tests;

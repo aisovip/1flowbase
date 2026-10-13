@@ -51,7 +51,7 @@ pub struct HostContributionGrantPolicy {
 
 impl HostContributionGrantPolicy {
     pub fn root_composition() -> Self {
-        let rules = [
+        let mut rules = [
             "authorization",
             "admission",
             "before",
@@ -68,6 +68,13 @@ impl HostContributionGrantPolicy {
             resource_scope: ContributionResourceScope::Workspace,
         })
         .collect::<Vec<_>>();
+        rules.push(HostContributionPermissionRule {
+            point_id: extension_contracts::NOTIFICATION_POINT.into(),
+            permission: extension_contracts::NOTIFICATION_SEND_PERMISSION.into(),
+            permission_contract_id: "notification",
+            point_contract_version: extension_contracts::NOTIFICATION_CONTRACT_V1,
+            resource_scope: ContributionResourceScope::Workspace,
+        });
         Self { rules }
     }
 

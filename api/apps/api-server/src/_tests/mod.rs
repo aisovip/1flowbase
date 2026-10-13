@@ -40,6 +40,7 @@ mod model_provider_icon_routes;
 mod model_provider_routes;
 mod native_read_interface_tests;
 mod network_center_routes;
+mod notifications;
 mod official_extension_catalog_source;
 mod official_i18n_catalog_source;
 mod plugin_routes;
