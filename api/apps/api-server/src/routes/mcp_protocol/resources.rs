@@ -226,7 +226,7 @@ pub(crate) async fn replay_for_import(
     use extension_contracts::FileImportError;
     let reference = ResourceReference::decode(uri)
         .map_err(|_| FileImportError::new("file_import_resource_invalid"))?;
-    let catalog = control_plane::mcp_management::McpManagementService::new(state.store.clone())
+    let mut catalog = control_plane::mcp_management::McpManagementService::new(state.store.clone())
         .read_catalog_for_actor(actor)
         .await
         .map_err(|_| FileImportError::new("file_import_resource_not_visible"))?;
@@ -241,7 +241,30 @@ pub(crate) async fn replay_for_import(
                 .map(|i| i.instance_id.clone())
                 .collect()
         });
-    let scope = virtual_ui::VirtualMcpScope::from_instance_ids(ids);
+    let interfaces =
+        crate::routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor)
+            .await
+            .map_err(|_| FileImportError::new("file_import_resource_read_failed"))?;
+    let interface_catalog = virtual_ui::McpInterfaceCatalogSnapshot::new(interfaces);
+    // The locator selects a view within the caller's trusted scope; it cannot grant one.
+    // Direct console callers may have multiple visible instances, so project the source
+    // instance rather than whichever instance happens to appear first in the catalog.
+    let source_instances = ids
+        .iter()
+        .filter(|id| **id == reference.instance_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    crate::managed_service_mcp::append(
+        &state.store,
+        state.console_surface_registry.managed_services(),
+        actor,
+        &mut catalog,
+        &source_instances,
+        &interface_catalog,
+    )
+    .await
+    .map_err(|_| FileImportError::new("file_import_resource_not_visible"))?;
+    let scope = virtual_ui::VirtualMcpScope::from_instance_ids(source_instances);
     let (_, tool) = authorize_reference(&reference, actor, &catalog, &scope).map_err(|reason| {
         FileImportError::new(match reason {
             "Resource reference is no longer current" => "file_import_resource_stale",
@@ -270,11 +293,6 @@ pub(crate) async fn replay_for_import(
     {
         return Err(FileImportError::new("file_import_reentrant_source"));
     }
-    let interfaces =
-        crate::routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor)
-            .await
-            .map_err(|_| FileImportError::new("file_import_resource_read_failed"))?;
-    let interface_catalog = virtual_ui::McpInterfaceCatalogSnapshot::new(interfaces);
     let dispatch = virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(crate::console_router(
         state.clone(),
         true,
