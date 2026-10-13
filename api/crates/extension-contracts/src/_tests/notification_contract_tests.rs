@@ -92,3 +92,16 @@ fn notification_descriptor_rejects_invalid_identity_schema_and_form() {
     };
     assert!(value.validate().is_err());
 }
+
+#[test]
+fn multi_select_validates_options_as_items_and_defaults_as_arrays() {
+    let mut value = descriptor();
+    value.input_schema = json!({"type":"object","properties":{"recipients":{"type":"array","items":{"type":"string","enum":["alice","bob"]}}}});
+    value.input_form = serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"recipients","label":"Recipients","type":"select","control":"multi-select","default_value":["alice"],"options":[{"label":"Alice","value":"alice"},{"label":"Bob","value":"bob"}]}]})).unwrap();
+    value.validate().unwrap();
+    value.input_form.fields[0].options[0].value = json!("mallory");
+    assert!(value.validate().is_err());
+    value.input_form.fields[0].options[0].value = json!("alice");
+    value.input_form.fields[0].default_value = Some(json!("alice"));
+    assert!(value.validate().is_err());
+}

@@ -87,6 +87,15 @@ pub(super) fn compile_node(
     if node_type == "sql" {
         validate_native_sql_config(&node_id, &config, &bindings, compile_issues);
     }
+    if node_type == "notification" {
+        let instance_id = config
+            .get("instance_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("notification node {node_id} is missing config.instance_id"))?;
+        uuid::Uuid::parse_str(instance_id).with_context(|| {
+            format!("notification node {node_id} has invalid config.instance_id")
+        })?;
+    }
     let llm_runtime = (node_type == "llm")
         .then(|| compile_llm_runtime(&node_id, &config, context, compile_issues))
         .flatten();

@@ -841,6 +841,7 @@ struct NativeResumeAdapter {
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
     cache_store: Arc<dyn CacheStore>,
     task_queue: Arc<dyn TaskQueue>,
     provider_transport_store: Arc<dyn ProviderTransportStore>,
@@ -929,6 +930,7 @@ impl NativeResumePort for NativeResumeAdapter {
                 self.provider_install_root.clone(),
             )
             .with_file_storage_registry(Arc::clone(&self.file_storage_registry))
+            .with_notification_sender(self.notification_sender.clone())
             .with_runtime_internal_tool_invoker(runtime_invoker)
             .with_llm_routing_counter_store(Arc::clone(&self.cache_store))
             .with_provider_request_log_queue(Arc::clone(&self.task_queue))
@@ -978,6 +980,7 @@ pub(crate) fn native_resume_port(
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
     cache_store: Arc<dyn CacheStore>,
     task_queue: Arc<dyn TaskQueue>,
     provider_transport_store: Arc<dyn ProviderTransportStore>,
@@ -995,6 +998,7 @@ pub(crate) fn native_resume_port(
         api_node_id,
         provider_install_root,
         file_storage_registry,
+        notification_sender,
         cache_store,
         task_queue,
         provider_transport_store,

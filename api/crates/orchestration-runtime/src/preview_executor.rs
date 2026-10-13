@@ -371,6 +371,17 @@ where
             trace.debug_payload,
             trace.provider_events,
         )
+    } else if node.node_type == "notification" {
+        let execution = invoker
+            .invoke_notification_node(node, &resolved_inputs)
+            .await?;
+        (
+            execution.output_payload,
+            execution.error_payload,
+            json!({}),
+            json!({}),
+            Vec::new(),
+        )
     } else if node.node_type == "sql" {
         let execution = invoker
             .invoke_native_sql_node(node, resolved_native_sql(&resolved_inputs)?)

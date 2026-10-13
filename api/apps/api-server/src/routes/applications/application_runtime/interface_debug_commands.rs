@@ -149,6 +149,7 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
     cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
     published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
@@ -170,6 +171,7 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         api_node_id: state.api_node_id.clone(),
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
+        notification_sender: state.notification_service.clone(),
         cache_store: state.infrastructure.cache_store(),
         published_plan_cache: state.infrastructure.published_plan_cache(),
         task_queue: state.infrastructure.task_queue(),
@@ -228,6 +230,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             self.dependencies.provider_install_root.clone(),
         )
         .with_file_storage_registry(self.dependencies.file_storage_registry.clone())
+        .with_notification_sender(self.dependencies.notification_sender.clone())
         .with_llm_routing_counter_store(self.dependencies.cache_store.clone())
         .with_provider_request_log_queue(self.dependencies.task_queue.clone())
     }
@@ -354,6 +357,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.provider_install_root.clone(),
             )
             .with_file_storage_registry(dependencies.file_storage_registry.clone())
+            .with_notification_sender(dependencies.notification_sender.clone())
             .with_runtime_internal_tool_invoker(mcp)
             .with_llm_routing_counter_store(dependencies.cache_store.clone())
             .with_provider_request_log_queue(dependencies.task_queue.clone());
@@ -787,6 +791,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.provider_install_root.clone(),
             )
             .with_file_storage_registry(dependencies.file_storage_registry.clone())
+            .with_notification_sender(dependencies.notification_sender.clone())
             .with_runtime_internal_tool_invoker(mcp)
             .with_llm_routing_counter_store(dependencies.cache_store.clone())
             .with_provider_request_log_queue(dependencies.task_queue.clone())

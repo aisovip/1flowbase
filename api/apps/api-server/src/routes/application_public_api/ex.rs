@@ -268,6 +268,7 @@ fn spawn_workflow_extension_execution(
             dependencies.provider_install_root.clone(),
         )
         .with_file_storage_registry(dependencies.file_storage_registry.clone())
+        .with_notification_sender(dependencies.notification_sender.clone())
         .with_llm_routing_counter_store(dependencies.cache_store.clone())
         .with_provider_request_log_queue(dependencies.task_queue.clone())
         .with_runtime_event_stream(dependencies.runtime_event_stream.clone());

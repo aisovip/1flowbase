@@ -45,6 +45,9 @@ impl NotificationTypeDescriptor {
         ] {
             compile_schema(name, schema)?;
         }
+        if self.output_schema.get("type").and_then(Value::as_str) != Some("object") {
+            return Err(invalid("output_schema requires an object schema"));
+        }
         validate_form("config_form", &self.config_form, &self.config_schema, true)?;
         validate_form("input_form", &self.input_form, &self.input_schema, false)?;
         Ok(())
@@ -135,6 +138,17 @@ fn validate_form(
             return Err(invalid(&format!("{name} field does not match schema type")));
         }
         let validator = compile_schema(name, property)?;
+        let option_schema = if field.control.as_deref() == Some("multi-select") {
+            if field.field_type != "select" || property_type != Some("array") {
+                return Err(invalid(&format!("{name} multi-select requires an array")));
+            }
+            property
+                .get("items")
+                .ok_or_else(|| invalid(&format!("{name} multi-select requires items")))?
+        } else {
+            property
+        };
+        let option_validator = compile_schema(name, option_schema)?;
         if field
             .default_value
             .as_ref()
@@ -142,7 +156,7 @@ fn validate_form(
             || field
                 .options
                 .iter()
-                .any(|option| !validator.is_valid(&option.value))
+                .any(|option| !option_validator.is_valid(&option.value))
         {
             return Err(invalid(&format!(
                 "{name} default or option violates schema"
@@ -154,25 +168,20 @@ fn validate_form(
 
 fn compile_schema(name: &str, schema: &Value) -> ContractResult<jsonschema::Validator> {
     // Keep registration self-contained: no schema may resolve network/file references.
-    fn self_contained(value: &Value, depth: usize) -> bool {
-        depth <= 32
-            && match value {
-                Value::Object(fields) => {
-                    !fields.contains_key("$ref")
-                        && !fields.contains_key("$dynamicRef")
-                        && fields
-                            .values()
-                            .all(|value| self_contained(value, depth + 1))
-                }
-                Value::Array(values) => values.iter().all(|value| self_contained(value, depth + 1)),
-                _ => true,
+    fn self_contained(value: &Value) -> bool {
+        match value {
+            Value::Object(fields) => {
+                !fields.contains_key("$ref")
+                    && !fields.contains_key("$dynamicRef")
+                    && fields.values().all(self_contained)
             }
+            Value::Array(values) => values.iter().all(self_contained),
+            _ => true,
+        }
     }
-    if serde_json::to_vec(schema).map_or(true, |bytes| bytes.len() > 65_536)
-        || !self_contained(schema, 0)
-    {
+    if !self_contained(schema) {
         return Err(invalid(&format!(
-            "{name} must be a bounded self-contained JSON Schema"
+            "{name} must be a self-contained JSON Schema"
         )));
     }
     jsonschema::options()
