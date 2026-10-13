@@ -159,7 +159,7 @@ export function FileStorageDrawer({
         enabled: values.enabled,
         is_default: values.is_default,
         config_json: values.config_json ?? {},
-        rule_json: values.rule_json ?? {}
+        rule_json: { ...(record?.rule_json ?? {}), ...(values.rule_json ?? {}) }
       };
 
       if (mode === 'edit' && record) {
@@ -228,7 +228,7 @@ export function FileStorageDrawer({
           enabled: true,
           is_default: false,
           config_json: {},
-          rule_json: {}
+          rule_json: { image_preview_enabled: true }
         }}
       >
         <Form.Item
@@ -318,6 +318,17 @@ export function FileStorageDrawer({
             ))}
           </div>
         )}
+
+        {currentDriver === 'local' ? (
+          <Form.Item
+            name={['rule_json', 'image_preview_enabled']}
+            label={i18nText('settings', 'files.image_preview_enabled')}
+            extra={i18nText('settings', 'files.original_image_preview_hint')}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+        ) : null}
 
         <Form.Item
           name={['rule_json', 'description']}

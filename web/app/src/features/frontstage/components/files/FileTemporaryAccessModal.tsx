@@ -133,6 +133,15 @@ export function FileTemporaryAccessModal({
               readOnly
               value={absoluteUrl}
             />
+            {link.preview_url ? (
+              <Typography.Link
+                href={new URL(link.preview_url, window.location.origin).href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {i18nText('frontstage', 'files.open_public_preview')}
+              </Typography.Link>
+            ) : null}
             <Typography.Text type="secondary">
               {i18nText('frontstage', 'files.expires_at', {
                 time: formatDateTime(link.expires_at)

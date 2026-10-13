@@ -94,6 +94,17 @@ impl FileManagementRepository for PgControlPlaneStore {
         row.map(map_file_table).transpose()
     }
 
+    async fn find_file_table_by_model_id(
+        &self,
+        model_id: Uuid,
+    ) -> Result<Option<domain::FileTableRecord>> {
+        let row = sqlx::query("select * from file_tables where model_definition_id = $1")
+            .bind(model_id)
+            .fetch_optional(self.pool())
+            .await?;
+        row.map(map_file_table).transpose()
+    }
+
     async fn get_file_table(&self, file_table_id: Uuid) -> Result<Option<domain::FileTableRecord>> {
         let row = sqlx::query("select * from file_tables where id = $1")
             .bind(file_table_id)

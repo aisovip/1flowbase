@@ -355,6 +355,9 @@ describe('File management settings page', () => {
     fireEvent.change(screen.getByLabelText('公开访问 URL'), {
       target: { value: 'https://cdn.example.com/files' }
     });
+    const previewSwitch = screen.getByRole('switch', { name: '启用图片预览' });
+    expect(previewSwitch).toBeChecked();
+    fireEvent.click(previewSwitch);
     fireEvent.click(screen.getByRole('button', { name: /创\s*建/ }));
 
     await waitFor(() => {
@@ -363,6 +366,7 @@ describe('File management settings page', () => {
           code: 'local-public',
           title: 'Local Public',
           driver_type: 'local',
+          rule_json: expect.objectContaining({ image_preview_enabled: false }),
           config_json: expect.objectContaining({
             public_base_url: 'https://cdn.example.com/files'
           })

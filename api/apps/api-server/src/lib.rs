@@ -737,7 +737,7 @@ async fn app_and_runtime_host_from_config(
                 config.api_node_id.clone(),
             )),
             data_model_template_catalog,
-        ),
+        ).with_computed_field_resolver(Arc::new(control_plane::file_management::FilePreviewProjector::new(store.clone()))),
     );
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;

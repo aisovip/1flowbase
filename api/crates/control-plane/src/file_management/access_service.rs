@@ -48,10 +48,12 @@ struct TemporaryFileGrant {
 #[derive(Serialize)]
 pub struct TemporaryFileLink {
     pub url: String,
+    pub preview_url: Option<String>,
     pub expires_at: String,
 }
 
 pub struct FileContent {
+    pub preview: bool,
     pub filename: String,
     pub content_type: String,
     pub content_length: u64,
@@ -128,10 +130,21 @@ where
         file_table_id: Uuid,
         record_id: Uuid,
     ) -> Result<FileContent> {
+        self.read_with_preview(actor, file_table_id, record_id, false)
+            .await
+    }
+
+    pub async fn read_with_preview(
+        &self,
+        actor: domain::ActorContext,
+        file_table_id: Uuid,
+        record_id: Uuid,
+        preview: bool,
+    ) -> Result<FileContent> {
         let record = self
             .authorized_record(actor, file_table_id, record_id)
             .await?;
-        self.open_record(&record).await
+        self.open_record(&record, preview).await
     }
 
     pub async fn create_temporary_link(
@@ -155,6 +168,7 @@ where
         let record = self
             .authorized_record(actor, file_table_id, record_id)
             .await?;
+        let preview_available = self.preview_available(&record).await?;
         let grant = TemporaryFileGrant {
             file_table_id,
             record_id,
@@ -176,11 +190,21 @@ where
             .await?;
         Ok(TemporaryFileLink {
             url: format!("/api/public/files/content?token={token}"),
+            preview_url: preview_available
+                .then(|| format!("/api/public/files/content?token={token}&preview=true")),
             expires_at: expires_at_text,
         })
     }
 
     pub async fn read_temporary(&self, key: FileAccessKey) -> Result<FileContent> {
+        self.read_temporary_with_preview(key, false).await
+    }
+
+    pub async fn read_temporary_with_preview(
+        &self,
+        key: FileAccessKey,
+        preview: bool,
+    ) -> Result<FileContent> {
         let value = self.grants.get_json(&key.0).await?.ok_or_else(denied)?;
         let grant: TemporaryFileGrant = serde_json::from_value(value)?;
         if grant.expires_at <= OffsetDateTime::now_utc() {
@@ -198,15 +222,41 @@ where
         {
             return Err(denied().into());
         }
-        self.open_record(&record).await
+        self.open_record(&record, preview).await
     }
 
-    async fn open_record(&self, record: &serde_json::Value) -> Result<FileContent> {
+    async fn preview_available(&self, record: &serde_json::Value) -> Result<bool> {
         let storage = self
             .repository
             .get_file_storage(record_storage_id(record)?)
             .await?
             .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+        Ok(
+            domain::file_management::local_image_preview_enabled(&storage)
+                && record
+                    .get("mimetype")
+                    .and_then(|v| v.as_str())
+                    .and_then(domain::file_management::local_image_preview_mime)
+                    .is_some(),
+        )
+    }
+
+    async fn open_record(&self, record: &serde_json::Value, preview: bool) -> Result<FileContent> {
+        let storage = self
+            .repository
+            .get_file_storage(record_storage_id(record)?)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+        let preview_mime = record
+            .get("mimetype")
+            .and_then(|v| v.as_str())
+            .and_then(domain::file_management::local_image_preview_mime);
+        if preview
+            && (!domain::file_management::local_image_preview_enabled(&storage)
+                || preview_mime.is_none())
+        {
+            return Err(ControlPlaneError::Conflict("file_preview_unavailable").into());
+        }
         let driver = self
             .registry
             .get(&storage.driver_type)
@@ -218,16 +268,20 @@ where
             })
             .await?;
         Ok(FileContent {
+            preview,
             filename: record_text(record, "filename")?.into(),
-            content_type: open
-                .content_type
-                .or_else(|| {
-                    record
-                        .get("mimetype")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_owned)
-                })
-                .unwrap_or_else(|| "application/octet-stream".into()),
+            content_type: if preview {
+                preview_mime.expect("validated preview MIME").to_owned()
+            } else {
+                open.content_type
+                    .or_else(|| {
+                        record
+                            .get("mimetype")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_else(|| "application/octet-stream".into())
+            },
             content_length: open.snapshot.content_length,
             reader: std::sync::Mutex::new(open.reader),
         })

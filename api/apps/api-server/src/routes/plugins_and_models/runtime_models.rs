@@ -886,12 +886,18 @@ fn runtime_records_cacheable_metadata(
     )
     .ok()?;
     // File metadata is written by the upload service, outside generic CRUD's
-    // cache-version updates. Read these durable records directly from storage.
+    // cache-version updates; native previews also depend on current storage policy.
+    // Read these durable records directly from storage, including legacy attachments.
     if domain::file_management::is_file_data_model_template(
         &runtime_model.metadata.template_provider,
         &runtime_model.metadata.template_code,
         &runtime_model.metadata.template_version,
-    ) {
+    ) || runtime_model
+        .metadata
+        .fields
+        .iter()
+        .any(|field| field.field_kind == domain::ModelFieldKind::FilePreviewUrl)
+    {
         return None;
     }
     (runtime_model.metadata.source_kind == domain::DataModelSourceKind::MainSource)

@@ -792,6 +792,11 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
         ensure_field_can_be_added(&model)?;
+        if command.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+            return Err(
+                ControlPlaneError::InvalidInput("native_computed_field_is_system_owned").into(),
+            );
+        }
         let external_field_key =
             normalize_external_field_key(model.source_kind, command.external_field_key.as_deref())?;
         let api_required = command.api_required.unwrap_or(command.is_required);

@@ -26,6 +26,7 @@ use crate::{
     runtime_record_repository::{OrderedTreeRuntimeRepository, RuntimeRecordRepository},
 };
 
+pub mod computed_fields;
 mod file_upload;
 pub use file_upload::RuntimeUploadedFileInput;
 
@@ -322,6 +323,9 @@ fn ensure_runtime_payload_fields_writable(
         let Some(field) = metadata.field_by_code(field_code) else {
             continue;
         };
+        if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+            return Err(RuntimeModelError::InvalidOperationField(field_code.clone()).into());
+        }
         if field.is_system || !field.is_writable || is_system_field(&field.physical_column_name) {
             return Err(anyhow!("runtime field is not writable: {field_code}"));
         }
@@ -335,6 +339,7 @@ pub struct RuntimeEngine {
     default_value_resolver: Arc<dyn DefaultValueResolver>,
     validator: Arc<dyn RecordValidator>,
     registry: RuntimeModelRegistry,
+    computed_fields: Option<Arc<dyn computed_fields::RuntimeComputedFieldResolver>>,
     records: Arc<dyn RuntimeRecordRepository>,
     ordered_tree_records: Option<Arc<dyn OrderedTreeRuntimeRepository>>,
     data_source_records: Option<Arc<dyn DataSourceRuntimeRecordBackend>>,
@@ -347,6 +352,7 @@ impl RuntimeEngine {
             default_value_resolver: Arc::new(PassthroughValueResolver),
             validator: Arc::new(NoopRecordValidator),
             registry,
+            computed_fields: None,
             records,
             ordered_tree_records: None,
             data_source_records: None,
@@ -363,6 +369,7 @@ impl RuntimeEngine {
             default_value_resolver: Arc::new(PassthroughValueResolver),
             validator: Arc::new(NoopRecordValidator),
             registry,
+            computed_fields: None,
             records,
             ordered_tree_records: None,
             data_source_records: Some(data_source_records),
@@ -380,6 +387,7 @@ impl RuntimeEngine {
             default_value_resolver: Arc::new(PassthroughValueResolver),
             validator: Arc::new(NoopRecordValidator),
             registry,
+            computed_fields: None,
             records,
             ordered_tree_records: None,
             data_source_records: Some(data_source_records),
@@ -398,6 +406,7 @@ impl RuntimeEngine {
             default_value_resolver: Arc::new(PassthroughValueResolver),
             validator: Arc::new(NoopRecordValidator),
             registry,
+            computed_fields: None,
             records,
             ordered_tree_records: Some(ordered_tree_records),
             data_source_records: Some(data_source_records),
@@ -800,6 +809,7 @@ impl RuntimeEngine {
             input.scope_grant.as_ref(),
         )?;
 
+        computed_fields::validate_computed_query(&metadata, &input.filter, &input.sorts)?;
         let query = RuntimeListQuery {
             scope_id: access_scope.scope_id,
             owner_user_id: access_scope.owner_user_id,
@@ -810,7 +820,7 @@ impl RuntimeEngine {
             page_size: input.page_size,
         };
 
-        match metadata.source_kind {
+        let mut result = match metadata.source_kind {
             domain::DataModelSourceKind::MainSource => {
                 self.records.list_records(&metadata, query).await
             }
@@ -818,7 +828,10 @@ impl RuntimeEngine {
                 self.list_external_records(input.actor.current_workspace_id, &metadata, query)
                     .await
             }
-        }
+        }?;
+        self.project_computed_fields(&metadata, &mut result.items)
+            .await?;
+        Ok(result)
     }
 
     pub async fn get_record(&self, input: RuntimeGetInput) -> Result<Option<Value>> {
@@ -832,7 +845,7 @@ impl RuntimeEngine {
             input.scope_grant.as_ref(),
         )?;
 
-        match metadata.source_kind {
+        let mut result = match metadata.source_kind {
             domain::DataModelSourceKind::MainSource => {
                 self.records
                     .get_record(
@@ -852,7 +865,12 @@ impl RuntimeEngine {
                 )
                 .await
             }
+        }?;
+        if let Some(record) = result.as_mut() {
+            self.project_computed_fields(&metadata, std::slice::from_mut(record))
+                .await?;
         }
+        Ok(result)
     }
 
     pub async fn create_record(&self, input: RuntimeCreateInput) -> Result<Value> {

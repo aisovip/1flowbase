@@ -118,6 +118,16 @@ impl FileManagementRepository for MemoryFileManagementRepository {
             .cloned())
     }
 
+    async fn find_file_table_by_model_id(&self, model_id: Uuid) -> Result<Option<FileTableRecord>> {
+        Ok(self
+            .file_tables
+            .read()
+            .await
+            .values()
+            .find(|t| t.model_definition_id == model_id)
+            .cloned())
+    }
+
     async fn get_file_table(&self, file_table_id: Uuid) -> Result<Option<FileTableRecord>> {
         Ok(self.file_tables.read().await.get(&file_table_id).cloned())
     }

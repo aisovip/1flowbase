@@ -17,6 +17,8 @@ use interface::*;
 #[derive(Deserialize)]
 pub struct TemporaryFileQuery {
     token: String,
+    #[serde(default)]
+    preview: bool,
 }
 
 pub(crate) fn route_assembly(
@@ -37,7 +39,7 @@ impl TemporaryFilePort for TemporaryFileAdapter {
     fn download(&self, input: TemporaryFileInput) -> TemporaryFileFuture<'_> {
         Box::pin(async move {
             self.service
-                .read_temporary(input.0)
+                .read_temporary_with_preview(input.0, input.1)
                 .await
                 .map(TemporaryFileOutput)
                 .map_err(|error| TemporaryFileTargetError(super::map_runtime_error(error)))
@@ -61,7 +63,7 @@ pub(crate) fn compile_registry(
     }))
 }
 
-#[utoipa::path(get, path = "/api/public/files/content", params(("token" = String, Query, description = "Temporary file capability")), responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/octet-stream"), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/public/files/content", params(("token" = String, Query, description = "Temporary file capability"), ("preview" = Option<bool>, Query, description = "Serve a supported image inline")), responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/octet-stream"), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
 pub async fn read_temporary_file(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<TemporaryFileQuery>,
@@ -88,7 +90,7 @@ pub async fn read_temporary_file(
     let outcome = InterfaceInvocationKernel::new(Arc::new(TemporaryFileAuthorization))
         .invoke::<TemporaryFileInput, TemporaryFileOutput, TemporaryFileTargetError>(
             snapshot,
-            authenticated.into_envelope(TemporaryFileInput(key)),
+            authenticated.into_envelope(TemporaryFileInput(key, query.preview)),
         )
         .await
         .map_err(|failure| match failure.into_error() {

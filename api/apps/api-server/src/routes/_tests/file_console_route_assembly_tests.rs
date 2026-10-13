@@ -204,6 +204,8 @@ fn temporary_file_contracts_compile_without_projecting_credentials() {
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     )
     .unwrap();
-    let projection = TemporaryFileInput(key).project_for_managed_hook().unwrap();
-    assert_eq!(projection, serde_json::json!({}));
+    let projection = TemporaryFileInput(key, true)
+        .project_for_managed_hook()
+        .unwrap();
+    assert_eq!(projection, serde_json::json!({"preview":true}));
 }

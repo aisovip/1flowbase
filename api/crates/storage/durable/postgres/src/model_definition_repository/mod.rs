@@ -497,6 +497,17 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         input: &AddModelFieldInput,
     ) -> Result<domain::ModelFieldRecord> {
+        if input.field_kind == domain::ModelFieldKind::FilePreviewUrl
+            && (input.code != "preview_url"
+                || !input.is_system
+                || input.is_writable
+                || input.is_required
+                || input.api_required
+                || input.is_unique
+                || input.default_value.is_some())
+        {
+            return Err(ControlPlaneError::InvalidInput("computed_field_definition").into());
+        }
         let mut tx = self.pool().begin().await?;
         let model = load_model_definition_for_update(&mut tx, input.model_id)
             .await?
@@ -566,7 +577,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                             .ok_or(ControlPlaneError::InvalidInput("relation_target_model_id"))?;
                         add_fk_column_and_constraint(&mut tx, &model, &field, target).await?;
                     }
-                    domain::ModelFieldKind::OneToMany => {}
+                    domain::ModelFieldKind::OneToMany | domain::ModelFieldKind::FilePreviewUrl => {}
                     domain::ModelFieldKind::ManyToMany => {
                         let target = relation_target
                             .as_ref()
@@ -946,7 +957,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                             .await?;
                         }
                     }
-                    domain::ModelFieldKind::OneToMany => {}
+                    domain::ModelFieldKind::OneToMany | domain::ModelFieldKind::FilePreviewUrl => {}
                     _ => {
                         drop_runtime_column(
                             &mut tx,

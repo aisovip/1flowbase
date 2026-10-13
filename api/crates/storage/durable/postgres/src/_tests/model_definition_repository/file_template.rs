@@ -42,12 +42,16 @@ async fn file_template_creation_atomically_installs_owned_fields_physical_table_
             .find(|field| field.code == *code)
             .unwrap();
         assert!(field.is_system && !field.is_writable && !field.api_required);
-        assert_eq!(field.physical_column_name, *code);
+        let computed = field.field_kind == domain::ModelFieldKind::FilePreviewUrl;
+        assert_eq!(
+            field.physical_column_name,
+            if computed { "" } else { *code }
+        );
         let physical: bool = sqlx::query_scalar("select exists(select 1 from information_schema.columns where table_schema=current_schema() and table_name=$1 and column_name=$2)")
             .bind(&model.physical_table_name).bind(*code).fetch_one(store.pool()).await.unwrap();
         assert!(
-            physical,
-            "file field must have a real physical column: {code}"
+            physical != computed,
+            "only physical file fields create a column: {code}"
         );
     }
     let table = control_plane_contracts::ports::FileManagementRepository::find_file_table_by_code(

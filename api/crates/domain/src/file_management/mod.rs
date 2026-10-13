@@ -22,6 +22,12 @@ pub const FILE_METADATA_FIELDS: &[(&str, &str, crate::ModelFieldKind, bool)] = &
     ("meta", "Metadata", crate::ModelFieldKind::Json, true),
     ("url", "Access URL", crate::ModelFieldKind::Text, true),
     (
+        "preview_url",
+        "Image Preview URL",
+        crate::ModelFieldKind::FilePreviewUrl,
+        false,
+    ),
+    (
         "storage_id",
         "Storage ID",
         crate::ModelFieldKind::String,
@@ -110,4 +116,33 @@ pub struct FileTableRecord {
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+/// Only non-executable raster image types are served inline by the local manager.
+pub fn local_image_preview_mime(mimetype: &str) -> Option<&'static str> {
+    match mimetype.trim().to_ascii_lowercase().as_str() {
+        "image/png" => Some("image/png"),
+        "image/jpeg" => Some("image/jpeg"),
+        "image/gif" => Some("image/gif"),
+        "image/webp" => Some("image/webp"),
+        "image/avif" => Some("image/avif"),
+        "image/bmp" => Some("image/bmp"),
+        _ => None,
+    }
+}
+
+pub fn local_image_preview_enabled(storage: &FileStorageRecord) -> bool {
+    storage.enabled
+        && storage.driver_type == "local"
+        && match storage.rule_json.get("image_preview_enabled") {
+            None => true,
+            Some(value) => value.as_bool().unwrap_or(false),
+        }
+}
+
+pub fn file_preview_url(file_table_id: Uuid, record_id: Uuid) -> String {
+    format!(
+        "{}?preview=true",
+        file_content_url(file_table_id, record_id)
+    )
 }

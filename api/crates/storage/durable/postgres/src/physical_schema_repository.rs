@@ -34,6 +34,9 @@ pub fn scalar_sql_type_for(field_kind: domain::ModelFieldKind) -> Result<&'stati
         domain::ModelFieldKind::Text => Ok("text"),
         domain::ModelFieldKind::Json => Ok("jsonb"),
         domain::ModelFieldKind::ManyToOne => Ok("uuid"),
+        domain::ModelFieldKind::FilePreviewUrl => {
+            Err(anyhow!("file_preview_url is computed metadata only"))
+        }
         domain::ModelFieldKind::OneToMany => Err(anyhow!("one_to_many is metadata only")),
         domain::ModelFieldKind::ManyToMany => Err(anyhow!("many_to_many uses host join table")),
     }

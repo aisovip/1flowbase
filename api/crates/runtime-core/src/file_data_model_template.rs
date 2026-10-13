@@ -29,6 +29,9 @@ pub(crate) fn file_template_descriptor() -> DataModelTemplateDescriptor {
                 value_schema: match kind {
                     domain::ModelFieldKind::Number => json!({"type":"number","minimum":0}),
                     domain::ModelFieldKind::Json => json!(true),
+                    domain::ModelFieldKind::FilePreviewUrl => {
+                        json!({"type":["string","null"],"readOnly":true})
+                    }
                     _ => json!({"type":"string"}),
                 },
                 required: *required,

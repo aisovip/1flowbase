@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
     Json, Router,
@@ -44,6 +44,7 @@ pub struct CreateTemporaryFileLinkInput {
 #[derive(Serialize, ToSchema)]
 pub struct TemporaryFileLinkResponse {
     pub url: String,
+    pub preview_url: Option<String>,
     pub expires_at: String,
 }
 
@@ -70,6 +71,7 @@ enum BusinessFilesInput {
     ReadContent {
         file_table_id: String,
         record_id: String,
+        preview: bool,
     },
 }
 
@@ -100,6 +102,7 @@ impl InterfaceContract for BusinessFilesInput {
             ]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("ReadContent")),
+                ("preview", serde_json::json!({"type":"boolean"})),
                 ("file_table_id", mp::text_schema()),
                 ("record_id", mp::text_schema()),
             ]),
@@ -147,6 +150,7 @@ impl InterfaceContract for BusinessFilesInput {
             Self::ReadContent {
                 file_table_id: _field_file_table_id,
                 record_id: _field_record_id,
+                preview,
                 ..
             } => mp::object_value(&[
                 (
@@ -155,6 +159,7 @@ impl InterfaceContract for BusinessFilesInput {
                 ),
                 ("file_table_id", mp::text(_field_file_table_id)?),
                 ("record_id", mp::text(_field_record_id)?),
+                ("preview", serde_json::json!(preview)),
             ]),
         })
     }
@@ -404,13 +409,15 @@ impl BusinessFilesAdapter {
             BusinessFilesInput::ReadContent {
                 file_table_id,
                 record_id,
+                preview,
             } => {
                 let content = self
                     .access_service()
-                    .read(
+                    .read_with_preview(
                         actor,
                         parse_uuid(&file_table_id, "file_table_id")?,
                         parse_uuid(&record_id, "record_id")?,
+                        preview,
                     )
                     .await
                     .map_err(map_runtime_error)?;
@@ -434,6 +441,7 @@ impl BusinessFilesAdapter {
                 Ok(BusinessFilesOutput::TemporaryLink(
                     TemporaryFileLinkResponse {
                         url: link.url,
+                        preview_url: link.preview_url,
                         expires_at: link.expires_at,
                     },
                 ))
@@ -508,12 +516,19 @@ pub async fn upload_file(
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
+#[derive(Deserialize)]
+pub struct FileContentQuery {
+    #[serde(default)]
+    pub preview: bool,
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/files/{file_table_id}/records/{record_id}/content",
     params(
         ("file_table_id" = String, Path, description = "File table id"),
-        ("record_id" = String, Path, description = "Runtime record id")
+        ("record_id" = String, Path, description = "Runtime record id"),
+        ("preview" = Option<bool>, Query, description = "Serve a supported image inline")
     ),
     responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/octet-stream"), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
@@ -521,6 +536,7 @@ pub async fn read_file_content(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((file_table_id, record_id)): Path<(String, String)>,
+    Query(query): Query<FileContentQuery>,
 ) -> Result<Response, ApiError> {
     let output = console_interface::invoke(
         Arc::clone(&state),
@@ -529,6 +545,7 @@ pub async fn read_file_content(
         BusinessFilesInput::ReadContent {
             file_table_id,
             record_id,
+            preview: query.preview,
         },
     )
     .await?;
@@ -602,7 +619,12 @@ pub(crate) fn content_response(content: FileContentOutput) -> Result<Response, A
         .header(
             header::CONTENT_DISPOSITION,
             format!(
-                "attachment; filename*=UTF-8''{}",
+                "{}; filename*=UTF-8''{}",
+                if content.preview {
+                    "inline"
+                } else {
+                    "attachment"
+                },
                 encoded_filename.replace('+', "%20")
             ),
         )

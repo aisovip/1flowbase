@@ -360,6 +360,9 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             let field = metadata
                 .field_by_code(field_code)
                 .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;
+            if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+                return Err(anyhow!("computed field is not writable"));
+            }
             if !declared_physical_columns.insert(field.physical_column_name.clone()) {
                 return Err(anyhow!(
                     "duplicate physical field column: {}",
@@ -472,6 +475,9 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             let field = metadata
                 .field_by_code(field_code)
                 .ok_or_else(|| anyhow!("undeclared field code: {field_code}"))?;
+            if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+                return Err(anyhow!("computed field is not writable"));
+            }
             if !declared_physical_columns.insert(field.physical_column_name.clone()) {
                 return Err(anyhow!(
                     "duplicate physical field column: {}",
@@ -790,6 +796,9 @@ fn append_field_filter_expr(
     operator: domain::ResourceFilterOperator,
     value: &Value,
 ) -> Result<()> {
+    if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+        return Err(anyhow!("computed field does not support filtering"));
+    }
     // JSON null remains a JSON value; null on scalar fields means SQL NULL.
     if value.is_null()
         && field.field_kind != domain::ModelFieldKind::Json
@@ -858,6 +867,9 @@ fn append_sort_clause(
         let field = metadata
             .field_by_code(&sort.field_code)
             .ok_or_else(|| anyhow!("undeclared sort field: {}", sort.field_code))?;
+        if field.field_kind == domain::ModelFieldKind::FilePreviewUrl {
+            return Err(anyhow!("computed field does not support sorting"));
+        }
         builder.push(quote_identifier(&field.physical_column_name)?);
         builder.push(" ");
         builder.push(sort_direction_sql(&sort.direction)?);
@@ -1003,6 +1015,9 @@ pub(crate) fn push_field_value(
         domain::ModelFieldKind::Boolean => builder.push_bind(json_bool(value)?),
         domain::ModelFieldKind::Json => builder.push_bind(value.clone()),
         domain::ModelFieldKind::ManyToOne => builder.push_bind(json_nullable_uuid(value)?),
+        domain::ModelFieldKind::FilePreviewUrl => {
+            return Err(anyhow!("computed field is not writable"))
+        }
         domain::ModelFieldKind::OneToMany => {
             return Err(anyhow!("one_to_many cannot be persisted directly"))
         }
@@ -1143,7 +1158,9 @@ fn nullable_actor_user_id(actor_user_id: Uuid) -> Option<Uuid> {
 fn field_requires_physical_column(field: &domain::ModelFieldRecord) -> bool {
     !matches!(
         field.field_kind,
-        domain::ModelFieldKind::OneToMany | domain::ModelFieldKind::ManyToMany
+        domain::ModelFieldKind::OneToMany
+            | domain::ModelFieldKind::ManyToMany
+            | domain::ModelFieldKind::FilePreviewUrl
     )
 }
 

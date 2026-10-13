@@ -62,10 +62,12 @@ export interface ConsoleFileRecord extends Record<string, unknown> {
   created_at: string;
   storage_id: string;
   url: string;
+  preview_url: string | null;
 }
 
 export interface TemporaryFileLink {
   url: string;
+  preview_url: string | null;
   expires_at: string;
 }
 

@@ -1077,5 +1077,9 @@
     "create": "新增部门",
     "load_more": "加载更多",
     "reload": "重新加载部门"
+  },
+  "files": {
+    "image_preview_enabled": "启用图片预览",
+    "original_image_preview_hint": "使用原图预览，下载入口独立，不生成缩略图。"
   }
 }

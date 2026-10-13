@@ -144,7 +144,11 @@ impl BuiltinDataModelContract {
 
         Some(BuiltinDataModelFieldContract {
             code: field_code_to_static(self.code, field_code)?,
-            physical_column_name: field_code_to_static(self.code, field_code)?,
+            physical_column_name: if self.code == "attachments" && field_code == "preview_url" {
+                ""
+            } else {
+                field_code_to_static(self.code, field_code)?
+            },
             field_kind: builtin_field_kind(self.code, field_code),
             is_required: builtin_field_required(self.code, field_code),
             is_unique: builtin_field_unique(self.code, field_code),
@@ -161,6 +165,9 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 }
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
+    if model_code == "attachments" && field_code == "preview_url" {
+        return crate::ModelFieldKind::FilePreviewUrl;
+    }
     match field_code {
         "meta" | "member_run_ids" => crate::ModelFieldKind::Json,
         "is_root" => crate::ModelFieldKind::Boolean,
@@ -230,7 +237,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
-        "attachments" => !matches!(field_code, "title" | "extname" | "url"),
+        "attachments" => !matches!(field_code, "title" | "extname" | "url" | "preview_url"),
         "users" => !matches!(
             field_code,
             "created_by"
@@ -357,6 +364,7 @@ const ATTACHMENTS_FIELDS: &[&str] = &[
     "path",
     "meta",
     "url",
+    "preview_url",
     "storage_id",
 ];
 

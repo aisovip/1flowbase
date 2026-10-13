@@ -39,6 +39,7 @@ const table = {
 const record = {
   id: 'record-1',
   url: '/api/console/files/table-1/records/record-1/content',
+  preview_url: null,
   filename: 'hello.txt',
   title: 'hello.txt',
   mimetype: 'text/plain',
@@ -83,6 +84,32 @@ afterEach(() => {
 });
 
 describe('FileTableView', () => {
+  test('renders backend preview URL lazily and opens image preview on click', async () => {
+    const imageRecord = {
+      ...record,
+      filename: 'picture.png',
+      mimetype: 'image/png',
+      preview_url: '/different-preview-resource/image.png'
+    };
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [imageRecord, record],
+      total: 2
+    });
+    mount();
+    const thumbnail = await screen.findByRole('img', { name: 'picture.png' });
+    expect(thumbnail).toHaveAttribute('src', imageRecord.preview_url);
+    expect(thumbnail).toHaveAttribute('loading', 'lazy');
+    expect(
+      screen.queryByRole('img', { name: 'hello.txt' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(thumbnail);
+    await waitFor(() =>
+      expect(document.querySelector('[role="dialog"]')).toBeInTheDocument()
+    );
+    expect(
+      await screen.findByRole('link', { name: 'picture.png' })
+    ).toHaveAttribute('href', record.url);
+  });
   test('selects the requested file table, uploads multipart through the host and refreshes records', async () => {
     vi.mocked(client.uploadConsoleFile).mockImplementation(async () => {
       vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
@@ -194,6 +221,7 @@ describe('FileTableView', () => {
     });
     vi.mocked(client.createConsoleTemporaryFileLink).mockResolvedValue({
       url: '/api/public/files/content?token=temporary',
+      preview_url: null,
       expires_at: '2026-10-13T12:00:00Z'
     });
     mount();
@@ -259,6 +287,7 @@ describe('FileTableView', () => {
     await waitFor(() => expect(signal.aborted).toBe(true));
     resolve({
       url: '/api/public/files/content?token=stale',
+      preview_url: null,
       expires_at: '2026-10-13T12:00:00Z'
     });
     await waitFor(() =>

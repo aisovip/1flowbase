@@ -17,13 +17,15 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.files.temporary.read";
 const HANDLER_REFERENCE: &str = "api-server.temporary-files.read";
 pub(crate) const BINDING_ID: &str = "http.public.files.temporary.read.v1";
-pub(crate) struct TemporaryFileInput(pub control_plane::file_management::FileAccessKey);
+pub(crate) struct TemporaryFileInput(pub control_plane::file_management::FileAccessKey, pub bool);
 impl InterfaceContract for TemporaryFileInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        Some(crate::extension_bus::managed_projection::object_schema(&[]))
+        Some(crate::extension_bus::managed_projection::object_schema(&[
+            ("preview", serde_json::json!({"type":"boolean"})),
+        ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-        Some(serde_json::json!({}))
+        Some(serde_json::json!({"preview":self.1}))
     }
     const CONTRACT_ID: &'static str = "temporary-file-access-input";
     const CONTRACT_VERSION: &'static str = "1";

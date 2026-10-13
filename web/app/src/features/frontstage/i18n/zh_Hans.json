@@ -253,6 +253,8 @@
     "copy_link": "复制链接",
     "link_copied": "链接已复制",
     "copy_failed": "复制失败，请手动复制链接",
-    "link_failed": "生成临时链接失败"
+    "link_failed": "生成临时链接失败",
+    "image_preview": "图片预览",
+    "open_public_preview": "打开临时图片预览"
   }
 }

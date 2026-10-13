@@ -149,15 +149,20 @@ where
             .add_model_field(&AddModelFieldInput {
                 actor_user_id: input.actor_user_id,
                 model_id: model.id,
-                physical_column_name: input.is_builtin.then_some(field.code.clone()),
+                physical_column_name: if field.field_kind == ModelFieldKind::FilePreviewUrl {
+                    Some(String::new())
+                } else {
+                    input.is_builtin.then_some(field.code.clone())
+                },
                 external_field_key: None,
                 code: field.code,
                 title: field.title,
                 description: None,
                 field_kind: field.field_kind,
-                is_system: false,
-                is_writable: true,
-                apply_physical_schema: !input.is_builtin,
+                is_system: field.field_kind == ModelFieldKind::FilePreviewUrl,
+                is_writable: field.field_kind != ModelFieldKind::FilePreviewUrl,
+                apply_physical_schema: !input.is_builtin
+                    && field.field_kind != ModelFieldKind::FilePreviewUrl,
                 is_required: field.is_required,
                 api_required: field.is_required && !input.is_builtin,
                 is_unique: false,

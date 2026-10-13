@@ -323,6 +323,8 @@ pub enum ModelFieldKind {
     ManyToOne,
     OneToMany,
     ManyToMany,
+    /// Native read-only projection; no backing SQL column.
+    FilePreviewUrl,
 }
 
 impl ModelFieldKind {
@@ -338,6 +340,7 @@ impl ModelFieldKind {
             Self::ManyToOne => "many_to_one",
             Self::OneToMany => "one_to_many",
             Self::ManyToMany => "many_to_many",
+            Self::FilePreviewUrl => "file_preview_url",
         }
     }
 
@@ -352,6 +355,7 @@ impl ModelFieldKind {
             "many_to_one" => Self::ManyToOne,
             "one_to_many" => Self::OneToMany,
             "many_to_many" => Self::ManyToMany,
+            "file_preview_url" => Self::FilePreviewUrl,
             _ => Self::String,
         }
     }

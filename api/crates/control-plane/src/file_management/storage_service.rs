@@ -80,11 +80,14 @@ where
                 actor_user_id: command.actor_user_id,
                 code: command.code,
                 title: command.title,
+                rule_json: super::preview::normalize_preview_policy(
+                    command.rule_json,
+                    &command.driver_type,
+                )?,
                 driver_type: command.driver_type,
                 enabled: command.enabled,
                 is_default: command.is_default,
                 config_json: command.config_json,
-                rule_json: command.rule_json,
             })
             .await
     }
@@ -101,6 +104,13 @@ where
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
 
+        let storage = self
+            .repository
+            .get_file_storage(command.file_storage_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+        let rule_json =
+            super::preview::normalize_preview_policy(command.rule_json, &storage.driver_type)?;
         self.repository
             .update_file_storage(&UpdateFileStorageInput {
                 actor_user_id: command.actor_user_id,
@@ -109,7 +119,7 @@ where
                 enabled: command.enabled,
                 is_default: command.is_default,
                 config_json: command.config_json,
-                rule_json: command.rule_json,
+                rule_json,
             })
             .await
     }

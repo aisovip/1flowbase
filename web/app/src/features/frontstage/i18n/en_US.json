@@ -253,6 +253,8 @@
     "copy_link": "Copy link",
     "link_copied": "Link copied",
     "copy_failed": "Copy failed. Copy the link manually.",
-    "link_failed": "Could not generate a temporary link"
+    "link_failed": "Could not generate a temporary link",
+    "image_preview": "Image preview",
+    "open_public_preview": "Open temporary image preview"
   }
 }

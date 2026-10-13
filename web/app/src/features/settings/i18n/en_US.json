@@ -1077,5 +1077,9 @@
     "create": "Create department",
     "load_more": "Load more",
     "reload": "Reload departments"
+  },
+  "files": {
+    "image_preview_enabled": "Enable image preview",
+    "original_image_preview_hint": "Preview the original image. Downloads remain separate; no thumbnail is generated."
   }
 }

@@ -24,7 +24,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Default)]
-struct TestRuntimeRecordRepository {
+pub(super) struct TestRuntimeRecordRepository {
     records: Mutex<HashMap<String, Vec<Value>>>,
 }
 
@@ -32,12 +32,19 @@ struct TestRuntimeRecordRepository {
 impl RuntimeRecordRepository for TestRuntimeRecordRepository {
     async fn list_records(
         &self,
-        _metadata: &ModelMetadata,
+        metadata: &ModelMetadata,
         _query: RuntimeListQuery,
     ) -> Result<RuntimeListResult> {
+        let items = self
+            .records
+            .lock()
+            .unwrap()
+            .get(&metadata.model_code)
+            .cloned()
+            .unwrap_or_default();
         Ok(RuntimeListResult {
-            items: vec![],
-            total: 0,
+            total: items.len() as i64,
+            items,
         })
     }
 
@@ -587,7 +594,13 @@ async fn upload_service_inherits_current_default_for_unbound_file_template() {
         })
         .await;
 
-    let engine = runtime_engine_for_model(&model);
+    let engine = Arc::new(
+        (*runtime_engine_for_model(&model))
+            .clone()
+            .with_computed_field_resolver(Arc::new(
+                control_plane::file_management::FilePreviewProjector::new(repository.clone()),
+            )),
+    );
     let forged = engine
         .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
             actor: actor.clone(),

@@ -812,6 +812,7 @@ fn record_write_schema(model: &domain::ModelDefinitionRecord, include_required: 
 
 fn field_schema(field: &domain::ModelFieldRecord) -> Value {
     match field.field_kind {
+        domain::ModelFieldKind::FilePreviewUrl => json!({"type":["string","null"],"readOnly":true}),
         domain::ModelFieldKind::Number => json!({ "type": "number" }),
         domain::ModelFieldKind::Boolean => json!({ "type": "boolean" }),
         domain::ModelFieldKind::Datetime => {

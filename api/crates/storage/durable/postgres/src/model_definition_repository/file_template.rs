@@ -26,7 +26,11 @@ pub(super) fn field_records(
                 code: (*code).to_owned(),
                 title: (*title).to_owned(),
                 description: None,
-                physical_column_name: (*code).to_owned(),
+                physical_column_name: if *field_kind == domain::ModelFieldKind::FilePreviewUrl {
+                    String::new()
+                } else {
+                    (*code).to_owned()
+                },
                 external_field_key: None,
                 field_kind: *field_kind,
                 is_system: true,
@@ -73,7 +77,9 @@ pub(super) async fn provision(
         }
     }
     for field in field_records(model) {
-        crate::physical_schema_repository::add_scalar_column(tx, model, &field).await?;
+        if field.field_kind != domain::ModelFieldKind::FilePreviewUrl {
+            crate::physical_schema_repository::add_scalar_column(tx, model, &field).await?;
+        }
     }
     sqlx::query("insert into file_tables (id,code,title,scope_kind,scope_id,model_definition_id,bound_storage_id,is_builtin,is_default,status,created_by,updated_by) values ($1,$2,$3,$4,$5,$6,$7,false,false,'active',$8,$8)")
         .bind(Uuid::now_v7()).bind(&model.code).bind(&model.title)

@@ -23,7 +23,7 @@ pub struct FileFieldTemplate {
     pub is_required: bool,
 }
 
-const ATTACHMENTS_FIELDS: [(&str, &str, &str, ModelFieldKind, bool); 9] = [
+const ATTACHMENTS_FIELDS: [(&str, &str, &str, ModelFieldKind, bool); 10] = [
     ("title", "Title", "标题", ModelFieldKind::String, false),
     (
         "filename",
@@ -56,6 +56,13 @@ const ATTACHMENTS_FIELDS: [(&str, &str, &str, ModelFieldKind, bool); 9] = [
     ),
     ("meta", "Metadata", "元数据", ModelFieldKind::Json, true),
     ("url", "Access URL", "缓存地址", ModelFieldKind::Text, false),
+    (
+        "preview_url",
+        "Image Preview URL",
+        "图片预览地址",
+        ModelFieldKind::FilePreviewUrl,
+        false,
+    ),
     (
         "storage_id",
         "Storage ID",

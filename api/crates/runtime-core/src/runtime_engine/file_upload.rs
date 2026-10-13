@@ -49,8 +49,20 @@ impl RuntimeEngine {
         self.validator
             .validate(input.actor.user_id, &input.model_code, &payload)
             .await?;
-        self.records
+        // Resolve fallible computed reads before committing the durable record.
+        let mut projected = payload.clone();
+        self.project_computed_fields(&metadata, std::slice::from_mut(&mut projected))
+            .await?;
+        let mut record = self
+            .records
             .create_record(&metadata, input.actor.user_id, scope_id, payload)
-            .await
+            .await?;
+        if let Some(value) = projected.get("preview_url") {
+            record
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("file record must be an object"))?
+                .insert("preview_url".into(), value.clone());
+        }
+        Ok(record)
     }
 }

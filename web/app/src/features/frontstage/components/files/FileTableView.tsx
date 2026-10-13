@@ -5,6 +5,7 @@ import {
   App,
   Button,
   ConfigProvider,
+  Image,
   Modal,
   Space,
   Typography,
@@ -85,6 +86,24 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   const columns = useMemo<DataTableColumn<ConsoleFileRecord>[]>(
     () => [
       {
+        key: 'preview_url',
+        dataIndex: 'preview_url',
+        title: i18nText('frontstage', 'files.image_preview'),
+        width: 112,
+        render: (_, record) =>
+          record.preview_url ? (
+            <Image
+              src={record.preview_url}
+              alt={record.filename}
+              width={64}
+              height={64}
+              loading="lazy"
+              style={{ objectFit: 'contain' }}
+              preview={{ getContainer: surface?.overlayHost.getPopupContainer }}
+            />
+          ) : null
+      },
+      {
         key: 'filename',
         dataIndex: 'filename',
         title: i18nText('frontstage', 'files.filename'),
@@ -147,7 +166,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         render: (_, record) => formatDateTime(record.created_at)
       }
     ],
-    [table, csrfToken, workspaceId]
+    [table, csrfToken, workspaceId, surface]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,

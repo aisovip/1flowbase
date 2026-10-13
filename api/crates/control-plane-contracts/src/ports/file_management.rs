@@ -143,6 +143,13 @@ pub trait FileManagementRepository: Send + Sync {
         &self,
         code: &str,
     ) -> anyhow::Result<Option<domain::FileTableRecord>>;
+    async fn find_file_table_by_model_id(
+        &self,
+        model_id: Uuid,
+    ) -> anyhow::Result<Option<domain::FileTableRecord>> {
+        let _ = model_id;
+        anyhow::bail!("find_file_table_by_model_id not implemented")
+    }
     async fn get_file_table(
         &self,
         file_table_id: Uuid,

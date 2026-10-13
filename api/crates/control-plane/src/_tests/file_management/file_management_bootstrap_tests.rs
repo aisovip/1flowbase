@@ -50,15 +50,16 @@ fn attachments_template_fields_match_the_approved_v1_schema() {
             "path",
             "meta",
             "url",
+            "preview_url",
             "storage_id",
         ]
     );
 }
 
 #[test]
-fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
+fn ac_010_file_metadata_inventory_has_11_stable_english_references() {
     let references = file_metadata_title_references();
-    assert_eq!(references.len(), 10);
+    assert_eq!(references.len(), 11);
     assert_eq!(
         references
             .iter()
@@ -74,6 +75,7 @@ fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
             "存储路径",
             "元数据",
             "缓存地址",
+            "图片预览地址",
             "存储器 ID",
         ]
     );
@@ -92,6 +94,7 @@ fn ac_010_file_metadata_inventory_has_10_stable_english_references() {
             ("attachments", Some("path"), "Storage Path"),
             ("attachments", Some("meta"), "Metadata"),
             ("attachments", Some("url"), "Access URL"),
+            ("attachments", Some("preview_url"), "Image Preview URL"),
             ("attachments", Some("storage_id"), "Storage ID"),
         ]
     );
