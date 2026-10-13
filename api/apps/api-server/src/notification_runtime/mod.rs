@@ -76,6 +76,8 @@ impl NotificationProviderPort for ManagedNotificationProvider {
                 actor.current_workspace_id,
                 &descriptor.contribution_id,
                 RuntimeExecutionPrincipal {
+                    // Notification sends do not delegate an MCP resource-import scope.
+                    caller: None,
                     workspace_id: actor.current_workspace_id.to_string(),
                     actor_id: Some(actor.user_id.to_string()),
                     // The managed binding supplies its configured execution timeout. No new
