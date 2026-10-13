@@ -1,5 +1,6 @@
 import { ApiClientError } from '../errors';
 import { apiFetch } from '../transport';
+import { apiUpload, type ApiUploadProgress } from '../transport/upload';
 import type { ConsolePluginTask } from '../console-plugins';
 import type {
   ConsoleMcpBundleImportReport,
@@ -255,7 +256,7 @@ export interface ConsoleInstalledMcpExtensionIntegrityChallengeErrorBody {
 }
 
 export interface ConsoleExtensionUploadMetadata {
-  category: ConsoleExtensionCategory;
+  category?: ConsoleExtensionCategory;
   organization?: string;
   artifact_id?: string;
   version?: string;
@@ -407,11 +408,12 @@ export function uploadConsoleExtension(
   overrides: {
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
     risk_override?: ConsoleExtensionRiskOverride;
-  } = {}
+  } = {},
+  onUploadProgress?: (progress: ApiUploadProgress) => void
 ) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('category', metadata.category);
+  if (metadata.category) formData.append('category', metadata.category);
   if (metadata.organization) {
     formData.append('organization', metadata.organization);
   }
@@ -431,6 +433,14 @@ export function uploadConsoleExtension(
     formData.append('risk_override', JSON.stringify(overrides.risk_override));
   }
 
+  if (onUploadProgress) {
+    return apiUpload<ConsoleExtensionInstallResponse>({
+      path: `${BASE}/install-upload`,
+      rawBody: formData,
+      csrfToken,
+      onUploadProgress
+    });
+  }
   return apiFetch<ConsoleExtensionInstallResponse>({
     path: `${BASE}/install-upload`,
     method: 'POST',

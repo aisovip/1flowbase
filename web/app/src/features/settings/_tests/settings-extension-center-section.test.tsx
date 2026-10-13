@@ -40,6 +40,7 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
+  uploadSettingsExtension: vi.fn(),
   enableSettingsInstalledExtension: vi.fn(),
   disableSettingsInstalledExtension: vi.fn(),
   deleteSettingsInstalledExtension: vi.fn(),
@@ -1148,7 +1149,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D5-AC-005 removes unified upload while keeping failed update status visible', async () => {
+  test('exposes the upload modal while keeping failed update status visible', async () => {
     extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
       new Error('catalog unavailable')
     );
@@ -1164,10 +1165,11 @@ describe('SettingsExtensionCenterSection', () => {
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
+    fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
     expect(
-      screen.queryByRole('button', { name: '上传插件' })
-    ).not.toBeInTheDocument();
-    expect(document.querySelector('input[type="file"]')).toBeNull();
+      await screen.findByRole('dialog')
+    ).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).not.toBeNull();
     view.unmount();
   });
 

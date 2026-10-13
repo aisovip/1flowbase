@@ -7,7 +7,6 @@ import {
   useRef,
   useState
 } from 'react';
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ApiClientError } from '@1flowbase/api-client';
@@ -31,7 +30,6 @@ import {
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import '../../../../shared/ui/structured-list/structured-list.css';
-
 import { settingsConsoleNavigationQueryKey } from '../../api/console-navigation';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -74,7 +72,7 @@ import {
 } from '../../api/ui-management';
 import type { ExtensionApplicationTarget } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-
+import { ExtensionUploadModal } from '../../components/extension-center/ExtensionUploadModal';
 const PricingCatalogPanel = lazy(() =>
   import('../../components/billing/PricingCatalogPanel').then((module) => ({
     default: module.PricingCatalogPanel
@@ -303,6 +301,7 @@ function GenericExtensionCenterSection({
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ExtensionRow | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
   );
@@ -1196,6 +1195,9 @@ function GenericExtensionCenterSection({
                   }}
                 />
               ) : null}
+              <Button disabled={!csrfToken} onClick={() => setUploadOpen(true)}>
+                {t('auto.upload_plugin')}
+              </Button>
               <Button
                 disabled={updateRows.length === 0}
                 loading={Object.values(updateStates).some(
@@ -1237,6 +1239,13 @@ function GenericExtensionCenterSection({
         />
       </Flex>
 
+      {uploadOpen && csrfToken && (
+        <ExtensionUploadModal
+          csrfToken={csrfToken}
+          onClose={() => setUploadOpen(false)}
+          onInstalled={invalidateExtensionApplicationState}
+        />
+      )}
       <Drawer
         open={Boolean(selected)}
         title={selected ? extensionName(selected) : undefined}
