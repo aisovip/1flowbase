@@ -338,7 +338,7 @@ test('shared password and multi-select controls keep scalar and array values', a
   fireEvent.change(token, { target: { value: 'new-token' } });
   fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Members' }));
   fireEvent.click(await screen.findByText('Bob'));
-  fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
   await waitFor(() =>
     expect(onSubmit).toHaveBeenCalledWith(
       { token: 'new-token', members: ['alice', 'bob'] },

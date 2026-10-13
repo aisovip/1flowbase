@@ -369,7 +369,9 @@ describe('notification inspector AC-002/005', () => {
         selector: []
       })
     );
-    await openSelect('消息标题');
+    // Cascader exposes its labelled trigger; it is not the Select mode control.
+    const selector = await screen.findByLabelText('消息标题');
+    fireEvent.mouseDown(selector);
     fireEvent.click(await screen.findByText('系统变量'));
     fireEvent.click(await screen.findByText('sys.conversation_id'));
     await waitFor(() =>
@@ -401,7 +403,7 @@ describe('notification inspector AC-002/005', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑 JSON Schema' }));
     const fieldName = await screen.findByLabelText('Schema 字段名 1');
     fireEvent.change(fieldName, { target: { value: 'receipt' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
     await waitFor(() =>
       expect(node().outputs[0].jsonSchema).toMatchObject({
         properties: {

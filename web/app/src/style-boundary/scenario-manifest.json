@@ -2259,5 +2259,123 @@
         ]
       }
     ]
+  },
+  {
+    "id": "component.notification-inbox.desktop",
+    "kind": "component",
+    "title": "Notification Bell and Inbox (desktop)",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "web/app/src/features/notifications/components/notification-bell.css",
+      "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "bell",
+        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "propertyAssertions": []
+      },
+      {
+        "id": "inbox-body",
+        "selector": ".notification-inbox .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "message-content",
+        "selector": ".notification-inbox__content",
+        "propertyAssertions": [
+          {
+            "property": "white-space",
+            "expected": "pre-wrap"
+          },
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notification-inbox"
+      },
+      {
+        "id": "content-within-drawer",
+        "type": "within_container",
+        "subjectSelector": ".notification-inbox__content",
+        "containerSelector": ".notification-inbox .ant-drawer-body"
+      }
+    ]
+  },
+  {
+    "id": "component.notification-inbox.mobile",
+    "kind": "component",
+    "title": "Notification Bell and Inbox (mobile)",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "web/app/src/features/notifications/components/notification-bell.css",
+      "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "bell",
+        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "propertyAssertions": []
+      },
+      {
+        "id": "inbox-body",
+        "selector": ".notification-inbox .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "message-content",
+        "selector": ".notification-inbox__content",
+        "propertyAssertions": [
+          {
+            "property": "white-space",
+            "expected": "pre-wrap"
+          },
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notification-inbox"
+      },
+      {
+        "id": "content-within-drawer",
+        "type": "within_container",
+        "subjectSelector": ".notification-inbox__content",
+        "containerSelector": ".notification-inbox .ant-drawer-body"
+      }
+    ]
   }
 ]

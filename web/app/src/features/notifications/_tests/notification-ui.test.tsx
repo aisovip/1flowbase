@@ -191,7 +191,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
     expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByText('系统通知'));
-    fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
       type_code: 'system',
@@ -202,19 +202,17 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('edits the real settings drawer, preserves omitted secrets, and reloads saved names', async () => {
     renderUI(<NotificationsPage />);
-    fireEvent.click(
-      await screen.findByRole('button', { name: '编辑', exact: true })
-    );
+    fireEvent.click(await screen.findByRole('button', { name: /^编\s*辑$/u }));
     const name = await screen.findByRole('textbox', { name: '实例名称' });
     fireEvent.change(name, { target: { value: '团队通知' } });
     const token = document.querySelector('input[type="password"]');
     expect(token).toBeTruthy();
     expect(token).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/u }));
     await screen.findByRole('button', { name: '团队通知' });
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.body).toEqual({ display_name: '团队通知', config_json: {} });
-    fireEvent.click(screen.getByRole('button', { name: '编辑', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^编\s*辑$/u }));
     expect(
       await screen.findByRole('textbox', { name: '实例名称' })
     ).toHaveValue('团队通知');
@@ -224,7 +222,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     instance.unavailable_reason = 'plugin_unavailable';
     renderUI(<NotificationsPage />);
     await screen.findByText('通知插件不可用');
-    fireEvent.click(screen.getByRole('button', { name: '停用', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^停\s*用$/u }));
     await screen.findByText('已停用');
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       status: 'disabled'
