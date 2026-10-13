@@ -563,22 +563,14 @@ test('filters both backend lists and resets both cursor pages', async () => {
   await waitFor(() => {
     for (const path of ['/channels?', '/messages?']) {
       const call = calls.filter((call) => call.url.includes(path)).at(-1)!;
-      if (
-        rejectSnapshots &&
-        (url.includes('/channels?') || url.includes('/messages?'))
-      )
-        return new Response(
-          JSON.stringify({
-            error: { code: 'unavailable', message: 'Unavailable' }
-          }),
-          { status: 503, headers: { 'content-type': 'application/json' } }
-        );
       const params = new URL(call.url, 'http://localhost').searchParams;
       expect(params.get('read_status')).toBe('unread');
       expect(params.has('cursor')).toBe(false);
     }
   });
-  expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
+  expect(
+    await screen.findByRole('button', { name: '发布完成' })
+  ).toBeInTheDocument();
 });
 test('clears the previous workspace selection before requesting scoped snapshots', async () => {
   renderUI(<NotificationBell />);

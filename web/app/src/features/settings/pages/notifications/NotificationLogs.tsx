@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -24,6 +24,7 @@ import {
   DataTable,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
+import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   notificationLogsOptions,
   notificationLogOptions,
@@ -42,91 +43,110 @@ export function NotificationLogs() {
   );
   const instances = useQuery(notificationInstancesOptions(scope));
   const types = useQuery(notificationTypesOptions(scope));
-  const statusLabel = (status: NotificationSendLog['status']) =>
-    status === 'success'
-      ? t('send_success')
-      : status === 'failure'
-        ? t('send_failure')
-        : t('result_unconfirmed');
-  const failureLabel = (code: string | null) => {
-    switch (code) {
-      case null:
-        return '—';
-      case 'instance_missing':
-        return t('failure_instance_missing');
-      case 'instance_disabled':
-        return t('instance_disabled');
-      case 'type_unavailable':
-        return t('type_unavailable');
-      case 'plugin_unavailable':
-        return t('plugin_unavailable');
-      case 'input_invalid':
-        return t('failure_input_invalid');
-      case 'config_invalid':
-        return t('failure_config_invalid');
-      case 'provider_result_unknown':
-        return t('failure_provider_result_unknown');
-      case 'provider_output_invalid':
-        return t('failure_provider_output_invalid');
-      default:
-        return t('failure_reason_unavailable');
-    }
-  };
+  const statusLabel = useCallback(
+    (status: NotificationSendLog['status']) =>
+      status === 'success'
+        ? t('send_success')
+        : status === 'failure'
+          ? t('send_failure')
+          : t('result_unconfirmed'),
+    [t]
+  );
+  const failureLabel = useCallback(
+    (code: string | null) => {
+      switch (code) {
+        case null:
+          return '—';
+        case 'instance_missing':
+          return t('failure_instance_missing');
+        case 'instance_disabled':
+          return t('instance_disabled');
+        case 'type_unavailable':
+          return t('type_unavailable');
+        case 'plugin_unavailable':
+          return t('plugin_unavailable');
+        case 'input_invalid':
+          return t('failure_input_invalid');
+        case 'config_invalid':
+          return t('failure_config_invalid');
+        case 'provider_result_unknown':
+          return t('failure_provider_result_unknown');
+        case 'provider_output_invalid':
+          return t('failure_provider_output_invalid');
+        default:
+          return t('failure_reason_unavailable');
+      }
+    },
+    [t]
+  );
   const change = (value: NotificationLogListInput) => {
     setFilters(value);
     setPage(1);
   };
-  const columns: Array<DataTableColumn<NotificationSendLog>> = [
-    {
-      key: 'created_at',
-      title: t('sent_at'),
-      width: 190,
-      render: (_, item) => formatDateTime(item.created_at)
-    },
-    {
-      key: 'source',
-      title: t('source'),
-      width: 120,
-      render: (_, item) =>
-        item.source === 'workflow' ? t('source_workflow') : t('source_api')
-    },
-    {
-      key: 'display_name',
-      title: t('display_name'),
-      width: 180,
-      render: (_, item) => item.display_name ?? t('deleted_channel')
-    },
-    { key: 'type_code', title: t('type'), width: 140, dataIndex: 'type_code' },
-    {
-      key: 'status',
-      title: t('send_status'),
-      width: 140,
-      render: (_, item) => statusLabel(item.status)
-    },
-    {
-      key: 'failure_code',
-      title: t('failure_reason'),
-      width: 220,
-      render: (_, item) => failureLabel(item.failure_code)
-    },
-    {
-      key: 'actions',
-      title: t('actions'),
-      width: 100,
-      mobileRole: 'actions',
-      render: (_, item) => (
-        <Button type="link" onClick={() => setSelected(item.id)}>
-          {t('detail')}
-        </Button>
-      )
-    }
-  ];
+  const columns = useMemo<Array<DataTableColumn<NotificationSendLog>>>(
+    () => [
+      {
+        key: 'created_at',
+        title: t('sent_at'),
+        width: 190,
+        render: (_, item) => formatDateTime(item.created_at)
+      },
+      {
+        key: 'source',
+        title: t('source'),
+        width: 120,
+        render: (_, item) =>
+          item.source === 'workflow' ? t('source_workflow') : t('source_api')
+      },
+      {
+        key: 'display_name',
+        title: t('display_name'),
+        width: 180,
+        render: (_, item) => item.display_name ?? t('deleted_channel')
+      },
+      {
+        key: 'type_code',
+        title: t('type'),
+        width: 140,
+        dataIndex: 'type_code'
+      },
+      {
+        key: 'status',
+        title: t('send_status'),
+        width: 140,
+        render: (_, item) => statusLabel(item.status)
+      },
+      {
+        key: 'failure_code',
+        title: t('failure_reason'),
+        width: 220,
+        render: (_, item) => failureLabel(item.failure_code)
+      },
+      {
+        key: 'actions',
+        title: t('actions'),
+        width: 100,
+        mobileRole: 'actions',
+        render: (_, item) => (
+          <Button type="link" onClick={() => setSelected(item.id)}>
+            {t('detail')}
+          </Button>
+        )
+      }
+    ],
+    [t, statusLabel, failureLabel]
+  );
+  const configuration = usePersistedDataTableConfiguration({
+    columns,
+    storageKey: 'notifications.logs.columns'
+  });
   return (
     <section className="notifications-page">
       {logs.isError && <Alert type="error" showIcon title={t('logs_failed')} />}
       <DataTable<NotificationSendLog>
         className="notifications-page__table"
         columns={columns}
+        configuration={configuration}
         rowKey="id"
         dataSource={logs.data?.items ?? []}
         loading={logs.isPending}

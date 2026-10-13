@@ -2724,7 +2724,7 @@
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "inline-flex"
+            "expected": "flex"
           }
         ]
       }
