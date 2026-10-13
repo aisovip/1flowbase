@@ -1,3 +1,4 @@
+import { notificationNestedOutputs } from './node-definitions/nodes/notification';
 import {
   DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE,
   type FlowAuthoringDocument
@@ -259,21 +260,27 @@ export function listVisibleSelectorOptions(
   const nodeOptions = document.graph.nodes
     .filter((node) => visibleNodeIds.has(node.id))
     .flatMap((node) =>
-      getNodeVariableOutputs(node).map((output) => {
-        const outputLabel =
-          node.type === 'variable_assigner' ? output.title : output.key;
+      getNodeVariableOutputs(node)
+        .flatMap((output) =>
+          node.type === 'notification'
+            ? [output, ...notificationNestedOutputs(output)]
+            : [output]
+        )
+        .map((output) => {
+          const outputLabel =
+            node.type === 'variable_assigner' ? output.title : output.key;
 
-        return {
-          nodeId: node.id,
-          nodeLabel: node.alias,
-          outputKey: output.key,
-          outputLabel,
-          valueType: output.valueType,
-          jsonSchema: output.jsonSchema,
-          value: outputSelectorValue(node.id, output),
-          displayLabel: formatNodeVariableLabel(node.alias, outputLabel)
-        };
-      })
+          return {
+            nodeId: node.id,
+            nodeLabel: node.alias,
+            outputKey: output.key,
+            outputLabel,
+            valueType: output.valueType,
+            jsonSchema: output.jsonSchema,
+            value: outputSelectorValue(node.id, output),
+            displayLabel: formatNodeVariableLabel(node.alias, outputLabel)
+          };
+        })
     );
 
   const toolArgumentOptions = visibleInternalLlmToolArgumentOptions(

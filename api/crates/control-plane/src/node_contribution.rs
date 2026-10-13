@@ -170,6 +170,7 @@ const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
     published_ready("code", "Code", "data"),
     published_ready("template_transform", "Template Transform", "generation"),
     published_ready("http_request", "HTTP Request", "external"),
+    published_ready("notification", "Notification", "external"),
     hidden_ready("tool", "Tool", "external"),
     published_ready("tool_result", "Tool Result", "io"),
     published_ready("data_model_list", "Data Model List", "data"),
@@ -369,6 +370,11 @@ fn builtin_field_contract(node_type: &str) -> ApplicationNodeFieldContract {
             config_fields: vec![field("config.cases", true, &["array"], &[])],
             input_fields: vec![field("bindings.*", false, &["binding"], &[])],
             output_fields: vec![field("source_handle", true, &["string"], &[])],
+        },
+        "notification" => ApplicationNodeFieldContract {
+            config_fields: vec![field("config.instance_id", true, &["string"], &[])],
+            input_fields: vec![field("bindings.input", true, &["named_bindings"], &[])],
+            output_fields: vec![field("result", true, &["object"], &[])],
         },
         "sql" => ApplicationNodeFieldContract {
             config_fields: vec![field(

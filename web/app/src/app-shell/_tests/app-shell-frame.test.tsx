@@ -19,7 +19,9 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
   return {
     ...actual,
-    getConsoleNavigation
+    getConsoleNavigation,
+    getNotificationUnreadCount: vi.fn().mockResolvedValue({ unread_count: 0 }),
+    subscribeNotificationChanges: vi.fn(() => () => {})
   };
 });
 

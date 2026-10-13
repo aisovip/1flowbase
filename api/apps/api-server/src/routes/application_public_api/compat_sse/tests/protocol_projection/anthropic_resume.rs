@@ -114,6 +114,8 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),
         assistant_conversation_events: base_state.assistant_conversation_events.clone(),
+        notification_service: base_state.notification_service.clone(),
+        notification_events: base_state.notification_events.clone(),
         assistant_executions: base_state.assistant_executions.clone(),
         assistant_client_sessions: base_state.assistant_client_sessions.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),

@@ -5,9 +5,14 @@
 
 mod managed_hook;
 mod multiplex;
+mod notification;
 mod plugin_data;
 mod simulator;
 
+pub use extension_contracts::{
+    CapabilityStdioError, CapabilityStdioMethod, CapabilityStdioRequest, CapabilityStdioResponse,
+    NotificationTypeDescriptor,
+};
 pub use extension_contracts::{
     ManagedCreateHookInput, ManagedCreateView, ManagedHookHostFrame, ManagedHookOutcome,
     ManagedHookTerminal,
@@ -33,6 +38,7 @@ pub use multiplex::{
     serve, serve_duplex, serve_duplex_io, serve_io, MultiplexEmitter, MultiplexError,
     MultiplexInput, MultiplexResourceLease,
 };
+pub use notification::execute_notification;
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
 

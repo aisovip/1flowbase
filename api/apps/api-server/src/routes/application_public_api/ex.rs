@@ -137,6 +137,7 @@ struct WorkflowExtensionAdapter {
     published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
 }
 
 impl WorkflowExtensionPort for WorkflowExtensionAdapter {
@@ -216,6 +217,7 @@ pub(crate) fn workflow_extension_port(
     published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
 ) -> Arc<dyn WorkflowExtensionPort> {
     Arc::new(WorkflowExtensionAdapter {
         store,
@@ -232,6 +234,7 @@ pub(crate) fn workflow_extension_port(
         published_plan_cache,
         task_queue,
         runtime_event_stream,
+        notification_sender,
     })
 }
 
@@ -268,6 +271,7 @@ fn spawn_workflow_extension_execution(
             dependencies.provider_install_root.clone(),
         )
         .with_file_storage_registry(dependencies.file_storage_registry.clone())
+        .with_notification_sender(dependencies.notification_sender.clone())
         .with_llm_routing_counter_store(dependencies.cache_store.clone())
         .with_provider_request_log_queue(dependencies.task_queue.clone())
         .with_runtime_event_stream(dependencies.runtime_event_stream.clone());

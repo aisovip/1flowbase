@@ -299,6 +299,7 @@ struct RuntimeProviderInvoker<R, H> {
 }
 
 struct RuntimeFlowExecutionContext {
+    notification_sender: Option<Arc<dyn crate::notifications::NotificationSenderPort>>,
     user_account: Option<String>,
     require_provider_usage_for_billing: bool,
     active_node: Mutex<Option<RuntimeActiveNode>>,
@@ -357,6 +358,7 @@ struct ResumeExecutionSegmentOutput {
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
+    notification_sender: Option<Arc<dyn crate::notifications::NotificationSenderPort>>,
     repository: R,
     runtime: H,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
@@ -408,6 +410,7 @@ where
             repository,
             runtime,
             runtime_engine,
+            notification_sender: None,
             file_storage_registry: None,
             llm_routing_counter_store: None,
             model_routing_cache_store: None,
@@ -430,6 +433,14 @@ where
     ) -> Self {
         self.api_node_id = Some(node_id.into());
         self.provider_install_root = Some(install_root.into());
+        self
+    }
+
+    pub fn with_notification_sender(
+        mut self,
+        sender: Arc<dyn crate::notifications::NotificationSenderPort>,
+    ) -> Self {
+        self.notification_sender = Some(sender);
         self
     }
 
@@ -496,6 +507,7 @@ where
         active_node: Option<RuntimeActiveNode>,
     ) -> Arc<RuntimeFlowExecutionContext> {
         Arc::new(RuntimeFlowExecutionContext {
+            notification_sender: self.notification_sender.clone(),
             user_account,
             require_provider_usage_for_billing: self.require_provider_usage_for_billing,
             active_node: Mutex::new(active_node),

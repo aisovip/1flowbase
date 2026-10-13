@@ -451,3 +451,4 @@ mod code_runtime;
 mod provider_and_plugin;
 
 mod diagnostics;
+mod notifications;

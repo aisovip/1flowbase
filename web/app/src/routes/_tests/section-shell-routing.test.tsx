@@ -7,6 +7,14 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+
+// Routing fixtures isolate the bell's independent HTTP/SSE lifecycle.
+vi.mock('@1flowbase/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@1flowbase/api-client')>()),
+  getNotificationUnreadCount: vi.fn().mockResolvedValue({ unread_count: 0 }),
+  subscribeNotificationChanges: vi.fn(() => () => {})
+}));
+
 const membersApi = vi.hoisted(() => ({
   settingsMembersQueryKey: ['settings', 'members'],
   fetchSettingsMembers: vi.fn(),

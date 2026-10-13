@@ -819,7 +819,19 @@
     "variable_group_candidate_type_mismatch": "请选择声明为 {{value1}} 的输出；现有候选变量会保留，直到你替换它。",
     "variable_group_outputs_out_of_sync": "变量组输出未同步",
     "variable_group_outputs_must_match_groups": "物化输出必须按相同顺序匹配变量组的 key 和类型。",
-    "retry": "重试"
+    "retry": "重试",
+    "notification_node": "通知发送",
+    "notification_description": "通过通知实例发送消息，发送结果可供下游使用。",
+    "notification_instance": "通知实例",
+    "notification_missing_instance": "通知实例不存在，请重新选择。",
+    "notification_instance_disabled": "通知实例已停用",
+    "notification_instance_unavailable": "通知实例不可用",
+    "notification_options_failed": "无法加载通知实例与类型，请稍后重试。",
+    "notification_invalid_constant": "请输入符合字段类型的 JSON 值。",
+    "notification_binding_mode": "{{field}}输入方式",
+    "notification_variable_source": "引用变量",
+    "notification_expression": "数值表达式",
+    "notification_input_unset": "尚未配置此输入"
   },
   "client_trajectory": {
     "client": "客户端请求",

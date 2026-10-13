@@ -1,9 +1,11 @@
+import { selectNotificationInstance } from '../lib/node-definitions/nodes/notification';
 import {
   validatePublicOutputKey,
   type FlowAuthoringDocument,
   type FlowBinding,
   type FlowNodeDocument,
   type FlowNodeOutputDocument,
+  type NamedBindingEntry,
   type FlowVariableGroupDocument
 } from '@1flowbase/flow-schema';
 import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
@@ -351,6 +353,36 @@ export function createAgentFlowNodeSchemaAdapter({
       return undefined;
     },
     setValue(path: string, value: unknown) {
+      if (
+        node.type === 'notification' &&
+        path === 'config.instance_id' &&
+        typeof value === 'object' &&
+        value !== null
+      ) {
+        const selection = value as {
+          instance_id: string;
+          output_schema: Record<string, unknown>;
+          input: NamedBindingEntry[];
+        };
+        setWorkingDocument((current) => ({
+          ...current,
+          graph: {
+            ...current.graph,
+            nodes: current.graph.nodes.map((candidate) =>
+              candidate.id === nodeId
+                ? selectNotificationInstance(
+                    candidate,
+                    selection.instance_id,
+                    selection.output_schema,
+                    selection.input
+                  )
+                : candidate
+            )
+          }
+        }));
+        return;
+      }
+
       if (path === 'config.output_contract' && Array.isArray(value)) {
         setWorkingDocument((currentDocument) => {
           const nextDocument = replaceNodeOutputs(

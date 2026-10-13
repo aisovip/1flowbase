@@ -214,6 +214,16 @@ async fn fixture_state() -> (
     // This suite exercises frontstage data capabilities, not host backup tooling.
     // Keeping the optional runtime absent avoids requiring pg_dump/pg_restore here.
     let system_backup = None;
+    let notification_events =
+        Arc::new(api_server::routes::notifications::events::NotificationEventHub::default());
+    let notification_service = Arc::new(
+        control_plane::notifications::NotificationService::new(
+            store.clone(),
+            config.provider_secret_master_key.clone(),
+        )
+        .with_events(notification_events.clone()),
+    );
+    notification_service.bootstrap().await.unwrap();
     let state = Arc::new(ApiState {
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
@@ -233,6 +243,8 @@ async fn fixture_state() -> (
         runtime_activity: Arc::new(
             api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
         ),
+        notification_service,
+        notification_events,
         assistant_conversation_events: Default::default(),
         assistant_executions: Default::default(),
         assistant_client_sessions: Default::default(),

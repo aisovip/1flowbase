@@ -1,3 +1,5 @@
+import notificationsZhHans from '../../features/notifications/i18n/zh_Hans.json';
+import notificationsEnUS from '../../features/notifications/i18n/en_US.json';
 import settingsSystemTemplatesZhHans from '../../features/settings/components/system-templates/i18n/zh_Hans.json';
 import settingsSystemTemplatesEnUS from '../../features/settings/components/system-templates/i18n/en_US.json';
 import agentFlowZhHans from '../../features/agent-flow/i18n/zh_Hans.json';
@@ -44,6 +46,7 @@ export const applicationTranslationResources = {
     embeddedApps: embeddedAppsZhHans,
     frontstage: frontstageZhHans,
     me: meZhHans,
+    notifications: notificationsZhHans,
     schemaUi: schemaUiZhHans,
     settingsApplicationManagement: settingsApplicationManagementZhHans,
     settingsSystemBackups: settingsSystemBackupsZhHans,
@@ -64,6 +67,7 @@ export const applicationTranslationResources = {
     embeddedApps: embeddedAppsEnUS,
     frontstage: frontstageEnUS,
     me: meEnUS,
+    notifications: notificationsEnUS,
     schemaUi: schemaUiEnUS,
     settingsApplicationManagement: settingsApplicationManagementEnUS,
     settingsSystemBackups: settingsSystemBackupsEnUS,

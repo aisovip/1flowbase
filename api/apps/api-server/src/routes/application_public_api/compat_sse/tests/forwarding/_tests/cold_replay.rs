@@ -326,6 +326,7 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
         api_node_id: state.api_node_id.clone(),
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
+        notification_sender: state.notification_service.clone(),
         task_queue: state.infrastructure.task_queue(),
         provider_transport_store: state.infrastructure.provider_transport_store(),
         runtime_event_stream: stream.clone(),

@@ -1,3 +1,4 @@
+import { notificationNodeDefinition } from './nodes/notification';
 import type { FlowNodeType } from '@1flowbase/flow-schema';
 import type { NodeFlowRole } from './types';
 
@@ -45,6 +46,7 @@ export const nodeDefinitions: NodeDefinitionMap = {
   code: codeNodeDefinition,
   template_transform: templateTransformNodeDefinition,
   http_request: httpRequestNodeDefinition,
+  notification: notificationNodeDefinition,
   tool: toolNodeDefinition,
   tool_result: toolResultNodeDefinition,
   ...dataModelNodeDefinitions,

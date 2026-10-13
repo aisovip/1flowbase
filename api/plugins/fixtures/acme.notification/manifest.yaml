@@ -1,0 +1,39 @@
+{
+  "manifest_version": 2,
+  "schema_version": "1flowbase.plugin.manifest/v2",
+  "plugin_id": "notification-fixture",
+  "version": "1.0.0",
+  "publisher_namespace": "acme",
+  "vendor": "Acme",
+  "display_name": "Notification fixture",
+  "description": "Shared SDK notification provider fixture",
+  "source_kind": "uploaded",
+  "trust_level": "unverified",
+  "consumption_kind": "runtime_extension",
+  "execution_mode": "process_per_call",
+  "slot_codes": [],
+  "binding_targets": ["workspace"],
+  "selection_mode": "assignment_then_select",
+  "minimum_host_version": "0.1.0",
+  "contract_version": "1flowbase.extension-bus/v1",
+  "permissions": {"network":"none","secrets":"host_managed","storage":"none","mcp":"none","subprocess":"deny"},
+  "runtime": {"protocol":"stdio_json","entry":"bin/worker"},
+  "notification_types": [{
+    "type_code": "acme/notification-fixture/receipt",
+    "display_name": "Receipt fixture",
+    "description": "Confirms a fixture receipt without contacting an external service",
+    "contribution_id": "acme.notification-fixture.send",
+    "config_schema": {"type":"object","properties":{"token":{"type":"string","minLength":1},"channel":{"type":"string"}},"required":["token","channel"],"additionalProperties":false},
+    "config_form": {"schema_version":"1.0.0","fields":[{"key":"token","label":"Token","type":"string","control":"password","required":true},{"key":"channel","label":"Channel","type":"string","required":true}]},
+    "input_schema": {"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false},
+    "input_form": {"schema_version":"1.0.0","fields":[{"key":"text","label":"Text","type":"string","required":true}]},
+    "output_schema": {"type":"object","properties":{"accepted":{"type":"boolean"},"delivery_id":{"type":"string"}},"required":["accepted","delivery_id"],"additionalProperties":false}
+  }],
+  "managed": {
+    "module": {
+      "bus_version":"v1","module_id":"notification-fixture","module_version":"1.0.0","module_kind":"runtime",
+      "contributions":[{"contribution_id":"acme.notification-fixture.send","contributor_module_id":"notification-fixture","point_id":"1flowbase.notification.send","contract_version":"1flowbase.notification/v1","required_permissions":["notification.send"],"mode":"append"}]
+    },
+    "execution_bindings":[{"contribution_id":"acme.notification-fixture.send","execution_mode":"process_per_call","runtime":{"protocol":"stdio_json","entry":"bin/worker"},"handler":"send","payload":{"kind":"notification_type","type_code":"acme/notification-fixture/receipt"}}]
+  }
+}

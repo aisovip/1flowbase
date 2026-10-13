@@ -1,6 +1,7 @@
 import type { SectionNavItem } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 
 export type SettingsSectionKey =
+  | 'notifications'
   | 'docs'
   | 'api-key-authentication'
   | 'auth-center'
@@ -54,6 +55,7 @@ interface ConsoleNavigationLike {
 }
 
 const settingsSectionKeys = new Set<SettingsSectionKey>([
+  'notifications',
   'docs',
   'api-key-authentication',
   'auth-center',
@@ -123,6 +125,11 @@ export function settingsSectionItemsFromConsoleNavigation(
 }
 
 export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
+  {
+    key: 'notifications',
+    label_key: 'auto.notifications',
+    to: '/settings/notifications'
+  },
   {
     key: 'docs',
     label_key: 'auto.api_documentation',

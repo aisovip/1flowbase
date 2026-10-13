@@ -17,6 +17,9 @@ use storage_durable_postgres::MainDurableStore;
 /// Durable store selected by the API composition root.
 ///
 /// Protocol modules depend on this state-owned name instead of importing a concrete adapter.
+pub type ApiNotificationService =
+    control_plane::notifications::NotificationService<MainDurableStore>;
+
 pub type ApiModelProviderService = control_plane::model_provider::ModelProviderService<
     MainDurableStore,
     crate::provider_runtime::ApiProviderRuntime,
@@ -409,6 +412,8 @@ pub struct ApiState {
     pub process_started_at: OffsetDateTime,
     pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     pub assistant_conversation_events: Arc<AssistantConversationEventHub>,
+    pub notification_service: Arc<ApiNotificationService>,
+    pub notification_events: Arc<crate::routes::notifications::events::NotificationEventHub>,
     /// Process-local owner for detached embedded Assistant executions. Durable run state remains
     /// owned by the runtime repository.
     pub assistant_executions: Arc<Mutex<HashMap<uuid::Uuid, tokio::task::AbortHandle>>>,

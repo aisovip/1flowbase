@@ -250,6 +250,10 @@ fn prepare_installation_commit(
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
     }
+    if !manifest.notification_types.is_empty() {
+        installation.metadata_json["notification_types"] =
+            serde_json::to_value(&manifest.notification_types)?;
+    }
     if let Some(managed) = &manifest.managed {
         installation.metadata_json["managed"] = serde_json::to_value(managed)?;
     }

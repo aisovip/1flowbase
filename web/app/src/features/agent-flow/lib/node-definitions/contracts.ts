@@ -1,3 +1,4 @@
+import { notificationNodeOutputs } from './nodes/notification';
 import type {
   FlowBinding,
   FlowNodeOutputDocument,
@@ -1183,6 +1184,37 @@ function createDataModelContract(
   });
 }
 
+function createNotificationContract(): NodeRuntimeUiContract {
+  return createNodeRuntimeContract({
+    type: 'notification',
+    title: i18nText('agentFlow', 'auto.notification_node'),
+    description: i18nText('agentFlow', 'auto.notification_description'),
+    category: 'external',
+    config: { instance_id: '' },
+    outputs: notificationNodeOutputs(),
+    sideEffect: 'external_write',
+    panelSections: [
+      basicsPanelSection,
+      panelSection('inputs', 'Inputs', [
+        panelField({
+          key: 'config.instance_id',
+          title: i18nText('agentFlow', 'auto.notification_instance'),
+          renderer: 'notification',
+          required: true
+        })
+      ]),
+      panelSection('outputs', 'Outputs', [
+        panelField({
+          key: 'config.output_contract',
+          title: i18nText('agentFlow', 'auto.output_variable'),
+          renderer: 'output_contract_definition',
+          valueType: 'array'
+        })
+      ])
+    ]
+  });
+}
+
 export const builtinNodeRuntimeContractTypes = [
   'start',
   'answer',
@@ -1195,6 +1227,7 @@ export const builtinNodeRuntimeContractTypes = [
   'code',
   'template_transform',
   'http_request',
+  'notification',
   'tool',
   'tool_result',
   'data_model_list',
@@ -1230,6 +1263,7 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
   code: createCodeContract(),
   template_transform: createTemplateTransformContract(),
   http_request: createHttpRequestContract(),
+  notification: createNotificationContract(),
   tool: createToolContract(),
   tool_result: createToolResultContract(),
   data_model_list: createDataModelContract('data_model_list'),

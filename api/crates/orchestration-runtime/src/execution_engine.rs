@@ -336,6 +336,14 @@ pub trait CapabilityInvoker: Send + Sync {
         input_payload: Value,
     ) -> Result<CapabilityInvocationOutput>;
 
+    async fn invoke_notification_node(
+        &self,
+        _node: &CompiledNode,
+        _resolved_inputs: &Map<String, Value>,
+    ) -> Result<NativeNotificationInvocationOutput> {
+        Err(anyhow!("notification runtime is not configured"))
+    }
+
     async fn invoke_data_model_node(
         &self,
         _node: &CompiledNode,
@@ -538,6 +546,12 @@ pub struct NativeSqlInvocationOutput {
     pub error_payload: Option<Value>,
     pub metrics_payload: Value,
     pub debug_payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NativeNotificationInvocationOutput {
+    pub output_payload: Value,
+    pub error_payload: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1077,6 +1091,49 @@ where
                     continue;
                 }
 
+                variable_pool.insert(
+                    node.node_id.clone(),
+                    project_node_variable_payload(node, &execution.output_payload)?,
+                );
+            }
+            "notification" => {
+                let execution = invoker
+                    .invoke_notification_node(node, &resolved_inputs)
+                    .await?;
+                node_traces.push(NodeExecutionTrace {
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    input_payload: node_input_payload,
+                    output_payload: execution.output_payload.clone(),
+                    error_payload: execution.error_payload.clone(),
+                    metrics_payload: json!({}),
+                    debug_payload: json!({}),
+                    provider_events: Vec::new(),
+                });
+                if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
+                        plan,
+                        failed_node_index: index,
+                        active_node_ids: &mut active_node_ids,
+                        variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
+                        node,
+                        output_payload: &execution.output_payload,
+                        error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
+                    })? {
+                        return Ok(FlowDebugExecutionOutcome {
+                            stop_reason: ExecutionStopReason::Failed(failure),
+                            variable_pool,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
+                        });
+                    }
+                    continue;
+                }
                 variable_pool.insert(
                     node.node_id.clone(),
                     project_node_variable_payload(node, &execution.output_payload)?,

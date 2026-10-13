@@ -58,6 +58,10 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     ),
     helpHref: '/docs/agentflow/nodes/template-transform'
   },
+  notification: {
+    summary: i18nText('agentFlow', 'auto.notification_description'),
+    helpHref: null
+  },
   http_request: {
     summary: i18nText(
       'agentFlow',
