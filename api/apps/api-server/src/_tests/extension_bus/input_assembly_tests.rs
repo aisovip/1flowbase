@@ -11,6 +11,94 @@ use plugin_framework::extension_bus::{
 };
 
 #[test]
+fn managed_file_read_compiles_only_with_host_authority() {
+    use plugin_framework::extension_bus::{
+        compile_extension_graph_with_authority, ContributionId, ManagedContributionAuthority,
+        ManagedContributionSubject, ManagedGraphAuthority, ManagedInstallationId,
+        ManagedWorkspaceId, ModuleDescriptor, ModuleId, PermissionCode,
+    };
+
+    let assembly =
+        assemble_extension_graph_input(api_workspace_root(), DEFAULT_PLUGIN_SET_PATH, vec![])
+            .unwrap();
+    let mut modules = assembly.module_descriptors().to_vec();
+    let managed: ModuleDescriptor = serde_json::from_value(serde_json::json!({
+        "bus_version": "v1", "module_id": "fixture.file-read", "module_version": "1.0.0",
+        "module_kind": "runtime", "activation": {"status": "active"},
+        "dependencies": [], "granted_permissions": [], "extension_points": [],
+        "contributions": [{
+            "contribution_id": "fixture.file-read.download",
+            "contributor_module_id": "fixture.file-read",
+            "point_id": plugin_framework::MANAGED_SERVICE_POINT,
+            "contract_version": "1", "mode": "append",
+            "required_permissions": ["service.execute", "file.read.content"]
+        }]
+    }))
+    .unwrap();
+    modules.push(managed);
+    let contribution = ContributionId::new("fixture.file-read.download").unwrap();
+    let permission = PermissionCode::new("file.read.content").unwrap();
+    let mut authority = ManagedGraphAuthority::new("file-read-fixture".into());
+    authority
+        .managed_modules
+        .insert(ModuleId::new("fixture.file-read").unwrap());
+    authority.contributions.insert(
+        contribution.clone(),
+        ManagedContributionAuthority {
+            subject: ManagedContributionSubject::new(
+                ManagedInstallationId::new("installation-file-read").unwrap(),
+                ManagedWorkspaceId::new("workspace-file-read").unwrap(),
+                contribution.clone(),
+            ),
+            revision: 1,
+            permissions: [
+                PermissionCode::new("service.execute").unwrap(),
+                permission.clone(),
+            ]
+            .into_iter()
+            .collect(),
+        },
+    );
+    let graph = compile_extension_graph_with_authority(modules.clone(), &authority).unwrap();
+    assert!(graph
+        .points()
+        .iter()
+        .flat_map(|point| point.contributions())
+        .any(|entry| entry.descriptor().contribution_id == contribution));
+
+    // Reproduce the original admission failure even with a valid Host grant.
+    let mut missing_contract = modules.clone();
+    missing_contract
+        .iter_mut()
+        .flat_map(|module| &mut module.extension_points)
+        .find(|point| point.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT)
+        .unwrap()
+        .allowed_permissions
+        .remove(&permission);
+    assert!(matches!(
+        compile_extension_graph_with_authority(missing_contract, &authority),
+        Err(CompilationError::PermissionEscalation { .. })
+    ));
+
+    // A package cannot replace a revoked contribution grant by self-awarding permissions.
+    authority
+        .contributions
+        .get_mut(&contribution)
+        .unwrap()
+        .permissions
+        .remove(&permission);
+    modules
+        .last_mut()
+        .unwrap()
+        .granted_permissions
+        .insert(permission);
+    assert!(matches!(
+        compile_extension_graph_with_authority(modules, &authority),
+        Err(CompilationError::PermissionEscalation { .. })
+    ));
+}
+
+#[test]
 fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
     let root = api_workspace_root();
     let set_raw = fs::read_to_string(root.join(DEFAULT_PLUGIN_SET_PATH)).unwrap();
