@@ -12,6 +12,7 @@ fn context(thread: &str) -> ApplicationRunLogContext {
         call_kind: Some("generate".into()),
         thread_id: Some(thread.into()),
         turn_id: Some(format!("turn-{thread}")),
+        prompt: Some(json!({"role":"user","content":thread})),
         ..Default::default()
     }
 }
@@ -204,12 +205,10 @@ async fn manual_fork_is_visible_as_separate_root_with_source_provenance_and_cost
         .unwrap()
         .unwrap();
     assert_eq!(source_detail.child_task_traces.len(), 4);
-    assert!(
-        source_detail
-            .child_task_traces
-            .iter()
-            .all(|child| child.source_flow_run.id != ids[1])
-    );
+    assert!(source_detail
+        .child_task_traces
+        .iter()
+        .all(|child| child.source_flow_run.id != ids[1]));
     let record = store
         .application_log_record_conversation_page(seeded.application_id, ids[1], None, None, 20)
         .await
@@ -217,32 +216,26 @@ async fn manual_fork_is_visible_as_separate_root_with_source_provenance_and_cost
     assert_eq!(record.items.len(), 1);
     assert_eq!(record.items[0].record_id, ids[1]);
     assert_eq!(record.items[0].parent_task_run_id, None);
-    assert!(
-        record.items[0]
-            .messages
-            .iter()
-            .any(|message| message.content == "answer manual-fork-needle")
-    );
+    assert!(record.items[0]
+        .messages
+        .iter()
+        .any(|message| message.content == "answer manual-fork-needle"));
     assert_eq!(
         record.items[0].log_conversation_id,
         fork.log_conversation_id
     );
-    assert!(
-        store
-            .query_application_log_conversations(Uuid::now_v7(), &[seeded.application_id], &all)
-            .await
-            .unwrap()
-            .items
-            .is_empty()
-    );
-    assert!(
-        store
-            .query_application_log_conversations(seeded.workspace_id, &[Uuid::now_v7()], &all)
-            .await
-            .unwrap()
-            .items
-            .is_empty()
-    );
+    assert!(store
+        .query_application_log_conversations(Uuid::now_v7(), &[seeded.application_id], &all)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    assert!(store
+        .query_application_log_conversations(seeded.workspace_id, &[Uuid::now_v7()], &all)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
 }
 
 // Full JSON snapshots protect raw metadata, source/summary facts, messages,
@@ -369,13 +362,11 @@ async fn manual_fork_parent_resolution_keeps_caller_application_and_scope_bounda
         (seeded.workspace_id, foreign.application_id),
         (foreign.workspace_id, seeded.application_id),
     ] {
-        assert!(
-            store
-                .query_application_log_conversations(scope, &[application], &all)
-                .await
-                .unwrap()
-                .items
-                .is_empty()
-        );
+        assert!(store
+            .query_application_log_conversations(scope, &[application], &all)
+            .await
+            .unwrap()
+            .items
+            .is_empty());
     }
 }
