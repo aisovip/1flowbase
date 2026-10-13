@@ -21,11 +21,10 @@ struct LifecycleProviderPackage(PathBuf);
 
 impl LifecycleProviderPackage {
     fn new() -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "runtime-host-lifecycle-{}-{}",
-            std::process::id(),
-            OffsetDateTime::now_utc().unix_timestamp_nanos()
-        ));
+        let package = Self(Self::claim_directory(|| {
+            std::env::temp_dir().join(format!("runtime-host-lifecycle-{}", uuid::Uuid::now_v7()))
+        }));
+        let root = package.path();
         fs::create_dir_all(root.join("provider")).unwrap();
         fs::create_dir_all(root.join("bin")).unwrap();
         fs::create_dir_all(root.join("i18n")).unwrap();
@@ -95,7 +94,20 @@ config_schema: []
             permissions.set_mode(0o755);
             fs::set_permissions(&executable, permissions).unwrap();
         }
-        Self(root)
+        package
+    }
+
+    // A clock value is not a resource identity. Claim the directory atomically
+    // before writing, and never share or remove another test's package.
+    fn claim_directory(mut candidate: impl FnMut() -> PathBuf) -> PathBuf {
+        loop {
+            let root = candidate();
+            match fs::create_dir(&root) {
+                Ok(()) => return root,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("cannot allocate lifecycle fixture directory: {error}"),
+            }
+        }
     }
 
     fn path(&self) -> &Path {
@@ -598,5 +610,33 @@ async fn host_preserves_the_typed_recovery_receipt_from_a_worker_error() {
             .as_str()
             .expect("the preserved original failure must be a typed message")
             .contains("1011")
+    );
+}
+
+#[test]
+fn lifecycle_fixture_directory_collision_never_overwrites_or_cleans_another_owner() {
+    let parent = LifecycleProviderPackage::new();
+    let existing = parent.path().join("existing-owner");
+    fs::create_dir(&existing).unwrap();
+    let sentinel = existing.join("manifest.yaml");
+    fs::write(&sentinel, "existing owner's manifest").unwrap();
+    let fresh = parent.path().join("new-owner");
+    let mut candidates = [existing.clone(), fresh.clone()].into_iter();
+    let owned = LifecycleProviderPackage(LifecycleProviderPackage::claim_directory(|| {
+        candidates
+            .next()
+            .expect("one collision must advance to the independent candidate")
+    }));
+    assert_eq!(owned.path(), fresh);
+    fs::write(owned.path().join("manifest.yaml"), "new owner's manifest").unwrap();
+    assert_eq!(
+        fs::read_to_string(&sentinel).unwrap(),
+        "existing owner's manifest"
+    );
+    drop(owned);
+    assert!(!fresh.exists());
+    assert_eq!(
+        fs::read_to_string(sentinel).unwrap(),
+        "existing owner's manifest"
     );
 }

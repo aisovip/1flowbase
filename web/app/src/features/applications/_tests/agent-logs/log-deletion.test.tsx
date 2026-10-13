@@ -203,11 +203,18 @@ test('custom date preview includes the entire end day and requires both dates', 
   expect(
     within(screen.getByRole('dialog')).getByRole('button', { name: '删除日志' })
   ).toBeDisabled();
-  const inputs = within(screen.getByRole('dialog')).getAllByRole('textbox');
-  fireEvent.change(inputs[0], { target: { value: '2026-10-07' } });
-  fireEvent.keyDown(inputs[0], { key: 'Enter', code: 'Enter' });
-  fireEvent.change(inputs[1], { target: { value: '2026-10-08' } });
-  fireEvent.keyDown(inputs[1], { key: 'Enter', code: 'Enter' });
+  for (const [index, date] of ['2026-10-07', '2026-10-08'].entries()) {
+    const input = within(screen.getByRole('dialog')).getAllByRole(
+      'textbox'
+    )[index];
+    // Commit each controlled picker before the next picker reads its paired value.
+    await act(async () => {
+      input.focus();
+      fireEvent.change(input, { target: { value: date } });
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+      input.blur();
+    });
+  }
   await start();
   await waitFor(() =>
     expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()

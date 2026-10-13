@@ -94,6 +94,7 @@ describe('style boundary registry', () => {
         'web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx'
       ])
     ).toEqual([
+      'page.home',
       'page.frontstage',
       'page.application-detail',
       'page.application-api',
@@ -166,7 +167,7 @@ describe('style boundary registry', () => {
     ]);
     expect(
       getSceneIdsForFiles(['web/app/src/features/me/pages/me-page.css'])
-    ).toEqual(['page.me']);
+    ).toEqual(['page.home', 'page.me']);
   });
 
   test('registers responsive system backup scenes', () => {
@@ -217,7 +218,7 @@ describe('style boundary registry', () => {
     ).toBe(false);
   });
 
-  test('renders the home page scene inside the shared shell frame', async () => {
+  test('renders the home redirect fallback in the shared shell', async () => {
     const scene = getRuntimeScene('page.home');
 
     render(
@@ -229,9 +230,16 @@ describe('style boundary registry', () => {
     expect(
       await screen.findByRole('heading', { name: '1flowbase' })
     ).toBeInTheDocument();
-    expect(
-      await screen.findByRole('button', { name: /编辑/ })
-    ).toBeInTheDocument();
+    // The real root route redirects an empty topbar tree to the personal center.
+    await waitFor(
+      () => {
+        expect(window.location.pathname).toBe('/me/profile');
+        expect(
+          screen.getByRole('button', { name: /^(?:edit\s+)?编辑资料$/ })
+        ).toBeInTheDocument();
+      },
+      { timeout: 10_000 }
+    );
     expect(
       screen.getByRole('navigation', { name: 'Primary' })
     ).toBeInTheDocument();
