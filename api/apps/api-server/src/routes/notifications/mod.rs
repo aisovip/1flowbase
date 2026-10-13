@@ -69,10 +69,27 @@ async fn invoke(
     operation: &str,
     input: Input,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = match &input {
+        Input::Types | Input::List | Input::Get(_) | Input::Messages(_) | Input::UnreadCount => {
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+        }
+        Input::Create(_)
+        | Input::Patch(..)
+        | Input::Delete(_)
+        | Input::Send(..)
+        | Input::Read(_)
+        | Input::ReadAll => {
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            }
+        }
+    };
     let NotificationOutput(value) = console_interface::invoke(
-        state.clone(),
+        snapshot_state,
         &format!("http.console.notifications.{operation}.v1"),
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        credential,
         input,
     )
     .await?;

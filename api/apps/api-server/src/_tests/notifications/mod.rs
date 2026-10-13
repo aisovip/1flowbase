@@ -89,11 +89,46 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     }
     let instances = get_json(&app, "/api/console/notifications/instances", &root_cookie).await;
     assert_eq!(instances["data"].as_array().unwrap().len(), 1);
+    for csrf in ["", "incorrect-csrf"] {
+        let (status, denied) = request(
+            &app,
+            &root_cookie,
+            csrf,
+            "POST",
+            "/api/console/notifications/instances",
+            json!({"type_code":"system","installation_id":null,"display_name":"CSRF rejected","config_json":{}}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    }
+    assert_eq!(
+        get_json(&app, "/api/console/notifications/instances", &root_cookie).await["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
     let (status, created) = request(&app, &root_cookie, &root_csrf, "POST", "/api/console/notifications/instances", json!({"type_code":"system","installation_id":null,"display_name":"Workflow notices","config_json":{}})).await;
     assert_eq!(status, StatusCode::OK, "{created}");
     let id = created["data"]["id"].as_str().unwrap();
     let instance_path = format!("/api/console/notifications/instances/{id}");
     let send_path = format!("{instance_path}/send");
+    for csrf in ["", "incorrect-csrf"] {
+        for (method, body) in [
+            (
+                "PATCH",
+                json!({"display_name":"CSRF rejected","status":"disabled"}),
+            ),
+            ("DELETE", Value::Null),
+        ] {
+            let (status, denied) =
+                request(&app, &root_cookie, csrf, method, &instance_path, body).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        }
+    }
+    let unchanged = get_json(&app, &instance_path, &root_cookie).await;
+    assert_eq!(unchanged["data"]["display_name"], "Workflow notices");
+    assert_eq!(unchanged["data"]["status"], "enabled");
     let input = json!({"input":{"user_ids":[first_id,second_id],"title":"Ready","content":"Stored before refresh"}});
     let (status, denied) = request(
         &app,
@@ -105,9 +140,11 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
-    let (status, no_csrf) =
-        request(&app, &root_cookie, "", "POST", &send_path, input.clone()).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{no_csrf}");
+    for csrf in ["", "incorrect-csrf"] {
+        let (status, denied) =
+            request(&app, &root_cookie, csrf, "POST", &send_path, input.clone()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    }
     let (status, sent) = request(&app, &root_cookie, &root_csrf, "POST", &send_path, input).await;
     assert_eq!(status, StatusCode::OK, "{sent}");
     assert_eq!(sent["data"]["instance_id"], id);
@@ -125,6 +162,31 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     let read_path = format!(
         "/api/console/notifications/messages/{}/read",
         first["data"]["items"][0]["id"].as_str().unwrap()
+    );
+    for csrf in ["", "incorrect-csrf"] {
+        let (status, denied) =
+            request(&app, &first_cookie, csrf, "POST", &read_path, Value::Null).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        let (status, denied) = request(
+            &app,
+            &second_cookie,
+            csrf,
+            "POST",
+            "/api/console/notifications/messages/read-all",
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    }
+    assert!(
+        get_json(&app, "/api/console/notifications/messages", &first_cookie).await["data"]["items"]
+            [0]["read_at"]
+            .is_null()
+    );
+    assert!(
+        get_json(&app, "/api/console/notifications/messages", &second_cookie).await["data"]
+            ["items"][0]["read_at"]
+            .is_null()
     );
     let (status, denied) = request(
         &app,
