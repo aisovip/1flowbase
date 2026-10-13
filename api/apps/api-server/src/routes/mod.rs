@@ -51,3 +51,5 @@ pub mod mcp_oauth;
 pub use settings_group::organization;
 
 pub(crate) mod client_collectors;
+
+pub mod notifications;

@@ -872,6 +872,11 @@ async fn app_and_runtime_host_from_config(
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let assistant_conversation_events =
         Arc::new(routes::assistant::conversation_events::AssistantConversationEventHub::default());
+    let notification_events = Arc::new(routes::notifications::events::NotificationEventHub::default());
+    let notification_service = Arc::new(control_plane::notifications::NotificationService::new(
+        store.clone(), config.provider_secret_master_key.clone(),
+    ).with_events(notification_events.clone()));
+    notification_service.bootstrap().await?;
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = resolve_system_backup_startup(
         system_backup::SystemBackupRuntime::open(
@@ -917,6 +922,8 @@ async fn app_and_runtime_host_from_config(
         process_started_at,
         runtime_activity,
         assistant_conversation_events,
+        notification_service,
+        notification_events,
         assistant_executions: Default::default(),
         assistant_client_sessions: Default::default(),
         api_runtime_profile,

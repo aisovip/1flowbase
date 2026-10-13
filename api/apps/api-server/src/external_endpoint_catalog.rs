@@ -245,10 +245,11 @@ pub(crate) enum ApprovedExternalControl {
     NativeSseKeepalive,
     CompatibilitySseKeepalive,
     AssistantWebSocketUpgrade,
+    NotificationEvents,
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 31] = [
+    const ALL: [Self; 32] = [
         Self::OAuthOriginMetadata,
         Self::OAuthOriginOidcMetadata,
         Self::OAuthOriginApiMetadata,
@@ -280,6 +281,7 @@ impl ApprovedExternalControl {
         Self::NativeSseKeepalive,
         Self::CompatibilitySseKeepalive,
         Self::AssistantWebSocketUpgrade,
+        Self::NotificationEvents,
     ];
 
     fn contribution(self) -> ExternalEndpointContribution {
@@ -452,6 +454,11 @@ impl ApprovedExternalControl {
                     ),
                 )
             }
+            Self::NotificationEvents => ExternalEndpointContribution::protocol_control_http(
+                "notification-refresh-signal",
+                "GET",
+                "/api/console/notifications/events",
+            ),
             Self::AssistantWebSocketUpgrade => {
                 ExternalEndpointContribution::protocol_control_identity(
                     "assistant-websocket-protocol-control",

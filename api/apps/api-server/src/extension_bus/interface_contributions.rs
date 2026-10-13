@@ -495,6 +495,12 @@ pub(crate) fn production_interface_contributions(
             crate::routes::organization::interface::compile_registry(console_organization)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-notifications",
+            &["notifications.types.list","notifications.instances.list","notifications.instances.get","notifications.instances.create","notifications.instances.update","notifications.instances.delete","notifications.instances.send","notifications.messages.list","notifications.messages.unread_count","notifications.messages.read","notifications.messages.read_all"],
+            &["api-server.console-notifications"],
+            crate::routes::notifications::interface::compile_registry(state.notification_service.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-membership",
             &[
                 "members.role_options.list",

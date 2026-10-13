@@ -293,6 +293,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::user_api_keys::route_assembly())
         .merge(super::workspace::route_assembly())
         .merge(super::members::route_assembly())
+        .merge(super::notifications::route_assembly())
         .merge(super::organization::route_assembly())
         .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
@@ -694,6 +695,19 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "notifications.types.list" => Some("List notification types"),
+        "notifications.instances.list" => Some("List notification instances"),
+        "notifications.instances.get" => Some("Get notification instance"),
+        "notifications.instances.create" => Some("Create notification instance"),
+        "notifications.instances.update" => Some("Update notification instance"),
+        "notifications.instances.delete" => Some("Delete notification instance"),
+        "notifications.instances.send" => Some("Send notification"),
+        "notifications.messages.list" => Some("List my notification messages"),
+        "notifications.messages.unread_count" => Some("Count my unread notifications"),
+        "notifications.messages.read" => Some("Read my notification"),
+        "notifications.messages.read_all" => Some("Read all my notifications"),
+        "notifications.events.subscribe" => Some("Subscribe to notification refresh signals"),
+
         "files.access_links.create" => Some("Create a temporary public file link"),
         "applications.logs.delete" => Some("Delete imported agent log records"),
         "applications.logs.delete.preview" => Some("Count imported logs in a deletion scope"),
@@ -864,6 +878,19 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "notifications.types.list" => "Return canonical notification types and valid recipient form options available in the current workspace.".to_owned(),
+            "notifications.instances.list" => "List workspace notification instances with credential fields removed and explicit availability status.".to_owned(),
+            "notifications.instances.get" => "Read one instance in the current workspace with stored credentials omitted.".to_owned(),
+            "notifications.instances.create" => "Validate the type configuration and store one workspace instance with password fields encrypted.".to_owned(),
+            "notifications.instances.update" => "Update instance name, status or configuration in its workspace while retaining omitted password fields.".to_owned(),
+            "notifications.instances.delete" => "Delete one workspace notification instance and preserve independently stored inbox history.".to_owned(),
+            "notifications.instances.send" => "Send validated invocation input through an enabled workspace instance and return the committed or provider-confirmed result.".to_owned(),
+            "notifications.messages.list" => "Page only the authenticated recipient inbox in the current workspace and return its unread count.".to_owned(),
+            "notifications.messages.unread_count" => "Count only unread messages owned by the authenticated recipient in the current workspace.".to_owned(),
+            "notifications.messages.read" => "Mark only the authenticated recipient message read, preserving the original read timestamp on repeated calls.".to_owned(),
+            "notifications.messages.read_all" => "Mark all unread messages of the authenticated recipient in the current workspace read.".to_owned(),
+            "notifications.events.subscribe" => "Open an authenticated recipient-scoped protocol stream carrying only inbox refresh signals; reconnect readers load database facts.".to_owned(),
+
             "files.access_links.create" => "Check the current caller file record read permission and create an ephemeral, time-limited link usable without login. Does not modify the stored stable access path.".to_owned(),
             "get_current_run_context" => "Resolve client-declared MCP thread and turn metadata against readable log applications in the current workspace. Return explicit missing, invalid, conflicting, absent or ambiguous states without guessing a run identity.".to_owned(),
             "applications.runtime.record.conversation.messages.list" | "list_record_conversation_messages" => "Read the latest five main-session turns initially. Normalize child anchors to their canonical main conversation. Page older or newer main turns with before/after cursors bound to this authorized conversation; child and foreign cursors are rejected. Return projected system/user/final messages and each real record trajectory locator. Subagent events are available through the canonical conversation timeline with their original provenance.".to_owned(),
@@ -1298,6 +1325,7 @@ mod tests {
             .merge(crate::routes::user_api_keys::route_assembly())
             .merge(crate::routes::workspace::route_assembly())
             .merge(crate::routes::members::route_assembly())
+            .merge(crate::routes::notifications::route_assembly())
             .merge(crate::routes::organization::route_assembly())
             .merge(crate::routes::model_definitions::route_assembly())
             .merge(crate::routes::model_providers::route_assembly())

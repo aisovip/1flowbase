@@ -36,6 +36,7 @@ pub const SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID: &str = "system.memory-observation";
 pub const SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.memory-observation";
+pub const SYSTEM_NOTIFICATIONS_SETTINGS_FEATURE_ID: &str = "system.notifications";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_ID: &str = "system.members";
 pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.members";
@@ -114,6 +115,17 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id:SYSTEM_NOTIFICATIONS_SETTINGS_FEATURE_ID.to_owned(),
+            owner:SettingsFeatureOwner{kind:SettingsFeatureOwnerKind::Core,owner_id:"boot-core".to_owned(),version:env!("CARGO_PKG_VERSION").to_owned()},
+            lifecycle:SettingsFeatureLifecycle::Active,
+            console_surface:SettingsFeatureConsoleSurface{route_id:"settings.notifications".to_owned(),surface_key:"notifications".to_owned(),path:"/settings/notifications".to_owned(),label_key:"auto.notifications".to_owned(),description_key:"console.policy_groups.settings.system.notifications.description".to_owned(),order:510},
+            api_routes:settings_api_routes(&[
+                ("GET","/api/console/notifications/instances"),("POST","/api/console/notifications/instances"),
+                ("GET","/api/console/notifications/instances/{instance_id}"),("PATCH","/api/console/notifications/instances/{instance_id}"),
+                ("DELETE","/api/console/notifications/instances/{instance_id}"),("POST","/api/console/notifications/instances/{instance_id}/send"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_BACKUPS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {

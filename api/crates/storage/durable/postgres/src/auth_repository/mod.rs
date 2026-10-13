@@ -590,14 +590,18 @@ impl BootstrapRepository for PgControlPlaneStore {
         } else {
             Uuid::now_v7()
         };
+        let mut tx = self.pool().begin().await?;
         sqlx::query(
             "insert into workspaces (id, tenant_id, name, logo_url, introduction) values ($1, $2, $3, null, '')",
         )
         .bind(id)
         .bind(tenant_id)
         .bind(workspace_name)
-        .execute(self.pool())
+        .execute(&mut *tx)
         .await?;
+        sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,display_name,is_builtin) VALUES ($1,$2,'system','System notification',true)")
+            .bind(Uuid::now_v7()).bind(id).execute(&mut *tx).await?;
+        tx.commit().await?;
 
         Ok(control_plane_contracts::ports::WorkspaceBootstrapResult {
             workspace: PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
@@ -664,6 +668,8 @@ impl BootstrapRepository for PgControlPlaneStore {
             .bind(workspace_name)
             .execute(&mut *transaction)
             .await?;
+            sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,display_name,is_builtin) VALUES ($1,$2,'system','System notification',true)")
+                .bind(Uuid::now_v7()).bind(id).execute(&mut *transaction).await?;
             (
                 PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
                     id,

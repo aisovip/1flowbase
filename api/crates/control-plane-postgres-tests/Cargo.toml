@@ -90,3 +90,7 @@ storage-ephemeral = { path = "../storage/ephemeral" }
 time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+
+[[test]]
+name = "notifications_integration"
+path = "tests/notifications/mod.rs"
