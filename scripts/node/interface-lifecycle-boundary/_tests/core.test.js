@@ -160,3 +160,32 @@ test('rejects client streams which bypass the typed kernel or discard the princi
     }
   }
 });
+
+
+test('notification refresh authentication requires its exact Protocol Control catalog declaration', () => {
+  const productionRoot = path.resolve(__dirname, '../../../..');
+  const route = 'api/apps/api-server/src/routes/notifications/events.rs';
+  const catalog = fs.readFileSync(path.join(productionRoot, sources[11]), 'utf8');
+  const control = fs.readFileSync(path.join(productionRoot, route), 'utf8');
+  for (const classified of [true, false]) {
+    const declaration = classified ? catalog : catalog.replace(
+      'Self::NotificationEvents => ExternalEndpointContribution::protocol_control_http(',
+      'Self::NotificationEvents => ExternalEndpointContribution::business_http('
+    );
+    if (!classified) assert.notEqual(declaration, catalog);
+    const root = fixture({ [sources[11]]: declaration });
+    try {
+      fs.mkdirSync(path.dirname(path.join(root, route)), { recursive: true });
+      fs.writeFileSync(path.join(root, route), control);
+      const violations = inspectInterfaceLifecycleBoundary(root);
+      if (classified) assert.deepEqual(violations, []);
+      else assert.ok(violations.some((item) => item.includes(`${route} retains a direct route authentication owner`)));
+      const businessRoute = 'api/apps/api-server/src/routes/notifications/business.rs';
+      fs.writeFileSync(path.join(root, businessRoute), 'require_session(&state);');
+      assert.ok(inspectInterfaceLifecycleBoundary(root).some((item) =>
+        item.includes(`${businessRoute} retains a direct route authentication owner`)));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});

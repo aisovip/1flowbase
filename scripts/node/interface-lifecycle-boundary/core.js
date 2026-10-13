@@ -174,9 +174,15 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
         violations.push(`${relativePath} erases the global ApiState behind a narrow Port trait`);
       }
     }
+    // This signal-only transport is a declared Protocol Control, not a business
+    // invocation. The exact catalog declaration must remain present; a pathname
+    // or comment alone never exempts direct authentication in ordinary routes.
+    const notificationProtocolControl = relativePath === 'api/apps/api-server/src/routes/notifications/events.rs'
+      && /Self::NotificationEvents\s*=>\s*ExternalEndpointContribution::protocol_control_http\(\s*"notification-refresh-signal",\s*"GET",\s*"\/api\/console\/notifications\/events",\s*\)/u.test(endpointCatalog);
     if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
       && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
-      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs') {
+      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs'
+      && !notificationProtocolControl) {
       violations.push(`${relativePath} retains a direct route authentication owner`);
     }
   }

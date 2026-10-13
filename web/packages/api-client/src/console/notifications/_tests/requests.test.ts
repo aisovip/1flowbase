@@ -64,41 +64,33 @@ test('uses canonical fields, envelope, credential and csrf transport', async () 
 test('refresh signals and every open reread persistent state; close releases source', () => {
   const refresh = vi.fn();
   const connection = vi.fn();
-  let source: {
+  const sources: TestEventSource[] = [];
+  class TestEventSource {
     onopen?: () => void;
     onerror?: () => void;
-    addEventListener: ReturnType<typeof vi.fn>;
-    close: ReturnType<typeof vi.fn>;
-  };
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      onopen?: () => void;
-      onerror?: () => void;
-      addEventListener = vi.fn();
-      close = vi.fn();
-      constructor(url: string, options: unknown) {
-        expect(url).toBe(
-          'https://example.com/api/console/notifications/events'
-        );
-        expect(options).toEqual({ withCredentials: true });
-        source = this;
-      }
+    addEventListener = vi.fn();
+    close = vi.fn();
+    constructor(url: string, options: unknown) {
+      expect(url).toBe('https://example.com/api/console/notifications/events');
+      expect(options).toEqual({ withCredentials: true });
+      sources.push(this);
     }
-  );
+  }
+  vi.stubGlobal('EventSource', TestEventSource);
   const close = subscribeNotificationChanges(
     refresh,
     connection,
     'https://example.com'
   );
-  source!.onopen?.();
-  source!.onerror?.();
-  source!.onopen?.();
+  const source = sources[0]!;
+  source.onopen?.();
+  source.onerror?.();
+  source.onopen?.();
   expect(refresh).toHaveBeenCalledTimes(2);
-  expect(source!.addEventListener).toHaveBeenCalledWith(
+  expect(source.addEventListener).toHaveBeenCalledWith(
     'notification.changed',
     refresh
   );
   close();
-  expect(source!.close).toHaveBeenCalledOnce();
+  expect(source.close).toHaveBeenCalledOnce();
 });

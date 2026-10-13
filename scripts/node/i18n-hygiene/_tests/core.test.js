@@ -191,13 +191,14 @@ test('collectI18nHygieneFindings fails repeated canonical translation vectors', 
   );
 
   const findings = collectI18nHygieneFindings({ repoRoot });
-  const duplicateValue = findings.find(
-    (finding) => finding.rule === 'duplicate-value-in-owner'
-  );
-
-  assert.equal(duplicateValue?.severity, 'error');
-  assert.equal(duplicateValue?.value, '保存');
-  assert.deepEqual(duplicateValue?.keys, ['actions.save', 'actions.submit']);
+  const duplicates = findings.filter((finding) => finding.rule === 'duplicate-value-in-owner');
+  assert.equal(duplicates.length, 2);
+  for (const [locale, value] of [['en_US', 'Save'], ['zh_Hans', '保存']]) {
+    const duplicate = duplicates.find((finding) => finding.locale === locale);
+    assert.equal(duplicate?.severity, 'error', locale);
+    assert.equal(duplicate?.value, value, locale);
+    assert.deepEqual(duplicate?.keys, ['actions.save', 'actions.submit'], locale);
+  }
 });
 
 test('collectI18nHygieneFindings reports distinct canonical translations as a collision warning', () => {

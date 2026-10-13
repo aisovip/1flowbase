@@ -150,15 +150,15 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         .restore(reader(full_bytes), "source", "target", true)
         .await
         .unwrap();
-    let (content, read_at): (String, Option<chrono::DateTime<chrono::Utc>>) =
-        sqlx::query_as("select content,read_at from system_notifications where id=$1")
+    let (content, unread): (String, bool) =
+        sqlx::query_as("select content,read_at IS NULL from system_notifications where id=$1")
             .bind(message)
             .fetch_one(&db)
             .await
             .unwrap();
     assert_eq!(content, "Original inbox");
-    assert_eq!(
-        read_at, None,
+    assert!(
+        unread,
         "data restore must restore the unread acknowledgement state"
     );
 }

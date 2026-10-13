@@ -389,3 +389,7 @@ OpenAI / Anthropic 兼容流式 route 通过 `compatibility_interface::invoke_cl
 ### Provider selection and callback presentation
 
 宿主的 `LlmInputSelection` 是协议投影所需的 durable host fact：调用 Provider 前先等待其提交，失败则阻止 Provider 输出。实时展示副本在提交后发送，禁止再次进入异步持久化。工具回调可能在 WaitingCallback 展示流关闭后继续；旧流的关闭不取消业务，也不阻止后续 selection 和最终答案持久化，不为投影重新打开旧流。
+
+### 通知刷新协议控制的源码证据
+
+`GET /api/console/notifications/events` 只传递 inbox-refresh signal，业务列表和已读动作仍通过各自 Canonical Interface。源码边界门禁仅在正式 Endpoint Catalog 的 `NotificationEvents` 仍精确声明 `notification-refresh-signal` Protocol Control 时接受该 transport 的 session owner；移除或改变分类、在普通业务 route 直接认证均由负例拒绝。该源码证据不替代接收人隔离、实际订阅或业务调用的运行测试。
