@@ -24,6 +24,7 @@ pub enum ManagedContributionPayload {
     JsDependency { alias: String },
     ProviderDistributionRule { rule_id: String },
     DataModels,
+    NotificationType { type_code: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -158,6 +159,15 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
         rule.validate()
             .map_err(|error| invalid(&error.to_string()))?;
     }
+    let mut notification_types = BTreeSet::new();
+    for descriptor in &manifest.notification_types {
+        descriptor
+            .validate_plugin_namespace(&manifest.publisher_namespace, manifest.plugin_code()?)
+            .map_err(|error| invalid(&error.to_string()))?;
+        if !notification_types.insert(&descriptor.type_code) {
+            return Err(invalid("duplicate notification type_code"));
+        }
+    }
     let mut contributions = BTreeSet::new();
     for contribution in &module.contributions {
         if contribution.contributor_module_id != module.module_id
@@ -215,6 +225,11 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
     if !manifest.data_models.is_empty() {
         payloads.insert(ManagedContributionPayload::DataModels);
     }
+    for descriptor in &manifest.notification_types {
+        payloads.insert(ManagedContributionPayload::NotificationType {
+            type_code: descriptor.type_code.clone(),
+        });
+    }
     let mut bound_payloads = BTreeSet::new();
     let mut bindings = BTreeSet::new();
     for binding in &managed.execution_bindings {
@@ -223,6 +238,20 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
         {
             return Err(invalid(
                 "managed execution binding must reference a unique declared contribution_id",
+            ));
+        }
+        let is_notification = module.contributions.iter().any(|item| {
+            item.contribution_id == binding.contribution_id
+                && item.point_id.as_str() == extension_contracts::NOTIFICATION_POINT
+        });
+        if is_notification
+            && !matches!(
+                binding.payload,
+                Some(ManagedContributionPayload::NotificationType { .. })
+            )
+        {
+            return Err(invalid(
+                "notification.send contribution requires a notification_type payload",
             ));
         }
         if binding.interface_protocol.is_some() {
@@ -262,6 +291,34 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
                 return Err(invalid(
                     "managed payload binding must reference a unique existing payload",
                 ));
+            }
+            if let ManagedContributionPayload::NotificationType { type_code } = payload {
+                let descriptor = manifest
+                    .notification_types
+                    .iter()
+                    .find(|descriptor| &descriptor.type_code == type_code)
+                    .ok_or_else(|| invalid("missing notification type payload"))?;
+                let contribution = module
+                    .contributions
+                    .iter()
+                    .find(|item| item.contribution_id == binding.contribution_id)
+                    .ok_or_else(|| invalid("missing notification contribution"))?;
+                if descriptor.contribution_id != binding.contribution_id
+                    || contribution.point_id.as_str() != extension_contracts::NOTIFICATION_POINT
+                    || contribution.contract_version.as_str()
+                        != extension_contracts::NOTIFICATION_CONTRACT_V1
+                    || contribution.mode != extension_contracts::ContributionMode::Append
+                    || !contribution.required_permissions.iter().any(|permission| {
+                        permission.as_str() == extension_contracts::NOTIFICATION_SEND_PERMISSION
+                    })
+                    || binding.execution_mode != PluginExecutionMode::ProcessPerCall
+                    || !manifest
+                        .binding_targets
+                        .iter()
+                        .any(|target| target == "workspace")
+                {
+                    return Err(invalid("notification type requires its workspace notification.send process_per_call contribution"));
+                }
             }
             if let ManagedContributionPayload::ProviderDistributionRule { rule_id } = payload {
                 let rule = manifest
@@ -303,7 +360,11 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             "stdio_json"
         };
         if (binding.runtime.protocol != expected_protocol
-            && !(manifest.managed_service.is_some()
+            && !((manifest.managed_service.is_some()
+                || matches!(
+                    binding.payload,
+                    Some(ManagedContributionPayload::NotificationType { .. })
+                ))
                 && binding.execution_mode == PluginExecutionMode::ProcessPerCall
                 && binding.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1))
             || (native && module.module_kind != ModuleKind::TrustedHost)

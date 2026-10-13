@@ -17,3 +17,5 @@ mod plugin_credential_contract_tests;
 mod provider_external_context_tests;
 
 mod multiplex_duplex_tests;
+
+mod notification_contract_tests;

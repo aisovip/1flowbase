@@ -22,3 +22,6 @@ pub use lifecycle_subscriber_plan::*;
 
 mod managed_interface_plan;
 pub use managed_interface_plan::*;
+
+mod notification_plan;
+pub use notification_plan::*;
