@@ -126,7 +126,10 @@ export function NotificationField({ adapter }: SchemaFieldRendererProps) {
                 key={`${instance_id}:${field.key}`}
                 field={field}
                 valueType={valueType}
-                expression={entry ? getNamedBindingExpression(entry) : null}
+                expression={
+                  entry?.value ??
+                  (entry ? getNamedBindingExpression(entry) : null)
+                }
                 options={options ?? []}
                 onClear={() => updateEntry(field.key, valueType)}
                 onChange={(expression) =>

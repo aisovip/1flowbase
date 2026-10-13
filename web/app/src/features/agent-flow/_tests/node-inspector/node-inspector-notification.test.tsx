@@ -369,8 +369,15 @@ describe('notification inspector AC-002/005', () => {
         selector: []
       })
     );
-    // Cascader exposes its labelled trigger; it is not the Select mode control.
-    const selector = await screen.findByLabelText('消息标题');
+    // An empty canonical selector is an editable authoring draft, so the
+    // chosen mode must remain visible until the user picks its actual path.
+    const selector = await screen.findByRole('combobox', { name: '消息标题' });
+    expect(selector.closest('.ant-cascader')).not.toBeNull();
+    expect(
+      screen
+        .getByRole('combobox', { name: '消息标题输入方式' })
+        .closest('.ant-select')
+    ).toHaveTextContent('引用变量');
     fireEvent.mouseDown(selector);
     fireEvent.click(await screen.findByText('系统变量'));
     fireEvent.click(await screen.findByText('sys.conversation_id'));
