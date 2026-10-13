@@ -89,7 +89,11 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     }
     let instances = get_json(&app, "/api/console/notifications/instances", &root_cookie).await;
     assert_eq!(instances["data"].as_array().unwrap().len(), 1);
-    for csrf in ["", "incorrect-csrf"] {
+    let csrf_rejections = [
+        ("", StatusCode::UNAUTHORIZED),
+        ("incorrect-csrf", StatusCode::FORBIDDEN),
+    ];
+    for (csrf, expected_status) in csrf_rejections {
         let (status, denied) = request(
             &app,
             &root_cookie,
@@ -99,7 +103,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
             json!({"type_code":"system","installation_id":null,"display_name":"CSRF rejected","config_json":{}}),
         )
         .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        assert_eq!(status, expected_status, "{denied}");
     }
     assert_eq!(
         get_json(&app, "/api/console/notifications/instances", &root_cookie).await["data"]
@@ -113,7 +117,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     let id = created["data"]["id"].as_str().unwrap();
     let instance_path = format!("/api/console/notifications/instances/{id}");
     let send_path = format!("{instance_path}/send");
-    for csrf in ["", "incorrect-csrf"] {
+    for (csrf, expected_status) in csrf_rejections {
         for (method, body) in [
             (
                 "PATCH",
@@ -123,7 +127,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
         ] {
             let (status, denied) =
                 request(&app, &root_cookie, csrf, method, &instance_path, body).await;
-            assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+            assert_eq!(status, expected_status, "{denied}");
         }
     }
     let unchanged = get_json(&app, &instance_path, &root_cookie).await;
@@ -140,10 +144,10 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
-    for csrf in ["", "incorrect-csrf"] {
+    for (csrf, expected_status) in csrf_rejections {
         let (status, denied) =
             request(&app, &root_cookie, csrf, "POST", &send_path, input.clone()).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        assert_eq!(status, expected_status, "{denied}");
     }
     let (status, sent) = request(&app, &root_cookie, &root_csrf, "POST", &send_path, input).await;
     assert_eq!(status, StatusCode::OK, "{sent}");
@@ -163,10 +167,10 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
         "/api/console/notifications/messages/{}/read",
         first["data"]["items"][0]["id"].as_str().unwrap()
     );
-    for csrf in ["", "incorrect-csrf"] {
+    for (csrf, expected_status) in csrf_rejections {
         let (status, denied) =
             request(&app, &first_cookie, csrf, "POST", &read_path, Value::Null).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        assert_eq!(status, expected_status, "{denied}");
         let (status, denied) = request(
             &app,
             &second_cookie,
@@ -176,7 +180,7 @@ async fn notification_http_crud_send_inbox_and_operations_are_authorized() {
             Value::Null,
         )
         .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        assert_eq!(status, expected_status, "{denied}");
     }
     assert!(
         get_json(&app, "/api/console/notifications/messages", &first_cookie).await["data"]["items"]
