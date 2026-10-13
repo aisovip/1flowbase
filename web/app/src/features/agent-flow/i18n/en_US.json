@@ -819,7 +819,19 @@
     "variable_group_candidate_type_mismatch": "Select a declared {{value1}} output. The existing candidate is preserved until you replace it.",
     "variable_group_outputs_out_of_sync": "Variable group outputs are out of sync",
     "variable_group_outputs_must_match_groups": "Materialized outputs must match variable groups in key, type, and order.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "notification_node": "Send notification",
+    "notification_description": "Send through a notification instance and expose the result to downstream nodes.",
+    "notification_instance": "Notification instance",
+    "notification_missing_instance": "This notification instance no longer exists. Select another instance.",
+    "notification_instance_disabled": "Notification instance disabled",
+    "notification_instance_unavailable": "Notification instance unavailable",
+    "notification_options_failed": "Could not load notification instances and types. Try again later.",
+    "notification_invalid_constant": "Enter a JSON value matching the field type.",
+    "notification_binding_mode": "Input mode for {{field}}",
+    "notification_variable_source": "Variable reference",
+    "notification_expression": "Numeric expression",
+    "notification_input_unset": "This input is not configured"
   },
   "client_trajectory": {
     "client": "Client requests",

@@ -36,6 +36,7 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "code",
     "template_transform",
     "http_request",
+    "notification",
     "tool",
     "tool_result",
     "data_model_list",

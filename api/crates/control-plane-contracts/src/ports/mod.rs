@@ -69,3 +69,6 @@ pub use organization::*;
 
 pub mod plugin_credential;
 pub use plugin_credential::*;
+
+pub mod notifications;
+pub use notifications::*;

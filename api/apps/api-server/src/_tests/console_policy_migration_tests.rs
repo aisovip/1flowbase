@@ -699,6 +699,54 @@ fn ac_010_new_i18n_catalog_operations_are_default_disabled() {
 }
 
 #[test]
+fn notification_operations_preserve_authenticated_access_without_legacy_management_grants() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory())
+        .expect("the production registry must compile every notification migration disposition");
+    let management_operations = [
+        "notifications.instances.create",
+        "notifications.instances.delete",
+        "notifications.instances.get",
+        "notifications.instances.list",
+        "notifications.instances.send",
+        "notifications.instances.update",
+    ];
+    for operation_id in management_operations {
+        let disposition = migration.disposition(operation_id).unwrap();
+        assert_eq!(disposition.policy_group_id, "system.notifications");
+        assert!(disposition.is_default_disabled_new_operation());
+    }
+
+    for operation_id in [
+        "notifications.events.subscribe",
+        "notifications.messages.list",
+        "notifications.messages.read",
+        "notifications.messages.read_all",
+        "notifications.messages.unread_count",
+        "notifications.types.list",
+    ] {
+        let disposition = migration.disposition(operation_id).unwrap();
+        assert_eq!(disposition.policy_group_id, "core.authenticated");
+        assert_eq!(disposition.authorization, "authenticated");
+        assert!(matches!(
+            disposition.disposition,
+            crate::console_policy_migration::ConsolePolicyMigrationOperationDispositionKind::NoProjection { .. }
+        ));
+    }
+
+    for mapping in migration.legacy_mappings() {
+        if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
+            &mapping.projection
+        {
+            assert!(operations.iter().all(|operation| {
+                !management_operations.contains(&operation.operation_id().as_str())
+            }));
+        }
+    }
+}
+
+#[test]
 fn ac_010_group_or_operation_mapping_drift_hard_stops() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();

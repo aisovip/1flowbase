@@ -1,3 +1,4 @@
+import BellOutlined from '@ant-design/icons/es/icons/BellOutlined';
 import { createElement, type CSSProperties, type ReactNode } from 'react';
 
 import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
@@ -54,6 +55,7 @@ const NODE_TYPE_ICONS: Record<string, ReactNode> = {
   question_classifier: createElement(QuestionCircleOutlined),
   if_else: createElement(SwapOutlined),
   http_request: createElement(ApiOutlined),
+  notification: createElement(BellOutlined),
   tools: createElement(ToolOutlined),
   tool: createElement(ToolOutlined),
   tool_result: createElement(MessageOutlined),

@@ -19,6 +19,7 @@ import { getRegisteredNodeDefinition } from '../lib/node-definitions/registry';
 import { i18nText } from '../../../shared/i18n/text';
 
 const FIELD_RENDERER_BY_EDITOR: Record<NodeEditorKind, string> = {
+  notification: 'notification',
   text: 'text',
   static_select: 'static_select',
   data_model: 'data_model',
@@ -130,7 +131,10 @@ function createContractSectionBlock(
   };
 }
 
-const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>(['code']);
+const EDITABLE_OUTPUT_CONTRACT_NODE_TYPES = new Set<FlowNodeType>([
+  'code',
+  'notification'
+]);
 
 function isEditableOutputContractNodeType(nodeType: FlowNodeType) {
   return (

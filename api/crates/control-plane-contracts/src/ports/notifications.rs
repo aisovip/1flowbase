@@ -1,0 +1,83 @@
+use async_trait::async_trait;
+use serde_json::Value;
+use uuid::Uuid;
+
+pub struct SaveNotificationInstanceInput {
+    pub record: domain::NotificationInstanceRecord,
+    pub secret_config_json: Value,
+    pub master_key: String,
+    pub create: bool,
+}
+// Credentials deliberately have no Debug implementation.
+
+#[derive(Debug, Clone, Default)]
+pub struct NotificationMessageListInput {
+    pub cursor: Option<String>,
+    pub page_size: Option<u32>,
+    pub unread_only: bool,
+}
+
+#[async_trait]
+pub trait NotificationRepository: Send + Sync {
+    async fn bootstrap_system_notification_instances(&self) -> anyhow::Result<()>;
+    async fn list_notification_instances(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::NotificationInstanceRecord>>;
+    async fn get_notification_instance(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> anyhow::Result<Option<domain::NotificationInstanceRecord>>;
+    async fn save_notification_instance(
+        &self,
+        input: SaveNotificationInstanceInput,
+    ) -> anyhow::Result<domain::NotificationInstanceRecord>;
+    async fn delete_notification_instance(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> anyhow::Result<bool>;
+    async fn resolve_notification_secret_config(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        master_key: &str,
+    ) -> anyhow::Result<Value>;
+    async fn notification_recipient_options(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::NotificationRecipientOption>>;
+    /// The adapter commits one row per recipient in one transaction, checking membership and
+    /// locking the instance so disable/delete cannot race a successful station send.
+    async fn commit_system_notifications(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        recipients: &[Uuid],
+        title: &str,
+        content: &str,
+    ) -> anyhow::Result<Vec<domain::SystemNotificationRecord>>;
+    async fn list_system_notifications(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        input: NotificationMessageListInput,
+    ) -> anyhow::Result<domain::NotificationMessagePage>;
+    async fn system_notification_unread_count(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+    ) -> anyhow::Result<i64>;
+    async fn mark_system_notification_read(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> anyhow::Result<Option<domain::SystemNotificationRecord>>;
+    async fn mark_all_system_notifications_read(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+    ) -> anyhow::Result<u64>;
+}

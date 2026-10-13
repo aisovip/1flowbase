@@ -1047,7 +1047,8 @@
     "application_templates": "Application templates",
     "file_data_model_template_description": "Upload files and keep searchable file metadata.",
     "follow_default_storage": "Follow default storage",
-    "follow_default_storage_description": "Leave empty to use the current default storage for each upload. Storage changes only affect new uploads; existing files retain their original storage."
+    "follow_default_storage_description": "Leave empty to use the current default storage for each upload. Storage changes only affect new uploads; existing files retain their original storage.",
+    "notifications": "Notification management"
   },
   "organization": {
     "title": "Organization",

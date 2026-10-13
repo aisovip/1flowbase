@@ -290,6 +290,16 @@ async fn test_state_with_runtime_profile_state(
         .expect("test system backup runtime should assemble"),
     ));
 
+    let notification_events =
+        Arc::new(crate::routes::notifications::events::NotificationEventHub::default());
+    let notification_service = Arc::new(
+        control_plane::notifications::NotificationService::new(
+            store.clone(),
+            config.provider_secret_master_key.clone(),
+        )
+        .with_events(notification_events.clone()),
+    );
+    notification_service.bootstrap().await.unwrap();
     let state = Arc::new(ApiState {
         test_resources: Some(Arc::new(crate::app_state::TestResources::new(
             database,
@@ -319,6 +329,8 @@ async fn test_state_with_runtime_profile_state(
             crate::runtime_activity::ApplicationRuntimeActivityTracker::default(),
         ),
         assistant_conversation_events: Default::default(),
+        notification_service,
+        notification_events,
         assistant_executions: Default::default(),
         assistant_client_sessions: Default::default(),
         api_runtime_profile,

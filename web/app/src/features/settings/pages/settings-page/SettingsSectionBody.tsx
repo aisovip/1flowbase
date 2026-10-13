@@ -9,6 +9,12 @@ import type { SettingsSectionKey } from '../../lib/settings-sections';
 import type { SettingsExtensionCenterCategory } from '../../api/extensions';
 import type { NetworkCenterPage } from '../network-center/NetworkCenterSection';
 
+const NotificationsPage = lazy(() =>
+  import('../notifications/NotificationsPage').then((module) => ({
+    default: module.NotificationsPage
+  }))
+);
+
 const MemberSettingsTabs = lazy(() =>
   import('./MemberSettingsTabs').then((module) => ({
     default: module.MemberSettingsTabs
@@ -145,6 +151,12 @@ export function SettingsSectionBody({
   const navigate = useNavigate();
 
   switch (sectionKey) {
+    case 'notifications':
+      return (
+        <SettingsSectionBoundary>
+          <NotificationsPage />
+        </SettingsSectionBoundary>
+      );
     case 'applications':
       return (
         <SettingsSectionBoundary>

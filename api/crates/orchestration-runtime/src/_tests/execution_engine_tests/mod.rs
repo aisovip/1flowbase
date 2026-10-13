@@ -1264,6 +1264,7 @@ mod http_request;
 mod human_and_tool_resume;
 mod llm_context;
 mod llm_output;
+mod notification;
 mod plugin_nodes;
 mod sql;
 mod transport_retry;

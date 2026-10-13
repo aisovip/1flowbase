@@ -12,6 +12,7 @@ export type InspectorSectionKey =
   | 'advanced';
 
 export type NodeEditorKind =
+  | 'notification'
   | 'text'
   | 'static_select'
   | 'data_model'

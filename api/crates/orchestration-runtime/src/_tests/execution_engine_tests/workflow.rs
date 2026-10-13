@@ -1,6 +1,6 @@
 use super::*;
 
-fn workflow_plan() -> CompiledPlan {
+pub(super) fn workflow_plan() -> CompiledPlan {
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "node-workflow-start".to_string(),

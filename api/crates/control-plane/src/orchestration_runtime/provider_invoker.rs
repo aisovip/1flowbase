@@ -2340,6 +2340,52 @@ where
         )
     }
 
+    async fn invoke_notification_node(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+        resolved_inputs: &serde_json::Map<String, Value>,
+    ) -> Result<orchestration_runtime::execution_engine::NativeNotificationInvocationOutput> {
+        let context = self
+            .flow_execution_context
+            .as_ref()
+            .ok_or_else(|| anyhow!("notification flow execution context is not configured"))?;
+        let sender = context
+            .notification_sender
+            .as_ref()
+            .ok_or_else(|| anyhow!("notification sender is not configured"))?;
+        let instance_id = node
+            .config
+            .get("instance_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("notification node is missing instance_id"))?;
+        let instance_id = Uuid::parse_str(instance_id)?;
+        let input = resolved_inputs
+            .get("input")
+            .filter(|input| input.is_object())
+            .ok_or_else(|| anyhow!("notification bindings.input must resolve to an object"))?;
+        match sender
+            .send(&context.data_model.actor, instance_id, input.clone())
+            .await
+        {
+            Ok(result) => Ok(
+                orchestration_runtime::execution_engine::NativeNotificationInvocationOutput {
+                    output_payload: serde_json::to_value(result)?,
+                    error_payload: None,
+                },
+            ),
+            Err(error) => Ok(
+                orchestration_runtime::execution_engine::NativeNotificationInvocationOutput {
+                    output_payload: json!({}),
+                    error_payload: Some(json!({
+                        "kind": "notification_send_failed",
+                        "message": error.to_string(),
+                        "retryable": false,
+                    })),
+                },
+            ),
+        }
+    }
+
     async fn invoke_native_sql_node(
         &self,
         node: &orchestration_runtime::compiled_plan::CompiledNode,

@@ -355,6 +355,7 @@ async fn invoke_with_metadata(
         api_node_id: Some("local:test".into()),
         flow_run_id: Some(flow_run_id),
         flow_execution_context: Some(std::sync::Arc::new(RuntimeFlowExecutionContext {
+            notification_sender: None,
             user_account: include_account.then(|| "receipt-user".into()),
             require_provider_usage_for_billing: false,
             active_node: std::sync::Mutex::new(None),

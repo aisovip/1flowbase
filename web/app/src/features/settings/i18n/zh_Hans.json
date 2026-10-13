@@ -1047,7 +1047,8 @@
     "application_templates": "应用模板",
     "file_data_model_template_description": "上传文件并保存可检索的文件信息。",
     "follow_default_storage": "跟随默认存储",
-    "follow_default_storage_description": "留空时，每次上传使用当前默认存储。更换存储只影响新上传，已有文件保留原存储。"
+    "follow_default_storage_description": "留空时，每次上传使用当前默认存储。更换存储只影响新上传，已有文件保留原存储。",
+    "notifications": "通知管理"
   },
   "organization": {
     "title": "组织",

@@ -16,6 +16,7 @@ pub mod managed_interface_contract;
 pub mod managed_interface_reference;
 pub mod network_egress_contract;
 pub mod network_egress_provider_contract;
+pub mod notification_contract;
 pub mod package_intake_contract;
 pub mod plugin_data_contract;
 pub mod plugin_data_model_contract;
@@ -36,6 +37,7 @@ pub use managed_interface_contract::*;
 pub use managed_interface_reference::*;
 pub use network_egress_contract::*;
 pub use network_egress_provider_contract::*;
+pub use notification_contract::*;
 pub use package_intake_contract::*;
 pub use plugin_data_contract::*;
 pub use plugin_data_model_contract::*;
@@ -51,6 +53,9 @@ pub fn crate_name() -> &'static str {
 
 #[cfg(test)]
 mod _tests;
+
+pub mod capability_contract;
+pub use capability_contract::*;
 
 pub mod plugin_credential_contract;
 pub use plugin_credential_contract::*;

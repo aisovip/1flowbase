@@ -265,6 +265,7 @@ pub(crate) struct ApplicationNativeRunDependencies {
     pub(crate) api_node_id: String,
     pub(crate) provider_install_root: String,
     pub(crate) file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    pub(crate) notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
     pub(crate) task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
     pub(crate) provider_transport_store: Arc<dyn ProviderTransportStore>,
     pub(crate) runtime_event_stream: Arc<dyn RuntimeEventStream>,
@@ -404,6 +405,7 @@ pub(crate) fn native_runtime_service(
         dependencies.provider_install_root.clone(),
     )
     .with_file_storage_registry(dependencies.file_storage_registry.clone())
+    .with_notification_sender(dependencies.notification_sender.clone())
     .with_runtime_internal_tool_invoker(runtime_internal_tool_invoker)
     .with_llm_routing_counter_store(dependencies.cache_store.clone())
     .with_provider_request_log_queue(dependencies.task_queue.clone())

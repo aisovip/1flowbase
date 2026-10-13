@@ -245,6 +245,8 @@ pub struct PluginManifestV1 {
     #[serde(default)]
     pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
     #[serde(default)]
+    pub notification_types: Vec<extension_contracts::NotificationTypeDescriptor>,
+    #[serde(default)]
     pub settings_pages: Vec<crate::PluginSettingsPageManifest>,
     #[serde(default)]
     pub managed: Option<crate::managed_manifest::ManagedManifest>,
@@ -468,6 +470,11 @@ fn validate_plugin_manifest(
     if manifest.manifest_version == 2 {
         return crate::managed_manifest::validate_managed_manifest(manifest);
     }
+    if !manifest.notification_types.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "notification_types requires manifest_version=2",
+        ));
+    }
     if manifest.managed.is_some() {
         return Err(PluginFrameworkError::invalid_provider_package(
             "managed requires manifest_version=2",
@@ -636,11 +643,11 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
 
     if manifest.runtime.protocol == extension_contracts::STDIO_JSON_MULTIPLEX_V1
         && manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
-        && !(manifest.managed_service.is_some()
+        && !((manifest.managed_service.is_some() || !manifest.notification_types.is_empty())
             && manifest.execution_mode == PluginExecutionMode::ProcessPerCall)
     {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "stdio_json_multiplex_v1 currently requires execution_mode=stateful_provider_worker",
+            "stdio_json_multiplex_v1 requires a provider worker, managed service or notification process_per_call binding",
         ));
     }
 

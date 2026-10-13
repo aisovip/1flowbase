@@ -24,6 +24,11 @@ macro_rules! resource {
 /// deliberately contains no translated value: request projections resolve translations from the
 /// dynamic catalog and the resolver falls back to the English key.
 pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
+    settings_feature!("auto.notifications", "Notifications"),
+    settings_feature!(
+        "console.policy_groups.settings.system.notifications.description",
+        "Manage workspace notification instances"
+    ),
     settings_feature!("auto.api_documentation", "API documentation"),
     settings_feature!("auto.translation_catalog_title", "Language catalog"),
     settings_feature!("auto.extension_center", "Extension center"),

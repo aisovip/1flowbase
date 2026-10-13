@@ -169,7 +169,9 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         return crate::ModelFieldKind::FilePreviewUrl;
     }
     match field_code {
-        "meta" | "member_run_ids" => crate::ModelFieldKind::Json,
+        "meta" | "member_run_ids" | "config_json" | "configured_secret_fields" => {
+            crate::ModelFieldKind::Json
+        }
         "is_root" => crate::ModelFieldKind::Boolean,
         "user_input" | "final_output" => crate::ModelFieldKind::Text,
         "email_login_enabled"
@@ -205,7 +207,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "weekday_mask"
         | "priority" => crate::ModelFieldKind::Number,
         "extensions" | "rules" => crate::ModelFieldKind::Json,
-        "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at"
+        "read_at" | "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at"
         | "effective_from" | "effective_to" => crate::ModelFieldKind::Datetime,
         "introduction" | "content" | "reason" => crate::ModelFieldKind::Text,
         "parent_id" | "tree_partition_id" => crate::ModelFieldKind::ManyToOne,
@@ -237,6 +239,8 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
+        "notification_instances" => field_code != "installation_id",
+        "system_notifications" => field_code != "read_at",
         "attachments" => !matches!(field_code, "title" | "extname" | "url" | "preview_url"),
         "users" => !matches!(
             field_code,
@@ -944,6 +948,8 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
     let core_capabilities = DataModelCapabilities::core_builtin();
     let runtime_read_capabilities = DataModelCapabilities::runtime_read_builtin();
     Some(match code {
+        "notification_instances" => crate::notifications::notification_instance_model_contract(),
+        "system_notifications" => crate::notifications::system_notification_model_contract(),
         "attachments" => BuiltinDataModelContract {
             code: "attachments",
             physical_table_name: "attachments",

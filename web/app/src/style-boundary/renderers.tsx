@@ -1,4 +1,8 @@
 import {
+  NotificationInboxStyleBoundaryScene,
+  seedStyleBoundaryNotificationFetch
+} from './scene-fixtures/notifications';
+import {
   CollectorStyleBoundaryScene,
   seedStyleBoundaryCollectorFetch
 } from './scene-fixtures/collector';
@@ -168,6 +172,18 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'component.notification-inbox.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene />;
+  },
+  'component.notification-inbox.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene />;
+  },
   'component.application-collector-catalog.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();
