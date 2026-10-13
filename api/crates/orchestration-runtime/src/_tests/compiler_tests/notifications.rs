@@ -23,4 +23,10 @@ fn notification_compilation_requires_an_instance_uuid() {
         Uuid::nil().to_string()
     );
     assert!(plan.nodes["node-llm"].plugin_runtime.is_none());
+    assert!(!plan
+        .compile_issues
+        .iter()
+        .any(|issue| issue.code == CompileIssueCode::UnsupportedNodeType));
+    ensure_plan_execution_contract(&plan)
+        .expect("authored notification nodes must pass the production execution contract");
 }
