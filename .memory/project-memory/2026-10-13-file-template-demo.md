@@ -2,7 +2,7 @@
 title: "文件模板与真实上传 Demo 已批准范围"
 memory_type: project
 created_at: "2026-10-13 00"
-updated_at: "2026-10-13 10"
+updated_at: "2026-10-13 12"
 decision_policy: verify_before_decision
 status: active
 tags: [files, templates, frontstage]
@@ -20,3 +20,5 @@ tags: [files, templates, frontstage]
 
 
 2026-10-13 10 图片预览扩展：用户明确批准 local_default 原图预览方案并要求直接实现。Root 沿用 #2408 Single Issue；/settings/files 的本地存储增加默认开启的 image_preview_enabled，preview_url 是原生只读计算字段，不创建物理列，由后端在授权后的通用 list/get 和上传响应投影。当前安全栅格图片使用同源相对预览 URL，下载 attachment 与预览 inline 分开；SVG/HTML 不作内联预览。临时公开链接可以返回独立 preview_url，仍以 ephemeral TTL 授权，底座管 URL/权限/失效，驱动读对象。未加入缩略图任务或未来插件预览生成平台。动机是表格直接预览并点击放大，同时保留存储和访问边界；没有指定截止日期。最终部署/提交事实应查 #2408、git 与实际进程，不能从本记忆推断。
+
+2026-10-13 12 用户澄清文件表展示：能够预览则预览，不能预览则在预览列显示可点击 URL，避免空格丢失操作入口；大小由前端做展示换算，保留两位小数，悬浮显示完整 B。Root 沿用 #2408 实现当前图片能力与 URL 回退，包含图片加载失败回退；按 1024 使用 KiB/MiB，不由前端推断未提供的预览业务能力。目的为文件类型不同也有明确访问入口、大小易读同时可查精确值；无指定截止日期。
