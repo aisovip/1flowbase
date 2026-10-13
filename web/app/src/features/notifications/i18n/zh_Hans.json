@@ -23,7 +23,6 @@
   "empty": "暂无消息",
   "read": "已读",
   "unread": "未读",
-  "unread_only": "只看未读",
   "mark_read": "标为已读",
   "read_all": "全部已读",
   "inbox_failed": "消息操作失败，请刷新后重试。",
@@ -65,5 +64,11 @@
   "failure_config_invalid": "通知渠道配置无效",
   "failure_provider_result_unknown": "供应商发送结果未确认",
   "failure_provider_output_invalid": "供应商返回结果无法验证",
-  "failure_reason_unavailable": "失败原因不可用"
+  "failure_reason_unavailable": "失败原因不可用",
+  "all_messages": "全部",
+  "mark_unread": "标为未读",
+  "no_channels": "暂无消息渠道",
+  "channel_messages": "渠道消息",
+  "select_channel": "请选择通知渠道",
+  "back_channels": "返回渠道"
 }

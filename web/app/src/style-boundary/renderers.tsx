@@ -199,6 +199,24 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryNotificationSettingsFetch();
     return <NotificationSettingsStyleBoundaryScene />;
   },
+  'component.notification-inbox.narrow-desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene width={480} />;
+  },
+  'component.notification-channels.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene selectChannel={false} />;
+  },
+  'component.notification-channels.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene selectChannel={false} />;
+  },
   'component.notification-inbox.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();

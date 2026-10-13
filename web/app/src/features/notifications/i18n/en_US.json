@@ -23,7 +23,6 @@
   "empty": "No messages",
   "read": "Read",
   "unread": "Unread",
-  "unread_only": "Unread only",
   "mark_read": "Mark as read",
   "read_all": "Mark all as read",
   "inbox_failed": "The message operation failed. Refresh and try again.",
@@ -65,5 +64,11 @@
   "failure_config_invalid": "The notification channel configuration is invalid",
   "failure_provider_result_unknown": "The provider delivery result is unconfirmed",
   "failure_provider_output_invalid": "The provider response could not be validated",
-  "failure_reason_unavailable": "Failure reason unavailable"
+  "failure_reason_unavailable": "Failure reason unavailable",
+  "all_messages": "All",
+  "mark_unread": "Mark as unread",
+  "no_channels": "No message channels",
+  "channel_messages": "Channel messages",
+  "select_channel": "Select a notification channel",
+  "back_channels": "Back to channels"
 }

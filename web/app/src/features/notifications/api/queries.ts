@@ -3,13 +3,16 @@ import {
   getNotificationUnreadCount,
   listNotificationInstances,
   listNotificationMessages,
+  listNotificationChannels,
   listNotificationSendLogs,
   getNotificationSendLog,
   listNotificationTypes
 } from '@1flowbase/api-client';
 import type {
   NotificationInstanceListInput,
-  NotificationLogListInput
+  NotificationLogListInput,
+  NotificationMessageListInput,
+  NotificationReadStatus
 } from '@1flowbase/api-client';
 export {
   createNotificationInstance,
@@ -17,6 +20,8 @@ export {
   deleteNotificationInstance,
   markNotificationRead,
   markAllNotificationsRead,
+  markNotificationChannelRead,
+  markNotificationUnread,
   subscribeNotificationChanges
 } from '@1flowbase/api-client';
 export const notificationQueryKey = (scope: string) =>
@@ -41,18 +46,23 @@ export const notificationUnreadOptions = (scope: string) =>
   });
 export const notificationMessagesOptions = (
   scope: string,
-  cursor?: string,
-  unread_only = false
+  input: NotificationMessageListInput = {}
 ) =>
   queryOptions({
-    queryKey: [
-      ...notificationQueryKey(scope),
-      'messages',
-      cursor ?? '',
-      unread_only
-    ],
-    queryFn: ({ signal }) =>
-      listNotificationMessages({ cursor, unread_only }, signal)
+    queryKey: [...notificationQueryKey(scope), 'messages', input],
+    queryFn: ({ signal }) => listNotificationMessages(input, signal)
+  });
+export const notificationChannelsOptions = (
+  scope: string,
+  input: {
+    cursor?: string;
+    page_size?: number;
+    read_status?: NotificationReadStatus;
+  } = {}
+) =>
+  queryOptions({
+    queryKey: [...notificationQueryKey(scope), 'channels', input],
+    queryFn: ({ signal }) => listNotificationChannels(input, signal)
   });
 
 export const notificationLogsOptions = (

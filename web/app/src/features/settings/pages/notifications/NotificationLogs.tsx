@@ -8,6 +8,7 @@ import {
   Empty,
   Flex,
   Select,
+  Spin,
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -245,6 +246,7 @@ function NotificationLogDetail({
       rootClassName="notification-log-detail"
     >
       {detail.isError && <Alert type="error" title={t('logs_failed')} />}
+      {detail.isPending && <Spin />}
       {item && (
         <>
           <Descriptions
