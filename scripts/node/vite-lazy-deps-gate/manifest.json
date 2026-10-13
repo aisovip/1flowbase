@@ -289,6 +289,13 @@
         "/settings/network-center/proxy-pools",
         "/settings/network-center/routing-rules"
       ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../notifications/NotificationsPage",
+      "smokePaths": [
+        "/settings/notifications"
+      ]
     }
   ]
 }

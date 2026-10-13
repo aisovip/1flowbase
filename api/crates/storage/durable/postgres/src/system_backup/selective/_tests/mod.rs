@@ -1,5 +1,6 @@
 mod fixes;
 mod native_storage;
+mod notifications;
 mod oauth;
 mod plugin_credentials;
 mod raw_storage;
@@ -631,4 +632,34 @@ async fn selective_data_mode_includes_configuration_and_records_effective_scope(
             "missing {table}"
         );
     }
+}
+
+#[tokio::test]
+async fn notification_backup_keeps_channel_configuration_separate_from_inbox_history() {
+    let (db, _) = fixture().await;
+    let repository = PgSelectiveBackupRepository::new(db);
+    let categories = repository.catalog().await.unwrap();
+    let notification = categories
+        .iter()
+        .find(|category| category.feature_id == "system.notifications")
+        .expect("notification settings owner must be registered");
+    assert_eq!(notification.label_key, "auto.notifications");
+    assert_eq!(
+        notification.structure_tables,
+        vec!["notification_instances".to_owned()]
+    );
+    assert_eq!(
+        notification.data_tables,
+        vec!["system_notifications".to_owned()]
+    );
+    let configuration = capture(&repository, select("notifications", true, false)).await;
+    let preview = repository
+        .preflight(reader(configuration), "source", "target")
+        .await
+        .unwrap();
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
+    assert_eq!(
+        preview.selected_tables,
+        vec!["notification_instances".to_owned()]
+    );
 }

@@ -11,6 +11,7 @@ const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
     "system.applications",
     "system.mcp-management",
     "system.members",
+    "system.notifications",
     "system.ui-management",
     "system.backups",
     "system.roles",

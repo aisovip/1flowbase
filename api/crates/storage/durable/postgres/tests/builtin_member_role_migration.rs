@@ -34,10 +34,15 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
     before_member_role_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "historical-workspace")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "historical-workspace",
+    )
+    .await
+    .unwrap();
     // This schema intentionally predates current catalog synchronization and
     // bootstrap writers. Seed the historical role and its durable bindings
     // through the SQL contract that existed before the migration under test.
@@ -52,7 +57,7 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
         "#,
     )
     .bind(manager_role_id)
-    .bind(workspace.id)
+    .bind(workspace_id)
     .execute(store.pool())
     .await
     .unwrap();
@@ -69,7 +74,7 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
         "insert into role_permissions (id, scope_id, role_id, permission_id) values ($1, $2, $3, $4)",
     )
     .bind(Uuid::now_v7())
-    .bind(workspace.id)
+    .bind(workspace_id)
     .bind(manager_role_id)
     .bind(permission_id)
     .execute(store.pool())
@@ -106,7 +111,7 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
     .bind(Uuid::now_v7())
     .bind(user_id)
     .bind(manager_role_id)
-    .bind(workspace.id)
+    .bind(workspace_id)
     .execute(store.pool())
     .await
     .unwrap();
@@ -119,7 +124,7 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
         "#,
     )
     .bind(Uuid::now_v7())
-    .bind(workspace.id)
+    .bind(workspace_id)
     .bind(manager_role_id)
     .execute(store.pool())
     .await
@@ -138,12 +143,12 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
     .bind(format!("hash-{user_id}"))
     .bind(user_id)
     .bind(tenant.id)
-    .bind(workspace.id)
+    .bind(workspace_id)
     .execute(store.pool())
     .await
     .unwrap();
 
-    (store, workspace.id, manager_role_id, user_id)
+    (store, workspace_id, manager_role_id, user_id)
 }
 
 #[tokio::test]

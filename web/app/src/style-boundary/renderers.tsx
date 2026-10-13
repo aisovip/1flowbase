@@ -345,10 +345,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
       onSubmit={() => undefined}
     />
   ),
-  'page.home': () => {
-    seedStyleBoundaryApplicationFetch();
-    return renderRouterScene('/');
-  },
+  'page.home': () => renderRouterScene('/'),
   'page.frontstage': () => {
     seedStyleBoundaryFrontstageFetch();
 

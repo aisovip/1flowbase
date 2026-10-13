@@ -209,10 +209,21 @@ async fn seed_store_before_main_instance_aggregation(
 
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "1flowbase")
-        .await
-        .unwrap();
+    let workspace = domain::WorkspaceRecord {
+        id: domain::DEFAULT_SCOPE_ID,
+        tenant_id: tenant.id,
+        name: "1flowbase".into(),
+        logo_url: None,
+        introduction: String::new(),
+    };
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace.id,
+        tenant.id,
+        &workspace.name,
+    )
+    .await
+    .unwrap();
     control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();

@@ -111,9 +111,18 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     if (!source.includes('compatibility_interface::invoke_blocking')) {
       violations.push(`${name} blocking route bypasses the compiled invocation plan`);
     }
-    if (!source.includes('compatibility_interface::invoke_stream')) {
+    if (!source.includes('compatibility_interface::invoke_client_stream_with_principal')) {
       violations.push(`${name} stream route bypasses the compiled invocation plan`);
     }
+  }
+  const clientStream = rustFunctionBody(compatibility, 'invoke_client_stream_with_principal');
+  const typedStream = rustFunctionBody(compatibility, 'invoke_typed_stream_with_principal');
+  if (!clientStream.includes('invoke_typed_stream_with_principal(')
+      || !clientStream.includes('project_stream_invocation(')
+      || !typedStream.includes('principal.into_envelope(')
+      || !typedStream.includes('interface_runtime::InterfaceInvocationKernel::new(')
+      || !typedStream.includes('.invoke_server_stream_with_dispatch_target::<')) {
+    violations.push('compatibility client stream must preserve principal, compiled invocation and projection ownership');
   }
   if ((workflowExtension.match(/\.authenticate_invocation(?=\s*::|\s*\()/gu) || []).length !== 1) {
     violations.push('/api/ex must have exactly one frozen Authentication owner');
@@ -165,9 +174,15 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
         violations.push(`${relativePath} erases the global ApiState behind a narrow Port trait`);
       }
     }
+    // This signal-only transport is a declared Protocol Control, not a business
+    // invocation. The exact catalog declaration must remain present; a pathname
+    // or comment alone never exempts direct authentication in ordinary routes.
+    const notificationProtocolControl = relativePath === 'api/apps/api-server/src/routes/notifications/events.rs'
+      && /Self::NotificationEvents\s*=>\s*ExternalEndpointContribution::protocol_control_http\(\s*"notification-refresh-signal",\s*"GET",\s*"\/api\/console\/notifications\/events",\s*\)/u.test(endpointCatalog);
     if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
       && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
-      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs') {
+      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs'
+      && !notificationProtocolControl) {
       violations.push(`${relativePath} retains a direct route authentication owner`);
     }
   }

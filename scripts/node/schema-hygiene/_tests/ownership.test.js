@@ -33,6 +33,14 @@ test('specialized logs and organization tables retain real ownership and lookup 
           ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
       }
     }
+    for (const owner of contract.ownerColumns || []) {
+      rejected({ ...original, columns: original.columns.filter((column) => column.name !== owner) }, 'owned-table-owner-column');
+      rejected({ ...original, columns: original.columns.map((column) => column.name === owner
+        ? { ...column, nullable: true } : column) }, 'owned-table-owner-column');
+    }
+    for (const columnName of contract.requiredColumns || []) {
+      rejected({ ...original, columns: original.columns.filter((column) => column.name !== columnName) }, 'owned-table-required-column');
+    }
     for (const columns of contract.indexes || []) {
       const matches = (index) => columns.every((column, position) => index.columns[position] === column);
       rejected({ ...original,
@@ -78,4 +86,18 @@ test('plugin credential lookup keeps scope and lifecycle checks without requirin
     });
     assert.ok(report.findings.some((item) => item.table === original.name && item.rule === rule), column);
   }
+});
+
+
+test('recipient history retains identities and read acknowledgement without cascading owner deletion', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const inbox = inventory.tables.find((table) => table.name === 'system_notifications');
+  assert.ok(inbox);
+  assert.ok(inbox.columns.find((column) => column.name === 'read_at').nullable);
+  assert.equal(inbox.foreignKeys.some((key) => ['users', 'notification_instances'].includes(key.references.table)), false);
+  assert.deepEqual(config.ownedTableContracts.system_notifications.ownerColumns,
+    ['workspace_id', 'recipient_user_id', 'instance_id']);
+  assert.equal(config.systemScopeTables.includes('system_notifications'), false);
+  assert.equal(config.appendOnlyTables.includes('system_notifications'), false);
 });

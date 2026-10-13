@@ -141,12 +141,12 @@ where
             })
             .await
             .map_err(|error| {
-                if error.is::<runtime_core::runtime_acl::RuntimeAclError>() {
-                    FileImportError::new("file_import_target_permission_denied")
-                } else if matches!(
-                    error.downcast_ref::<crate::errors::ControlPlaneError>(),
-                    Some(crate::errors::ControlPlaneError::PermissionDenied(_))
-                ) {
+                if error.is::<runtime_core::runtime_acl::RuntimeAclError>()
+                    || matches!(
+                        error.downcast_ref::<crate::errors::ControlPlaneError>(),
+                        Some(crate::errors::ControlPlaneError::PermissionDenied(_))
+                    )
+                {
                     FileImportError::new("file_import_target_permission_denied")
                 } else {
                     FileImportError::new("file_import_upload_failed")

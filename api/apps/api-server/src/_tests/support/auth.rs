@@ -234,7 +234,9 @@ async fn test_state_with_runtime_profile_state(
                 ),
             ),
             data_model_template_catalog,
-        ),
+        ).with_computed_field_resolver(Arc::new(
+            control_plane::file_management::FilePreviewProjector::new(store.clone()),
+        )),
     );
     let api_docs = std::sync::Arc::new(
         crate::openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)

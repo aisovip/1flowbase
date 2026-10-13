@@ -444,7 +444,7 @@ node scripts/node/verify-state-protocols.js --skip-live-acp
 - 前端 `zh-CN.json / en-US.json` 与插件 `zh_Hans.json / en_US.json` 文件名规则
 - 同一 `i18n/` owner 下 locale key 对齐
 - JSON 重复 key
-- 同 owner、同 locale 内重复 value 阻塞
+- 同 owner 重复 canonical 翻译向量阻塞；单 locale 同值但完整向量不同以 `locale-value-collision` warning 提示语义复核，不改变用户文案
 - 前端 `i18n/` key 无静态代码引用 warning
 - 可用 `--include-cross-owner-warnings` 额外查看跨 owner 重复 key / value advisory warning
 

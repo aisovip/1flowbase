@@ -47,7 +47,7 @@ fn message(row: PgRow) -> SystemNotificationRecord {
         created_at: row.get("created_at"),
     }
 }
-fn aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
+pub(crate) fn aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
     format!("notification-instance:{workspace}:{id}").into_bytes()
 }
 

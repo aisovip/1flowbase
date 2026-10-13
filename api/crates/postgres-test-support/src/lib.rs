@@ -187,3 +187,21 @@ impl Drop for PostgresTestDatabase {
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+/// Seed only the workspace row contract available in historical schemas.
+/// Current bootstrap also writes newer feature tables, so it is inappropriate
+/// for a fixture intentionally frozen before those migrations.
+pub async fn insert_historical_workspace(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    tenant_id: Uuid,
+    name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("insert into workspaces (id, tenant_id, name) values ($1, $2, $3)")
+        .bind(workspace_id)
+        .bind(tenant_id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

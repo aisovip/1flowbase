@@ -213,10 +213,13 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/notification_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/notification_worker" >> "$GITHUB_ENV"
       - name: Build Host coverage worker fixtures
         if: ${{ inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' || inputs.scope == 'coverage-backend-runtime-extension-host' }}
         shell: bash
@@ -226,10 +229,13 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/notification_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/notification_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           RUSTUP_TOOLCHAIN: ${{ startsWith(inputs.scope, 'repo-backend-clippy-') && '1.98.1' || 'stable' }}
@@ -627,10 +633,13 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/notification_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/notification_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           RUSTUP_TOOLCHAIN: ${{ startsWith(matrix.scope, 'repo-backend-clippy-') && '1.98.1' || 'stable' }}
@@ -836,10 +845,13 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/notification_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/notification_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target
@@ -895,10 +907,13 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example notification_worker
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
           strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/notification_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+          echo "NOTIFICATION_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/notification_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target

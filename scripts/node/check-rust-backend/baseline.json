@@ -50,12 +50,6 @@
     },
     {
       "rule": "no-production-escape",
-      "file": "api/apps/api-server/src/routes/files.rs",
-      "line": 326,
-      "snippet": ".unwrap())"
-    },
-    {
-      "rule": "no-production-escape",
       "file": "api/apps/api-server/src/routes/plugins_and_models/data_sources.rs",
       "line": 175,
       "snippet": "value.format(&Rfc3339).unwrap()"

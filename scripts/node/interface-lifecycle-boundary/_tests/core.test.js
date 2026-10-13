@@ -25,14 +25,21 @@ function fixture(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'interface-lifecycle-boundary-'));
   const defaults = {
     [sources[0]]: 'public_mcp_runtime_invoker_for_actor(&state);',
-    [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
-    [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
+    [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
+    [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
     [sources[3]]: 'boot_snapshot.authenticate_invocation(snapshot, binding, protocol, credential); authenticated.into_envelope(input);',
     [sources[4]]: 'struct InterfaceRegistryContribution { registry: Arc<CompiledInterfaceRegistry> }',
     [sources[5]]: 'struct PublicProvidersAdapter { store: MainDurableStore }',
     [sources[6]]: 'struct PublicSignInAdapter { store: MainDurableStore }',
     [sources[7]]: 'struct NativeAdapter { execution: Arc<dyn NativeExecutionService> }',
-    [sources[8]]: 'struct CompatibilityAdapter { execution: Arc<dyn CompatibilityExecutionService> }',
+    [sources[8]]: `struct CompatibilityAdapter { execution: Arc<dyn CompatibilityExecutionService> }
+      fn invoke_client_stream_with_principal() {
+        invoke_typed_stream_with_principal(); project_stream_invocation();
+      }
+      fn invoke_typed_stream_with_principal() {
+        interface_runtime::InterfaceInvocationKernel::new()
+          .invoke_server_stream_with_dispatch_target::<Input>(principal.into_envelope());
+      }`,
     [sources[9]]: 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }',
     [sources[10]]: 'publish_external_endpoint_catalog(); contribute_openapi_document(); fn console_router_with_assembly() { ExternalRouteAssembly::new(); router.contributions(); router.into_router(); }',
     [sources[11]]: 'fn compile_complete() {} enum Error { UnclassifiedRows }',
@@ -128,4 +135,57 @@ test('root_1998 rejects direct authentication and discarded lineage in productio
   const discarded = production.replaceAll('.into_envelope(', '.discard_attempt(');
   assert.notEqual(discarded, production);
   assert.ok(inspectAuthenticationInvocationBoundary(file, discarded).some(value => value.includes('lineage')));
+});
+
+
+test('accepts the current production principal stream ownership chain', () => {
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(path.resolve(__dirname, '../../../..')), []);
+});
+
+test('rejects client streams which bypass the typed kernel or discard the principal', () => {
+  const productionRoot = path.resolve(__dirname, '../../../..');
+  const production = fs.readFileSync(path.join(productionRoot, sources[8]), 'utf8');
+  for (const [before, after] of [
+    ['invoke_typed_stream_with_principal(Arc::clone(&state)', 'bypass_stream(Arc::clone(&state)'],
+    ['principal.into_envelope(binding_id, authentication_activation, input)', 'unverified_envelope(input)'],
+    ['.invoke_server_stream_with_dispatch_target::<', '.bypass_dispatch::<'],
+  ]) {
+    const mutated = production.replace(before, after);
+    assert.notEqual(mutated, production);
+    const root = fixture({ [sources[8]]: mutated });
+    try {
+      assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('preserve principal')));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+
+test('notification refresh authentication requires its exact Protocol Control catalog declaration', () => {
+  const productionRoot = path.resolve(__dirname, '../../../..');
+  const route = 'api/apps/api-server/src/routes/notifications/events.rs';
+  const catalog = fs.readFileSync(path.join(productionRoot, sources[11]), 'utf8');
+  const control = fs.readFileSync(path.join(productionRoot, route), 'utf8');
+  for (const classified of [true, false]) {
+    const declaration = classified ? catalog : catalog.replace(
+      'Self::NotificationEvents => ExternalEndpointContribution::protocol_control_http(',
+      'Self::NotificationEvents => ExternalEndpointContribution::business_http('
+    );
+    if (!classified) assert.notEqual(declaration, catalog);
+    const root = fixture({ [sources[11]]: declaration });
+    try {
+      fs.mkdirSync(path.dirname(path.join(root, route)), { recursive: true });
+      fs.writeFileSync(path.join(root, route), control);
+      const violations = inspectInterfaceLifecycleBoundary(root);
+      if (classified) assert.deepEqual(violations, []);
+      else assert.ok(violations.some((item) => item.includes(`${route} retains a direct route authentication owner`)));
+      const businessRoute = 'api/apps/api-server/src/routes/notifications/business.rs';
+      fs.writeFileSync(path.join(root, businessRoute), 'require_session(&state);');
+      assert.ok(inspectInterfaceLifecycleBoundary(root).some((item) =>
+        item.includes(`${businessRoute} retains a direct route authentication owner`)));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
 });

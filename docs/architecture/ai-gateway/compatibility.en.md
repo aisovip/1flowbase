@@ -22,3 +22,9 @@ On the semantic path, `text.verbosity` values low, medium, and high become a req
 The DeepSeek plugin lowers Native tool choices into Chat Completions: auto, none, and required become strings; named choices become function objects. The host owns notification projection, subprocess communication, and continuation state. Plugins do not need their own Responses emulation.
 
 This path supports ordinary text, standard function tools, and the notifications described above. It is not complete Codex compatibility: custom grammar tools, strict tool schemas, hosted capabilities, and provider-private reasoning remain subject to their capability checks. Silently dropping fields is not a substitute for support.
+
+## Recovery persistence and request admission
+
+Protocol adapters own HTTP / WebSocket request admission. `PgProviderProtocolCapsuleStore` persists complete protocol contexts and continuation native histories without a smaller guessed business payload cap. The independent 2 MiB rejection has been removed; payloads above that former threshold remain encrypted, restart-readable and atomically consumable. Physical representation and actual database / I/O failures still propagate; histories are neither truncated nor silently discarded.
+
+AEAD binding to flow run / capsule kind / slot key, digest / size verification, existing expiry and invocation authorization remain in place. Capacity and lifetime are independent. PostgreSQL regressions restore both large payload types exactly and verify ciphertext, locators and single consumption.

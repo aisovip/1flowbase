@@ -9,6 +9,7 @@ const apiClient = vi.hoisted(() => ({
   getConsoleInstalledMcpExtensionIntegrityChallenge: vi.fn(),
   getConsoleExtensionRiskChallenge: vi.fn(),
   installConsoleExtension: vi.fn(),
+  uploadConsoleExtension: vi.fn(),
   listConsoleExtensionCatalog: vi.fn(),
   listConsoleInstalledExtensions: vi.fn(),
   previewConsoleInstalledMcpExtension: vi.fn()

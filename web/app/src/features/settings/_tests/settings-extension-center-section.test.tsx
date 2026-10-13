@@ -272,6 +272,9 @@ function deferred<T>() {
 describe('SettingsExtensionCenterSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Clear one-shot response queues as well as call history between scenarios.
+    extensionsApi.fetchSettingsInstalledExtensions.mockReset();
+    extensionsApi.fetchSettingsExtensionCatalog.mockReset();
     resetAuthStore();
     authenticate();
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({

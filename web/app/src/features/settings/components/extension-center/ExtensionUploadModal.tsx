@@ -9,7 +9,7 @@ import {
   Typography,
   Upload
 } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useTranslation } from 'react-i18next';
 import {
   getSettingsExtensionRiskChallenge,

@@ -79,12 +79,13 @@ try {
   identity(manifestPath);
   for (const file of manifest.identityFiles || []) identity(path.join(root, file));
   for (const target of manifest.targets) identity(path.join(root, target.packageRoot, 'Cargo.toml'));
-  for (const file of ['api/Cargo.lock', 'api/crates/runtime-extension-sdk/Cargo.toml', 'api/crates/runtime-extension-sdk/src/_tests/managed_hook_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/managed_event_worker.rs', 'api/plugins/fixtures/acme.composition-a/manifest.yaml', 'api/plugins/fixtures/acme.composition-a/event-manifest.yaml', 'api/plugins/fixtures/acme.composition-b/manifest.yaml', 'api/plugins/fixtures/acme.composition-c/manifest.yaml']) identity(path.join(root, file));
+  for (const file of ['api/Cargo.lock', 'api/crates/runtime-extension-sdk/Cargo.toml', 'api/crates/runtime-extension-sdk/src/_tests/managed_hook_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/managed_event_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/notification_worker.rs', 'api/plugins/fixtures/acme.composition-a/manifest.yaml', 'api/plugins/fixtures/acme.composition-a/event-manifest.yaml', 'api/plugins/fixtures/acme.composition-b/manifest.yaml', 'api/plugins/fixtures/acme.composition-c/manifest.yaml']) identity(path.join(root, file));
   // Dependency-boundary regressions use locked offline cargo metadata; fetch this same lock first.
   requireCommand('locked-fetch', 'cargo', ['fetch', '--locked', '--manifest-path', 'api/Cargo.toml']);
   const workerFixtures = manifest.workerFixtures || [
     { example: 'managed_hook_worker', env: 'MANAGED_HOOK_WORKER_FIXTURE' },
     { example: 'managed_event_worker', env: 'MANAGED_EVENT_WORKER_FIXTURE' },
+    { example: 'notification_worker', env: 'NOTIFICATION_WORKER_FIXTURE' },
   ];
   for (const { example, env: variable } of workerFixtures) {
     try {

@@ -887,7 +887,7 @@ describe('section shell routing', () => {
         expect(window.location.pathname).toBe('/settings/roles/dynamic-routes');
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
-        screen.getByRole('tab', { name: '动态路由', selected: true })
+        await screen.findByRole('tab', { name: '动态路由', selected: true })
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT

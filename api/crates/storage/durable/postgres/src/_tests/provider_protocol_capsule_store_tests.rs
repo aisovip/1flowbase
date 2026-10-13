@@ -129,8 +129,7 @@ pub(crate) async fn seeded_flow_run_before(version: Option<i64>) -> (sqlx::PgPoo
 }
 
 fn capsule_store(pool: sqlx::PgPool) -> PgProviderProtocolCapsuleStore {
-    PgProviderProtocolCapsuleStore::new(pool, MASTER_KEY, Duration::days(7), 2 * 1024 * 1024)
-        .unwrap()
+    PgProviderProtocolCapsuleStore::new(pool, MASTER_KEY, Duration::days(7)).unwrap()
 }
 
 #[tokio::test]
@@ -483,4 +482,73 @@ async fn trusted_response_history_survives_capsule_restart_and_single_atomic_cla
     assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
     assert_eq!(a.or(b).unwrap().native_history(), Some(&history));
     assert!(restarted.get_continuation(slot).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn complete_context_and_continuation_history_above_old_capsule_budget_survive_restart() {
+    let (pool, flow_run_id) = seeded_flow_run().await;
+    let marker = "large-capsule-private-history";
+    let large_text = marker.repeat((2 * 1024 * 1024) / marker.len() + 1);
+    let context = ProviderProtocolContextValue::new(json!({
+        "source_protocol": "openai_responses", "request": {"input": large_text}
+    }))
+    .unwrap();
+    assert!(
+        context.size_bytes() > 2 * 1024 * 1024,
+        "regression must cross the retired storage cap"
+    );
+    let locator = context.original_locator();
+    let context_slot = ProviderProtocolContextSlotId::for_original_flow_run(flow_run_id);
+    let continuation_slot =
+        ProviderContinuationSlotId::for_response_round(flow_run_id, Uuid::now_v7());
+    let history = json!({"items": [{"type": "message", "content": context.clone().into_value()}]});
+    let continuation = ProviderContinuation::new(
+        "resp_large_history",
+        ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model"),
+    )
+    .unwrap()
+    .with_native_history(Some(history.clone()));
+    let store = capsule_store(pool.clone());
+    store
+        .put_protocol_context(context_slot, context.clone())
+        .await
+        .unwrap();
+    store
+        .put_continuation(continuation_slot, continuation.clone())
+        .await
+        .unwrap();
+    let stored: Vec<(i64, serde_json::Value)> = sqlx::query_as(
+        "select plaintext_size_bytes, encrypted_payload from provider_protocol_capsules where flow_run_id=$1 order by capsule_kind"
+    ).bind(flow_run_id).fetch_all(&pool).await.unwrap();
+    assert_eq!(stored.len(), 2);
+    for (size, encrypted) in stored {
+        assert!(size > 2 * 1024 * 1024);
+        assert_eq!(encrypted["algorithm"], "aead_xchacha20poly1305_v1");
+        assert!(!encrypted.to_string().contains(marker));
+    }
+    let restarted = capsule_store(pool);
+    let restored = restarted
+        .get_protocol_context(context_slot)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(restored.matches_locator(&locator));
+    assert_eq!(restored, context);
+    assert_eq!(
+        restarted.get_continuation(continuation_slot).await.unwrap(),
+        Some(continuation)
+    );
+    assert_eq!(
+        restarted
+            .consume_continuation(continuation_slot)
+            .await
+            .unwrap()
+            .native_history(),
+        Some(&history)
+    );
+    assert!(restarted
+        .get_continuation(continuation_slot)
+        .await
+        .unwrap()
+        .is_none());
 }

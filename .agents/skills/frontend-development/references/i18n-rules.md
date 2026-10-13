@@ -22,7 +22,7 @@
 
 - Key 的每个 JSON 段必须只使用英文小写字母；多个语义单词用 `_` 连接，例如 `primary_action`，不要用驼峰、短横线、数字、中文或空格。
 - Key 只要求在 owner 内唯一；跨 owner 同 key 允许存在，专项复盘时可用 `i18n-hygiene --include-cross-owner-warnings` 查看 advisory warning。
-- 相同展示 value 在同一 owner、同一 locale 内是 error；语义一致时让调用方复用已有 key。语义不同而暂时同文案时保留原值并报告未解决项，不为消除 error 擅自改文案。
+- 同 owner 的多个 key 在全部 canonical locale 中具有相同翻译向量时是重复 value error；缺失翻译仍保留原 error，不能借证据缺失降级。单 locale 同值、完整翻译向量不同是 `locale-value-collision` warning：结合实际消费者人工判断语义，不能仅凭中文同字合并 key 或修改文案。语义一致时复用已有 key，语义不同保留原值并说明原因。
 - 跨 owner 相同 value 允许存在；只有语义完全一致且足够稳定时才上提 common，专项复盘时可用 `--include-cross-owner-warnings` 查看 advisory warning。
 - 前端 `i18n/` key 没有静态代码引用是 `unused-i18n-key` warning；保留时必须说明动态 key、路由配置或外部渲染入口原因。
 - 中英文文件 key 必须完全对齐；非法 key 命名、缺 key、多 key、JSON 重复 key 都是 error。

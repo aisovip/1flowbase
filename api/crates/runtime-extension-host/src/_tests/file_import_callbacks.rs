@@ -48,13 +48,14 @@ async fn import_callback_uses_only_trusted_binding_and_denies_missing_expired_or
     )
     .await;
     assert_eq!(result["result"]["record"]["filename"], "a.bin");
-    let calls = port.0.lock().unwrap();
-    assert_eq!(calls[0].caller.session_version, 7);
-    assert_eq!(
-        calls[0].caller.selected_mcp_instance_ids.as_deref(),
-        Some(["selected".to_owned()].as_slice())
-    );
-    drop(calls);
+    {
+        let calls = port.0.lock().unwrap();
+        assert_eq!(calls[0].caller.session_version, 7);
+        assert_eq!(
+            calls[0].caller.selected_mcp_instance_ids.as_deref(),
+            Some(["selected".to_owned()].as_slice())
+        );
+    }
     for field in ["actor", "workspace_id", "installation_id"] {
         let mut forged = request.clone();
         forged[field] = serde_json::json!("forged");

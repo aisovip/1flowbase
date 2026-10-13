@@ -125,7 +125,10 @@ test('failure permits explicit retry without reporting success', async () => {
   fireEvent.click(screen.getByRole('button', { name: '开始上传' }));
   await screen.findByText('上传或安装失败');
   expect(onInstalled).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: '开始上传' }));
+  // Ant Design's loading indicator exits after the failure status is rendered.
+  const retry = await screen.findByRole('button', { name: '开始上传' });
+  await waitFor(() => expect(retry).toBeEnabled());
+  fireEvent.click(retry);
   await waitFor(() => expect(onInstalled).toHaveBeenCalledOnce());
 });
 

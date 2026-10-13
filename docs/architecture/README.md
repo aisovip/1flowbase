@@ -12,6 +12,7 @@
 | 插件组合与治理 | [组合与历史分页](plugin-composition.md) · [English](plugin-composition.en.md) | 贡献授权、冻结身份、完整历史续读及退休边界 |
 | 插件生命周期契约 | [中文](plugin-lifecycle-contracts.md) · [English](plugin-lifecycle-contracts.en.md) | Hook、领域事实、Outbox与订阅者责任 |
 | 插件管理的数据模型 | [Plugin Managed Data Model](plugin-managed-data-model.md) | 声明式schema、ownership、增量变更与恢复边界 |
+| 系统设置选择性备份 | [配置、数据与历史迁移](system-backup/README.md) | 内置表 feature owner、配置 / 持久事实与回滚验收 |
 | PostgreSQL 树 | [中文](ordered-tree/README_CN.md) · [English](ordered-tree/README.md) | ltree、keyset 分页、作用域和结构事务 |
 | MCP 返回控制 | [按需返回与详情续读](mcp/return-controls.md) | 内联预算、字段投影及完整结果读取 |
 | 编排验证诊断 | [中文](orchestration/validation-diagnostics.md) · [English](orchestration/validation-diagnostics.en.md) | 节点诊断跨 API / MCP 保留 |

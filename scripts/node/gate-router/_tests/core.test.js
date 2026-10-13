@@ -136,3 +136,31 @@ test('real Git deletions route staged and branch foundation changes while ignori
   }
   assert.deepEqual(routeChangedFiles([artifact]), []);
 });
+
+
+test('new contract and runtime owners route to their real CI check shard', () => {
+  for (const [directory, shard] of [
+    ['interface-runtime', 'core-libs'],
+    ['extension-contracts', 'core-libs'],
+    ['extension-package-runtime', 'core-libs'],
+    ['control-plane-contracts', 'core-libs'],
+    ['control-plane-test-support', 'core-libs'],
+    ['postgres-test-support', 'core-libs'],
+    ['runtime-extension-host', 'runtime-storage'],
+    ['runtime-extension-sdk', 'runtime-storage'],
+    ['control-plane-postgres-tests', 'apps'],
+    ['storage/durable/postgres', 'runtime-storage'],
+  ]) {
+    const routes = routeChangedFiles([`api/crates/${directory}/src/lib.rs`]);
+    assert.deepEqual(routes.filter(({ scope }) => scope.startsWith('repo-backend-check-'))
+      .map(({ scope }) => scope), [`repo-backend-check-${shard}`], directory);
+  }
+});
+
+test('unknown backend owners retain all-shard fallback', () => {
+  const routes = routeChangedFiles(['api/crates/future-owner/src/lib.rs']);
+  assert.deepEqual(routes.filter(({ scope }) => scope.startsWith('repo-backend-check-'))
+    .map(({ scope }) => scope), [
+      'repo-backend-check-core-libs', 'repo-backend-check-runtime-storage', 'repo-backend-check-apps',
+    ]);
+});

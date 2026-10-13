@@ -396,7 +396,7 @@ fn imported_file(
                 .map_err(|_| FileImportError::new("file_import_resource_filename_missing"))?;
             let name = url
                 .path_segments()
-                .and_then(|segments| segments.filter(|s| !s.is_empty()).next_back())
+                .and_then(|mut segments| segments.rfind(|s| !s.is_empty()))
                 .ok_or_else(|| FileImportError::new("file_import_resource_filename_missing"))?;
             percent_encoding::percent_decode_str(name)
                 .decode_utf8()

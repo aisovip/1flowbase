@@ -22,6 +22,19 @@ function ownedTableFindings(table, contract) {
       }
     }
   }
+  // Some retained facts intentionally outlive a deleted owner. Their routing
+  // identity remains mandatory even when a cascading FK would destroy history.
+  for (const name of contract.ownerColumns || []) {
+    const column = table.columns.find((item) => item.name === name);
+    if (!column || column.nullable) {
+      report('owned-table-owner-column', 'retained owner identity must exist and be non-null', name);
+    }
+  }
+  for (const name of contract.requiredColumns || []) {
+    if (!table.columns.some((item) => item.name === name)) {
+      report('owned-table-required-column', 'specialized lifecycle column must remain present', name);
+    }
+  }
   const indexes = [table.primaryKey, ...table.indexes, ...table.uniqueConstraints].filter(Boolean);
   for (const columns of contract.indexes || []) {
     if (!indexes.some((index) => sameColumns(index.columns.slice(0, columns.length), columns))) {

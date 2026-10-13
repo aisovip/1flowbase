@@ -223,7 +223,7 @@ fn ac_010_system_metadata_inventory_has_36_stable_english_references() {
 }
 
 #[test]
-fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_57_refs() {
+fn ac_010_machine_readable_metadata_consumer_inventory_matches_current_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/metadata_i18n_consumers.json")).unwrap();
     let expected = fixture.as_array().unwrap();
@@ -249,7 +249,6 @@ fn ac_010_machine_readable_metadata_consumer_inventory_matches_all_57_refs() {
         )
         .collect::<Vec<_>>();
 
-    assert_eq!(actual.len(), 57);
     assert_eq!(&actual, expected);
 }
 

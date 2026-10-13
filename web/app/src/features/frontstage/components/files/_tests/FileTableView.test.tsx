@@ -1,6 +1,5 @@
 import '../../../../../test/fixtures/rc-util-unique-ids';
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -80,7 +79,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  cleanup();
   resetAuthStore();
 });
 

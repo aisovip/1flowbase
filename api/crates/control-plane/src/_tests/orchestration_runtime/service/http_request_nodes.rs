@@ -368,10 +368,17 @@ async fn http_request_binary_response_persists_as_file_record_when_enabled() {
     assert_eq!(file["mimetype"], json!("application/octet-stream"));
     assert_eq!(file["storage_id"], service.default_file_storage_id_json());
     assert!(file["path"].as_str().unwrap().contains("/orders/"));
-    assert!(file["url"]
-        .as_str()
-        .unwrap()
-        .starts_with("https://files.test/"));
+    let record_id = Uuid::parse_str(file["id"].as_str().unwrap()).unwrap();
+    let file_table_id = service.default_file_table_id().await;
+    assert_eq!(
+        file["url"],
+        json!(format!(
+            "/api/console/files/{file_table_id}/records/{record_id}/content"
+        ))
+    );
+    assert_eq!(file["size"], json!(4));
+    assert_eq!(file["meta"]["source"], json!("http_request_response"));
+    assert_eq!(file["meta"]["node_id"], json!("node-http"));
     assert_ne!(file["storage_id"], json!("runtime-inline"));
     assert_ne!(file["meta"]["persisted"], json!(false));
 

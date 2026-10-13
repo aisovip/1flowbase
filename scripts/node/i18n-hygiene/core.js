@@ -761,6 +761,12 @@ function collectDuplicateEntryFindings(
 ) {
   const findings = [];
   const entriesWithValues = entries.filter((entry) => entry.normalizedValue);
+  const translationsByKey = new Map();
+  for (const entry of entriesWithValues) {
+    const identity = `${entry.owner}\0${entry.key}`;
+    if (!translationsByKey.has(identity)) translationsByKey.set(identity, new Map());
+    translationsByKey.get(identity).set(entry.locale, entry.normalizedValue);
+  }
 
   for (const [groupKey, groupEntries] of groupBy(
     entriesWithValues,
@@ -772,16 +778,29 @@ function collectDuplicateEntryFindings(
       continue;
     }
 
+    // A localized homonym does not establish interchangeable UI semantics.
+    // Distinct complete translation vectors remain visible for human review;
+    // repeated vectors or incomplete locale evidence still block the gate.
+    const vectors = uniqueKeys.map((key) => {
+      const translations = translationsByKey.get(`${groupEntries[0].owner}\0${key}`);
+      return I18N_LOCALES.every((locale) => translations?.has(locale))
+        ? JSON.stringify(I18N_LOCALES.map((locale) => translations.get(locale)))
+        : null;
+    });
+    const collisionOnly = vectors.every((vector) => vector !== null)
+      && new Set(vectors).size === vectors.length;
     findings.push(
       createFinding({
-        severity: 'error',
-        rule: 'duplicate-value-in-owner',
+        severity: collisionOnly ? 'warning' : 'error',
+        rule: collisionOnly ? 'locale-value-collision' : 'duplicate-value-in-owner',
         file: groupEntries[0].file,
         owner: groupEntries[0].owner,
         locale: groupEntries[0].locale,
         value: normalizedValue,
         keys: uniqueKeys.sort((left, right) => left.localeCompare(right)),
-        message: `i18n owner has duplicated ${groupEntries[0].locale} value "${normalizedValue}"`
+        message: collisionOnly
+          ? `distinct canonical translations share ${groupEntries[0].locale} value "${normalizedValue}"; review semantics and preserve independent keys when meanings differ`
+          : `i18n owner has duplicated ${groupEntries[0].locale} value "${normalizedValue}"`
       })
     );
   }

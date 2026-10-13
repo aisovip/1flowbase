@@ -1128,14 +1128,34 @@ mod tests {
                 .iter()
                 .any(|forbidden| path.contains(forbidden))
         }));
-        assert_eq!(
-            paths["/api/runtime/models/{model_code}/list"]["get"]["x-data-model-templates"]
-                .as_array()
-                .unwrap()
-                .len(),
-            2,
-            "shared CRUD routes must retain both descriptor owners"
-        );
+        // Compare every emitted owner with the declared descriptor routes, including
+        // shared routes. A fixed count misses omitted or wrongly attributed owners.
+        for (path, path_item) in paths {
+            for (method, operation) in path_item.as_object().unwrap() {
+                let expected = templates
+                    .templates()
+                    .iter()
+                    .filter(|template| {
+                        template.descriptor().operations.iter().any(|descriptor| {
+                            descriptor.path == *path
+                                && descriptor.method.as_str().eq_ignore_ascii_case(method)
+                        })
+                    })
+                    .map(|template| template.identity().canonical_name())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let owners = operation["x-data-model-templates"].as_array().unwrap();
+                let actual = owners
+                    .iter()
+                    .map(|owner| owner.as_str().unwrap().to_owned())
+                    .collect::<std::collections::BTreeSet<_>>();
+                assert_eq!(
+                    actual.len(),
+                    owners.len(),
+                    "duplicate owner: {method} {path}"
+                );
+                assert_eq!(actual, expected, "descriptor owners: {method} {path}");
+            }
+        }
     }
 
     #[test]

@@ -102,6 +102,17 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         ))
     }
 
+    pub async fn default_file_table_id(&self) -> Uuid {
+        crate::ports::FileManagementRepository::find_file_table_by_code(
+            &self.repository,
+            "attachments",
+        )
+        .await
+        .unwrap()
+        .expect("seeded default file table")
+        .id
+    }
+
     pub fn default_file_storage_id_json(&self) -> serde_json::Value {
         serde_json::json!(self.repository.default_file_storage_id().to_string())
     }

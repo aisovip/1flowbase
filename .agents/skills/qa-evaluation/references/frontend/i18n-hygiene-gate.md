@@ -22,13 +22,13 @@ node scripts/node/tooling.js i18n-hygiene
 
 ## Severity
 
-- `error`: 必须修复后才能通过 QA。包括缺 locale 文件、非法 locale 文件名、非法 key 命名、中英文 key 不对齐、JSON 重复 key、同 owner 同 locale 重复 value。
-- `warning`: 需要人工或 AI 复盘。默认包括前端 key 无静态代码引用；使用 `--include-cross-owner-warnings` 时额外包含跨 owner 重复 key / value advisory。只有语义完全一致且稳定时才建议上提 common，只有存在动态 key 或外部渲染入口时才保留未引用 key。
+- `error`: 必须修复后才能通过 QA。包括缺 locale 文件、非法 locale 文件名、非法 key 命名、中英文 key 不对齐、JSON 重复 key、同 owner 重复 canonical 翻译向量（翻译不完整时不降级）。
+- `warning`: 需要人工或 AI 复盘。`locale-value-collision` 表示单语言同值但完整 canonical 翻译向量不同，必须结合消费者核对语义并记录保留理由；不能据此自动合并或改文案。默认包括前端 key 无静态代码引用；使用 `--include-cross-owner-warnings` 时额外包含跨 owner 重复 key / value advisory。只有语义完全一致且稳定时才建议上提 common，只有存在动态 key 或外部渲染入口时才保留未引用 key。
 
 ## Review Rules
 
 - 多语言 key 的每个 JSON 段必须只使用英文小写字母；多个语义单词用 `_` 连接，例如 `primary_action`，不要用驼峰、短横线、数字、中文、空格或 `key_xxx` / `k_xxx` 这类随机生成 key。
-- 同 owner 重复 value：不得修改用户前端可见文案值；优先让调用方复用已有 key，或删除确认多余的重复 key。相同文案值可保留，但 QA 报告必须说明保留原因。只有用户在当前任务明确要求改文案时，才允许调整 value。
+- 同 owner 重复 value / 单语言碰撞：不得修改用户前端可见文案值；优先让调用方复用已有 key，或删除确认多余的重复 key。相同文案值可保留，但 QA 报告必须说明保留原因。只有用户在当前任务明确要求改文案时，才允许调整 value。
 - 跨 owner 重复 value：默认不进入门禁；专项审计时默认保留局部 owner，不要为了消灭 advisory 抽错 common。
 - `unused-i18n-key`：优先删除已失效 key；如 key 由动态配置、路由配置或外部渲染入口使用，QA 报告必须写明保留原因。
 - 新增 common 前先确认它是短 UI 词，不是业务句子。
