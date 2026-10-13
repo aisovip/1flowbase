@@ -331,6 +331,10 @@ Outbox lease/retry/去重/每订阅者 ACK 与 PluginData 局部幂等归各自 
 
 ## 等价性与验收证据
 
+### 源码门禁与当前流式 owner
+
+OpenAI / Anthropic 兼容流式 route 通过 `compatibility_interface::invoke_client_stream_with_principal` 进入 typed stream owner；该 owner 用已认证 principal 创建 envelope，再由 `InterfaceInvocationKernel::invoke_server_stream_with_dispatch_target` 执行冻结计划，协议投影保留独立 completion owner。源码门禁保护这条调用关系，不再要求已删除的 `invoke_stream` route helper 名称。正反 fixture 应包含当前生产源码与绕过 typed Kernel / 丢失 principal 的受控变体；源码门禁不替代协议与终态行为测试。
+
 ### 等价性比较什么
 
 固定业务意图、身份权限、初始数据和配置，比较重构前后各协议的输入接受/拒绝、返回和实际副作用。比较 HTTP 与 MCP 时分别锁定协议壳，再比较业务语义，不要求包装或随机 ID 一模一样。

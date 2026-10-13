@@ -544,22 +544,27 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
     let pool = historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Grant migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Grant migration",
+    )
+    .await
+    .unwrap();
     seed_historical_permissions(&pool).await;
 
-    let members_role = insert_role(&pool, workspace.id, "legacy_members").await;
-    let roles_role = insert_role(&pool, workspace.id, "legacy_roles").await;
-    let docs_role = insert_role(&pool, workspace.id, "legacy_docs").await;
-    grant(&pool, members_role, workspace.id, MEMBERS_VISIBILITY).await;
-    grant(&pool, roles_role, workspace.id, ROLES_VISIBILITY).await;
-    grant(&pool, roles_role, workspace.id, "role_permission.view.all").await;
+    let members_role = insert_role(&pool, workspace_id, "legacy_members").await;
+    let roles_role = insert_role(&pool, workspace_id, "legacy_roles").await;
+    let docs_role = insert_role(&pool, workspace_id, "legacy_docs").await;
+    grant(&pool, members_role, workspace_id, MEMBERS_VISIBILITY).await;
+    grant(&pool, roles_role, workspace_id, ROLES_VISIBILITY).await;
+    grant(&pool, roles_role, workspace_id, "role_permission.view.all").await;
     grant(
         &pool,
         docs_role,
-        workspace.id,
+        workspace_id,
         "settings_route.visible.settings.docs",
     )
     .await;
@@ -612,8 +617,8 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
             .unwrap();
     assert_eq!(removed_legacy_definitions, 0);
 
-    let new_feature_only = insert_role(&pool, workspace.id, "new_feature_only").await;
-    grant(&pool, new_feature_only, workspace.id, MEMBERS_FEATURE).await;
+    let new_feature_only = insert_role(&pool, workspace_id, "new_feature_only").await;
+    grant(&pool, new_feature_only, workspace_id, MEMBERS_FEATURE).await;
     assert_eq!(
         permission_codes(&pool, new_feature_only).await,
         BTreeSet::from([MEMBERS_FEATURE.to_string()])
@@ -625,13 +630,18 @@ async fn migration_rolls_back_all_grants_when_legacy_cleanup_fails() {
     let pool = historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Grant rollback")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Grant rollback",
+    )
+    .await
+    .unwrap();
     seed_historical_permissions(&pool).await;
-    let role_id = insert_role(&pool, workspace.id, "legacy_members").await;
-    grant(&pool, role_id, workspace.id, MEMBERS_VISIBILITY).await;
+    let role_id = insert_role(&pool, workspace_id, "legacy_members").await;
+    grant(&pool, role_id, workspace_id, MEMBERS_VISIBILITY).await;
 
     sqlx::raw_sql(
         r#"
@@ -672,41 +682,46 @@ async fn migration_reconciles_four_explicit_settings_features_and_preserves_othe
     let pool = explicit_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Explicit settings migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Explicit settings migration",
+    )
+    .await
+    .unwrap();
     seed_explicit_settings_historical_permissions(&pool).await;
 
-    let auth_role = insert_role(&pool, workspace.id, "legacy_auth_center").await;
-    let host_role = insert_role(&pool, workspace.id, "legacy_host_infrastructure").await;
-    let memory_role = insert_role(&pool, workspace.id, "legacy_memory_observation").await;
-    let applications_role = insert_role(&pool, workspace.id, "legacy_applications").await;
-    let untouched_role = insert_role(&pool, workspace.id, "legacy_unmigrated_settings").await;
-    grant(&pool, auth_role, workspace.id, AUTH_CENTER_VISIBILITY).await;
+    let auth_role = insert_role(&pool, workspace_id, "legacy_auth_center").await;
+    let host_role = insert_role(&pool, workspace_id, "legacy_host_infrastructure").await;
+    let memory_role = insert_role(&pool, workspace_id, "legacy_memory_observation").await;
+    let applications_role = insert_role(&pool, workspace_id, "legacy_applications").await;
+    let untouched_role = insert_role(&pool, workspace_id, "legacy_unmigrated_settings").await;
+    grant(&pool, auth_role, workspace_id, AUTH_CENTER_VISIBILITY).await;
     grant(
         &pool,
         host_role,
-        workspace.id,
+        workspace_id,
         HOST_INFRASTRUCTURE_VISIBILITY,
     )
     .await;
     grant(
         &pool,
         memory_role,
-        workspace.id,
+        workspace_id,
         MEMORY_OBSERVATION_VISIBILITY,
     )
     .await;
     grant(
         &pool,
         applications_role,
-        workspace.id,
+        workspace_id,
         APPLICATIONS_VISIBILITY,
     )
     .await;
     for code in UNMIGRATED_VISIBILITIES {
-        grant(&pool, untouched_role, workspace.id, code).await;
+        grant(&pool, untouched_role, workspace_id, code).await;
     }
 
     before_files_settings_feature_migrator()
@@ -778,8 +793,8 @@ async fn migration_reconciles_four_explicit_settings_features_and_preserves_othe
         ),
         ("new_applications_feature_only", APPLICATIONS_FEATURE),
     ] {
-        let new_feature_only = insert_role(&pool, workspace.id, role_code).await;
-        grant(&pool, new_feature_only, workspace.id, feature_code).await;
+        let new_feature_only = insert_role(&pool, workspace_id, role_code).await;
+        grant(&pool, new_feature_only, workspace_id, feature_code).await;
         assert_eq!(
             permission_codes(&pool, new_feature_only).await,
             BTreeSet::from([feature_code.to_string()])
@@ -792,13 +807,18 @@ async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = explicit_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Explicit settings rollback")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Explicit settings rollback",
+    )
+    .await
+    .unwrap();
     seed_explicit_settings_historical_permissions(&pool).await;
-    let role_id = insert_role(&pool, workspace.id, "legacy_auth_center").await;
-    grant(&pool, role_id, workspace.id, AUTH_CENTER_VISIBILITY).await;
+    let role_id = insert_role(&pool, workspace_id, "legacy_auth_center").await;
+    grant(&pool, role_id, workspace_id, AUTH_CENTER_VISIBILITY).await;
 
     sqlx::raw_sql(
         r#"
@@ -849,18 +869,23 @@ async fn migration_reconciles_files_grants_and_preserves_remaining_six_visibilit
     let pool = files_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Files settings migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Files settings migration",
+    )
+    .await
+    .unwrap();
     seed_files_settings_historical_permissions(&pool).await;
 
-    let files_role = insert_role(&pool, workspace.id, "legacy_files").await;
-    let untouched_role = insert_role(&pool, workspace.id, "legacy_remaining_settings").await;
-    grant(&pool, files_role, workspace.id, FILES_VISIBILITY).await;
-    grant(&pool, files_role, workspace.id, "file_table.view.all").await;
+    let files_role = insert_role(&pool, workspace_id, "legacy_files").await;
+    let untouched_role = insert_role(&pool, workspace_id, "legacy_remaining_settings").await;
+    grant(&pool, files_role, workspace_id, FILES_VISIBILITY).await;
+    grant(&pool, files_role, workspace_id, "file_table.view.all").await;
     for code in REMAINING_VISIBILITIES_AFTER_FILES {
-        grant(&pool, untouched_role, workspace.id, code).await;
+        grant(&pool, untouched_role, workspace_id, code).await;
     }
 
     before_data_models_settings_feature_migrator()
@@ -898,8 +923,8 @@ async fn migration_reconciles_files_grants_and_preserves_remaining_six_visibilit
             .unwrap();
     assert_eq!(removed_legacy_definitions, 0);
 
-    let new_feature_only = insert_role(&pool, workspace.id, "new_files_feature_only").await;
-    grant(&pool, new_feature_only, workspace.id, FILES_FEATURE).await;
+    let new_feature_only = insert_role(&pool, workspace_id, "new_files_feature_only").await;
+    grant(&pool, new_feature_only, workspace_id, FILES_FEATURE).await;
     assert_eq!(
         permission_codes(&pool, new_feature_only).await,
         BTreeSet::from([FILES_FEATURE.to_string()])
@@ -911,13 +936,18 @@ async fn files_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = files_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Files settings rollback")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Files settings rollback",
+    )
+    .await
+    .unwrap();
     seed_files_settings_historical_permissions(&pool).await;
-    let role_id = insert_role(&pool, workspace.id, "legacy_files").await;
-    grant(&pool, role_id, workspace.id, FILES_VISIBILITY).await;
+    let role_id = insert_role(&pool, workspace_id, "legacy_files").await;
+    grant(&pool, role_id, workspace_id, FILES_VISIBILITY).await;
 
     sqlx::raw_sql(
         r#"
@@ -960,30 +990,35 @@ async fn migration_reconciles_data_models_grants_and_preserves_remaining_five_vi
     let pool = data_models_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Data models settings migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Data models settings migration",
+    )
+    .await
+    .unwrap();
     seed_data_models_settings_historical_permissions(&pool).await;
 
-    let data_models_role = insert_role(&pool, workspace.id, "legacy_data_models").await;
-    let untouched_role = insert_role(&pool, workspace.id, "legacy_remaining_five").await;
+    let data_models_role = insert_role(&pool, workspace_id, "legacy_data_models").await;
+    let untouched_role = insert_role(&pool, workspace_id, "legacy_remaining_five").await;
     grant(
         &pool,
         data_models_role,
-        workspace.id,
+        workspace_id,
         DATA_MODELS_VISIBILITY,
     )
     .await;
     grant(
         &pool,
         data_models_role,
-        workspace.id,
+        workspace_id,
         "state_model.view.all",
     )
     .await;
     for code in REMAINING_VISIBILITIES_AFTER_DATA_MODELS {
-        grant(&pool, untouched_role, workspace.id, code).await;
+        grant(&pool, untouched_role, workspace_id, code).await;
     }
 
     before_model_providers_settings_feature_migrator()
@@ -1012,8 +1047,8 @@ async fn migration_reconciles_data_models_grants_and_preserves_remaining_five_vi
             .unwrap();
     assert_eq!(removed_legacy_definition, 0);
 
-    let feature_only = insert_role(&pool, workspace.id, "new_data_models_feature_only").await;
-    grant(&pool, feature_only, workspace.id, DATA_MODELS_FEATURE).await;
+    let feature_only = insert_role(&pool, workspace_id, "new_data_models_feature_only").await;
+    grant(&pool, feature_only, workspace_id, DATA_MODELS_FEATURE).await;
     assert_eq!(
         permission_codes(&pool, feature_only).await,
         BTreeSet::from([DATA_MODELS_FEATURE.to_string()])
@@ -1025,13 +1060,18 @@ async fn data_models_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = data_models_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Data models settings rollback")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Data models settings rollback",
+    )
+    .await
+    .unwrap();
     seed_data_models_settings_historical_permissions(&pool).await;
-    let role_id = insert_role(&pool, workspace.id, "legacy_data_models").await;
-    grant(&pool, role_id, workspace.id, DATA_MODELS_VISIBILITY).await;
+    let role_id = insert_role(&pool, workspace_id, "legacy_data_models").await;
+    grant(&pool, role_id, workspace_id, DATA_MODELS_VISIBILITY).await;
 
     sqlx::raw_sql(
         r#"
@@ -1074,18 +1114,23 @@ async fn migration_reconciles_model_providers_grants_and_preserves_remaining_fou
     let pool = model_providers_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Model providers settings migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Model providers settings migration",
+    )
+    .await
+    .unwrap();
     seed_model_providers_settings_historical_permissions(&pool).await;
 
-    let legacy_role = insert_role(&pool, workspace.id, "legacy_model_providers").await;
-    let untouched_role = insert_role(&pool, workspace.id, "legacy_remaining_four").await;
-    grant(&pool, legacy_role, workspace.id, MODEL_PROVIDERS_VISIBILITY).await;
-    grant(&pool, legacy_role, workspace.id, "state_model.view.all").await;
+    let legacy_role = insert_role(&pool, workspace_id, "legacy_model_providers").await;
+    let untouched_role = insert_role(&pool, workspace_id, "legacy_remaining_four").await;
+    grant(&pool, legacy_role, workspace_id, MODEL_PROVIDERS_VISIBILITY).await;
+    grant(&pool, legacy_role, workspace_id, "state_model.view.all").await;
     for code in REMAINING_VISIBILITIES_AFTER_MODEL_PROVIDERS {
-        grant(&pool, untouched_role, workspace.id, code).await;
+        grant(&pool, untouched_role, workspace_id, code).await;
     }
 
     before_final_settings_feature_migrator()
@@ -1114,8 +1159,8 @@ async fn migration_reconciles_model_providers_grants_and_preserves_remaining_fou
             .unwrap();
     assert_eq!(removed_legacy_definition, 0);
 
-    let feature_only = insert_role(&pool, workspace.id, "new_model_providers_feature_only").await;
-    grant(&pool, feature_only, workspace.id, MODEL_PROVIDERS_FEATURE).await;
+    let feature_only = insert_role(&pool, workspace_id, "new_model_providers_feature_only").await;
+    grant(&pool, feature_only, workspace_id, MODEL_PROVIDERS_FEATURE).await;
     assert_eq!(
         permission_codes(&pool, feature_only).await,
         BTreeSet::from([MODEL_PROVIDERS_FEATURE.to_string()])
@@ -1127,13 +1172,18 @@ async fn model_providers_settings_migration_rolls_back_when_legacy_cleanup_fails
     let pool = model_providers_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Model providers settings rollback")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Model providers settings rollback",
+    )
+    .await
+    .unwrap();
     seed_model_providers_settings_historical_permissions(&pool).await;
-    let role_id = insert_role(&pool, workspace.id, "legacy_model_providers").await;
-    grant(&pool, role_id, workspace.id, MODEL_PROVIDERS_VISIBILITY).await;
+    let role_id = insert_role(&pool, workspace_id, "legacy_model_providers").await;
+    grant(&pool, role_id, workspace_id, MODEL_PROVIDERS_VISIBILITY).await;
 
     sqlx::raw_sql(
         r#"
@@ -1176,32 +1226,37 @@ async fn final_settings_migration_reconciles_all_remaining_legacy_grants() {
     let pool = final_settings_historical_pool().await;
     let store = PgControlPlaneStore::new(pool.clone());
     let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Final settings migration")
-        .await
-        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        store.pool(),
+        workspace_id,
+        tenant.id,
+        "Final settings migration",
+    )
+    .await
+    .unwrap();
     seed_final_settings_historical_permissions(&pool).await;
 
-    let docs_role = insert_role(&pool, workspace.id, "legacy_docs").await;
-    let api_key_role = insert_role(&pool, workspace.id, "legacy_api_key").await;
-    let system_runtime_role = insert_role(&pool, workspace.id, "legacy_system_runtime").await;
-    let mcp_role = insert_role(&pool, workspace.id, "legacy_mcp").await;
-    grant(&pool, docs_role, workspace.id, DOCS_VISIBILITY).await;
+    let docs_role = insert_role(&pool, workspace_id, "legacy_docs").await;
+    let api_key_role = insert_role(&pool, workspace_id, "legacy_api_key").await;
+    let system_runtime_role = insert_role(&pool, workspace_id, "legacy_system_runtime").await;
+    let mcp_role = insert_role(&pool, workspace_id, "legacy_mcp").await;
+    grant(&pool, docs_role, workspace_id, DOCS_VISIBILITY).await;
     grant(
         &pool,
         api_key_role,
-        workspace.id,
+        workspace_id,
         API_KEY_AUTHENTICATION_VISIBILITY,
     )
     .await;
     grant(
         &pool,
         system_runtime_role,
-        workspace.id,
+        workspace_id,
         SYSTEM_RUNTIME_VISIBILITY,
     )
     .await;
-    grant(&pool, mcp_role, workspace.id, MCP_MANAGEMENT_VISIBILITY).await;
+    grant(&pool, mcp_role, workspace_id, MCP_MANAGEMENT_VISIBILITY).await;
 
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 

@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 408,
+  "projected_interface_count": 414,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -116,6 +116,12 @@
       "DELETE",
       "/api/console/network-center/routes/:route_id",
       "Delete network egress routes"
+    ],
+    [
+      "notifications.instances.delete",
+      "DELETE",
+      "/api/console/notifications/instances/:instance_id",
+      "Delete notification instance"
     ],
     [
       "plugins.families.delete",
@@ -754,6 +760,18 @@
       "View node contributions"
     ],
     [
+      "notifications.instances.list",
+      "GET",
+      "/api/console/notifications/instances",
+      "List notification instances"
+    ],
+    [
+      "notifications.instances.get",
+      "GET",
+      "/api/console/notifications/instances/:instance_id",
+      "Get notification instance"
+    ],
+    [
       "plugins.catalog.view",
       "GET",
       "/api/console/plugins/catalog",
@@ -1300,6 +1318,12 @@
       "Update network egress routes"
     ],
     [
+      "notifications.instances.update",
+      "PATCH",
+      "/api/console/notifications/instances/:instance_id",
+      "Update notification instance"
+    ],
+    [
       "billing.pricing_rules.update",
       "PATCH",
       "/api/console/settings/billing/pricing-rules/:id",
@@ -1718,6 +1742,18 @@
       "POST",
       "/api/console/network-center/routes",
       "Create network egress routes"
+    ],
+    [
+      "notifications.instances.create",
+      "POST",
+      "/api/console/notifications/instances",
+      "Create notification instance"
+    ],
+    [
+      "notifications.instances.send",
+      "POST",
+      "/api/console/notifications/instances/:instance_id/send",
+      "Send notification"
     ],
     [
       "plugins.families.switch",

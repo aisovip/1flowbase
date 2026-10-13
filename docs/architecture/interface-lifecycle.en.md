@@ -217,6 +217,9 @@ Sources: [finalization](../../api/crates/interface-runtime/src/finalization.rs),
 
 ## Equivalence and evidence
 
+OpenAI and Anthropic compatibility stream routes enter `compatibility_interface::invoke_client_stream_with_principal`. The typed stream owner builds an envelope from the authenticated principal and executes the frozen plan with `InterfaceInvocationKernel::invoke_server_stream_with_dispatch_target`; protocol projection retains a separate completion owner. Source gates protect this ownership chain rather than the removed route helper name `invoke_stream`. Current production sources and controlled Kernel/principal bypasses provide positive and negative fixtures; source checks do not replace protocol or terminal behavior tests.
+
+
 Fix business intent, identity/permissions, initial data and configuration when comparing pre/post-refactor behavior. Lock protocol wrappers separately before comparing HTTP/MCP business semantics. Verify actual mount/dispatch/bindings; valid, missing, invalid and unauthorized inputs; scope isolation; fields, array order, status, full errors/messages, stream order/terminal; persistence and non-target rows; grants/audit/commit/rollback; frozen identities, cancellation, timeout, observer and delivery failure.
 
 First match each response ID to its own persisted object, then normalize random IDs across protocols. Agreement between two new implementations cannot alone prove old-version compatibility. Preserve a baseline contract, source identity or fixture; do not sort arrays or erase error details to hide differences.

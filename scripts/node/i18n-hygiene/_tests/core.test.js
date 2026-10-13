@@ -169,7 +169,7 @@ test('collectI18nHygieneFindings ignores generated plugin install artifacts', ()
   assert.deepEqual(findings, []);
 });
 
-test('collectI18nHygieneFindings fails duplicated values inside one owner locale', () => {
+test('collectI18nHygieneFindings fails repeated canonical translation vectors', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-value-')
   );
@@ -185,7 +185,7 @@ test('collectI18nHygieneFindings fails duplicated values inside one owner locale
     {
       actions: {
         save: 'Save',
-        submit: 'Submit'
+        submit: 'Save'
       }
     }
   );
@@ -200,7 +200,7 @@ test('collectI18nHygieneFindings fails duplicated values inside one owner locale
   assert.deepEqual(duplicateValue?.keys, ['actions.save', 'actions.submit']);
 });
 
-test('collectI18nHygieneFindings fails a locale-specific translation collision', () => {
+test('collectI18nHygieneFindings reports distinct canonical translations as a collision warning', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-locale-collision-')
   );
@@ -210,26 +210,26 @@ test('collectI18nHygieneFindings fails a locale-specific translation collision',
     {
       actions: {
         operation: '操作',
-        actionMenu: '操作'
+        action_menu: '操作'
       }
     },
     {
       actions: {
         operation: 'Operation',
-        actionMenu: 'Actions'
+        action_menu: 'Actions'
       }
     }
   );
 
   const duplicateValue = collectI18nHygieneFindings({ repoRoot }).find(
-    (finding) => finding.rule === 'duplicate-value-in-owner'
+    (finding) => finding.rule === 'locale-value-collision'
   );
 
-  assert.equal(duplicateValue?.severity, 'error');
+  assert.equal(duplicateValue?.severity, 'warning');
   assert.equal(duplicateValue?.locale, 'zh_Hans');
   assert.equal(duplicateValue?.value, '操作');
   assert.deepEqual(duplicateValue?.keys, [
-    'actions.actionMenu',
+    'actions.action_menu',
     'actions.operation'
   ]);
 });
@@ -696,4 +696,32 @@ test('main writes i18n hygiene report and fails on blocking findings', async () 
     ),
     true
   );
+});
+
+
+test('missing translations cannot downgrade a duplicate value to a collision warning', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-incomplete-vector-'));
+  try {
+    writeI18nPair(root, 'web/app/src/features/me',
+      { actions: { save: '保存', submit: '保存' } },
+      { actions: { save: 'Save' } });
+    const findings = collectI18nHygieneFindings({ repoRoot: root });
+    assert.ok(findings.some((finding) => finding.rule === 'locale-key-mismatch' && finding.severity === 'error'));
+    assert.ok(findings.some((finding) => finding.rule === 'duplicate-value-in-owner' && finding.severity === 'error'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a distinct third translation does not hide a repeated vector', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-mixed-vectors-'));
+  try {
+    writeI18nPair(root, 'web/app/src/features/me',
+      { actions: { save: '保存', submit: '保存', archive: '保存' } },
+      { actions: { save: 'Save', submit: 'Save', archive: 'Archive' } });
+    const findings = collectI18nHygieneFindings({ repoRoot: root });
+    assert.ok(findings.some((finding) => finding.rule === 'duplicate-value-in-owner' && finding.severity === 'error'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -1,7 +1,17 @@
 {
   "packet": "D3-P4",
-  "count": 80,
+  "count": 82,
   "consumers": [
+    {
+      "category": "settings_feature_label",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Notifications"
+    },
+    {
+      "category": "settings_feature_description",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Manage workspace notification instances"
+    },
     {
       "category": "settings_feature_label",
       "path": "api/crates/access-control/src/settings_features.rs",

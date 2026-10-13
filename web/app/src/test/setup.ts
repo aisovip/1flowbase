@@ -1,5 +1,13 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
+import { TestEventSource } from './event-source';
+
+// jsdom does not provide the browser SSE transport used by the app shell.
+Object.defineProperty(globalThis, 'EventSource', {
+  configurable: true,
+  writable: true,
+  value: TestEventSource
+});
 
 window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
 

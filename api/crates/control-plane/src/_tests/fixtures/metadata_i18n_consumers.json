@@ -275,9 +275,14 @@
     "field": "meta"
   },
   {
-    "key": "Cached URL",
+    "key": "Access URL",
     "resource": "attachments",
     "field": "url"
+  },
+  {
+    "key": "Image Preview URL",
+    "resource": "attachments",
+    "field": "preview_url"
   },
   {
     "key": "Storage ID",

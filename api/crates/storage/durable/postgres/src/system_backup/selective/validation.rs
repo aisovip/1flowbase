@@ -30,6 +30,28 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
             row["encrypted_secret_json"] = encrypt_secret_json(&plain, target)?;
         }
     }
+    if table == "notification_instances" {
+        let value = row
+            .get("encrypted_secret_json")
+            .context("notification instance missing secret column")?;
+        // Built-in system channels legitimately have no configured credentials.
+        if !value.is_null() {
+            let identity = |name| -> Result<uuid::Uuid> {
+                let value = row
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .context("notification instance missing identity")?;
+                Ok(uuid::Uuid::parse_str(value)?)
+            };
+            let aad =
+                crate::notification_repository::aad(identity("workspace_id")?, identity("id")?);
+            let plain = decrypt_secret_json_with_aad(value, source, &aad)
+                .context("source secret key cannot decrypt notification instance")?;
+            if source != target {
+                row["encrypted_secret_json"] = encrypt_secret_json_with_aad(&plain, target, &aad)?;
+            }
+        }
+    }
     if table == "plugin_credentials" {
         let field = |name| {
             row.get(name)

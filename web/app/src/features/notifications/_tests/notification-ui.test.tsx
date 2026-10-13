@@ -280,7 +280,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     const name = await screen.findByRole('textbox', { name: '渠道名称' });
     fireEvent.change(name, { target: { value: '团队通知' } });
     const token = document.querySelector('input[type="password"]');
-    expect(token).toBeTruthy();
+    expect(token).toBeInstanceOf(HTMLInputElement);
     expect(token).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '提交' }));
     await screen.findByRole('button', { name: '团队通知' });

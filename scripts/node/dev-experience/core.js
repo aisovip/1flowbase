@@ -1221,6 +1221,15 @@ async function main(argv = [], deps = {}) {
   writeStdout(
     `[dev-experience] static ${staticResult.ok ? "passed" : "failed"}: ${staticResult.graph.vertices} modules, ${staticResult.graph.edges} edges\n`,
   );
+  const outputDir = resolveOutputDir(deps.repoRoot || getRepoRoot(), deps.env || process.env);
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(outputDir, "dev-experience-static.json"),
+    `${JSON.stringify(staticResult, null, 2)}\n`,
+  );
+  for (const finding of staticResult.findings) {
+    writeStdout(`[dev-experience:${finding.code}] ${finding.file || "web/app/vite.config.ts"}: ${finding.dependency}\n`);
+  }
   if (!staticResult.ok) return 1;
   if (!options.smoke) return 0;
   const smokeResult = await (deps.runSmokeImpl || runSmoke)({

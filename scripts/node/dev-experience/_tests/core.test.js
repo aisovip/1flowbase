@@ -253,3 +253,30 @@ test("DV-F01 profile history is bounded for Median MAD regression", () => {
     Array.from({ length: 20 }, (_value, index) => index + 1),
   );
 });
+
+
+test('static gate reports production barrel imports and archives actionable evidence', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-static-evidence-'));
+  const source = path.join(root, 'web/app/src');
+  fs.mkdirSync(path.join(source, '_tests'), { recursive: true });
+  const config = path.join(root, 'web/app/vite.config.ts');
+  fs.writeFileSync(config, `export default { optimizeDeps: { include: ['antd', '@ant-design/icons'] } };`);
+  fs.writeFileSync(path.join(source, '_tests/fixture.tsx'), `import { UserOutlined } from '@ant-design/icons';`);
+  const component = path.join(source, 'Upload.tsx');
+  fs.writeFileSync(component, `import { UploadOutlined } from '@ant-design/icons';`);
+  let output = '';
+  const { main } = require('../core.js');
+  try {
+    assert.equal(await main([], { repoRoot: root, env: {}, writeStdout: (text) => { output += text; } }), 1);
+    assert.match(output, /high-fanout-icon-barrel.*web\/app\/src\/Upload.tsx/u);
+    const reportPath = path.join(root, 'tmp/test-governance/dev-experience-static.json');
+    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+    assert.equal(report.ok, false);
+    assert.equal(report.findings.length, 1);
+    fs.writeFileSync(component, `import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';`);
+    assert.equal(await main([], { repoRoot: root, env: {}, writeStdout: () => {} }), 0);
+    assert.deepEqual(JSON.parse(fs.readFileSync(reportPath, 'utf8')).findings, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

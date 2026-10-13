@@ -16,23 +16,11 @@ const IGNORED_PATH_PATTERNS = [
   /(?:^|\/)\.turbo(?:\/|$)/u,
 ];
 
-const CORE_LIB_CRATES = new Set([
-  'access-control',
-  'domain',
-  'observability',
-  'plugin-framework',
-  'runtime-profile',
-]);
-
-const RUNTIME_STORAGE_CRATES = new Set([
-  'orchestration-runtime',
-  'runtime-core',
-  'storage',
-]);
-
-const APP_CRATES = new Set([
-  'control-plane',
-]);
+// Keep advisory routing aligned with the exact package owners used by CI.
+const { BACKEND_SHARDS } = require('../verify/backend-targets.js');
+const CHECK_SCOPE_BY_PACKAGE = new Map(BACKEND_SHARDS.flatMap(({ key, packages }) =>
+  packages.map((packageName) => [packageName, `repo-backend-check-${key}`])
+));
 
 const ROUTE_DEFINITIONS = [
   {
@@ -256,18 +244,13 @@ function addBackendCheckRoutes(routes, filePath) {
 
   const crate = readCrateFromPath(filePath);
 
-  if (CORE_LIB_CRATES.has(crate)) {
-    addRoute(routes, 'repo-backend-check-core-libs');
-    return;
-  }
-
-  if (RUNTIME_STORAGE_CRATES.has(crate)) {
-    addRoute(routes, 'repo-backend-check-runtime-storage');
-    return;
-  }
-
-  if (APP_CRATES.has(crate) || crate === 'api-server') {
-    addRoute(routes, 'repo-backend-check-apps');
+  // Storage crate directories intentionally group durable, ephemeral and object
+  // packages under one owner; package names otherwise match crate directories.
+  const checkScope = crate === 'storage'
+    ? 'repo-backend-check-runtime-storage'
+    : CHECK_SCOPE_BY_PACKAGE.get(crate);
+  if (checkScope) {
+    addRoute(routes, checkScope);
     return;
   }
 
