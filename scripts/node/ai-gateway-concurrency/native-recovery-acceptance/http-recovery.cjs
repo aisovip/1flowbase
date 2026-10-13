@@ -93,7 +93,10 @@ async function run() {
       for (const key of ['model', 'reasoning', 'instructions', 'input', 'tools', 'include', 'parallel_tool_calls', 'store']) {
         assert.deepEqual(upstream.body[key], retry[key], `raw protocol fidelity: ${key}`);
       }
+      assert.deepEqual(upstream.body.previous_response_id, retry.previous_response_id,
+        'raw protocol fidelity: absent/null cursor');
       evidence[`http_${previous === null ? 'null' : 'absent'}_events`] = events;
+      fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));
     }
     assert.equal(mock.trace.filter(r => r.transport === 'websocket').length, wsCount);
     assert.equal(mock.trace.filter(r => r.transport === 'http').length, 2);

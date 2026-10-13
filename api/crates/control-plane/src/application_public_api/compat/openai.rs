@@ -192,3 +192,7 @@ pub(crate) use response_input::continuation_messages;
 #[cfg(test)]
 #[path = "openai/_tests/text_verbosity.rs"]
 mod text_verbosity_tests;
+
+#[cfg(test)]
+#[path = "openai/_tests/nullable_previous_response_id.rs"]
+mod nullable_previous_response_id_tests;

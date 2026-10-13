@@ -70,6 +70,10 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/gateway-target-handoff/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/build.log; exit 1; }
           cp api/target/debug/api-server tmp/test-governance/gateway-target-handoff/ci/api-server
           sha256sum tmp/test-governance/gateway-target-handoff/ci/api-server > tmp/test-governance/gateway-target-handoff/ci/api-server.sha256
+      - name: Nullable Responses continuation cursor contract
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane nullable_previous_response_id > tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/nullable-cursor.log
       - name: Native fork visibility, child boundaries and populated migration
         if: ${{ inputs.verify_fork_projection }}
         run: |
