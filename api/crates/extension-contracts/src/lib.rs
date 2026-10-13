@@ -57,3 +57,6 @@ pub use plugin_credential_contract::*;
 
 pub mod file_import_contract;
 pub use file_import_contract::*;
+
+pub mod file_read_contract;
+pub use file_read_contract::*;
