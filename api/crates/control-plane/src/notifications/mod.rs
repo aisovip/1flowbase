@@ -134,6 +134,7 @@ where
     async fn manage(&self, actor: &ActorContext, operation: &str) -> Result<()> {
         self.ensure_actor(actor).await?;
         let group = domain::ConsolePolicyGroup::settings_feature(NOTIFICATIONS_SETTINGS_FEATURE)?;
+        let operation = domain::ConsoleOperationId::try_from(operation)?;
         if !actor.is_root
             && !domain::effective_console_simple_operation(
                 &self
@@ -141,7 +142,7 @@ where
                     .load_role_console_policies_for_user(actor)
                     .await?,
                 &group,
-                operation,
+                &operation,
             )
         {
             return Err(Error::PermissionDenied("permission_denied").into());

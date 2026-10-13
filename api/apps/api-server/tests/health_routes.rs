@@ -209,6 +209,17 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     // Health-route tests do not exercise host backup tooling. The runtime is
     // optional and its PostgreSQL binary preflight belongs to backup tests.
     let system_backup = None;
+    let notification_events = std::sync::Arc::new(
+        api_server::routes::notifications::events::NotificationEventHub::default(),
+    );
+    let notification_service = std::sync::Arc::new(
+        control_plane::notifications::NotificationService::new(
+            store.clone(),
+            config.provider_secret_master_key.clone(),
+        )
+        .with_events(notification_events.clone()),
+    );
+    notification_service.bootstrap().await.unwrap();
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
@@ -232,6 +243,8 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
+            notification_service,
+            notification_events,
             assistant_conversation_events: Default::default(),
             assistant_executions: Default::default(),
             assistant_client_sessions: Default::default(),

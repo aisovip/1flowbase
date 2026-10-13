@@ -121,6 +121,15 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         .load_actor_context(root.id, workspace.tenant_id, other.id, None)
         .await
         .unwrap();
+    // Runtime workspace creation must provision its default instance without a restart/bootstrap.
+    let other_instances = service.list_instances(&foreign_actor).await.unwrap();
+    assert_eq!(other_instances.len(), 1);
+    assert_eq!(other_instances[0].record.type_code, "system");
+    assert_eq!(other_instances[0].record.workspace_id, other.id);
+    assert_eq!(
+        other_instances[0].record.status,
+        NotificationInstanceStatus::Enabled
+    );
     assert!(service.get_instance(&foreign_actor, id).await.is_err());
     assert!(service
         .read(&foreign_actor, root_page.items[0].id)
