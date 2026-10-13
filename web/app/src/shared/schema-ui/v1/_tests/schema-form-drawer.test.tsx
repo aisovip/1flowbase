@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -295,4 +301,48 @@ describe('SchemaFormDrawer', () => {
       )
     );
   });
+});
+
+test('shared password and multi-select controls keep scalar and array values', async () => {
+  const onSubmit = vi.fn();
+  render(
+    <SchemaFormDrawer
+      open
+      title="Controls"
+      schema={{
+        schema_version: '1.0.0',
+        fields: [
+          {
+            key: 'token',
+            label: 'Secret token',
+            type: 'string',
+            control: 'password'
+          },
+          {
+            key: 'members',
+            label: 'Members',
+            type: 'array',
+            control: 'multi-select',
+            options: [
+              { label: 'Alice', value: 'alice' },
+              { label: 'Bob', value: 'bob' }
+            ]
+          }
+        ]
+      }}
+      initialValues={{ members: ['alice'] }}
+      onSubmit={onSubmit}
+    />
+  );
+  const token = document.querySelector('input[type="password"]')!;
+  fireEvent.change(token, { target: { value: 'new-token' } });
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Members' }));
+  fireEvent.click(await screen.findByText('Bob'));
+  fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      { token: 'new-token', members: ['alice', 'bob'] },
+      expect.anything()
+    )
+  );
 });

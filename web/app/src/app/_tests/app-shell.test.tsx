@@ -6,6 +6,8 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@1flowbase/api-client', () => ({
+  getNotificationUnreadCount: vi.fn().mockResolvedValue({ unread_count: 0 }),
+  subscribeNotificationChanges: vi.fn(() => () => {}),
   listFrontstagePages: vi.fn().mockResolvedValue([]),
   getDefaultApiBaseUrl: vi.fn().mockReturnValue('http://127.0.0.1:7800'),
   getConsoleNavigation: vi.fn().mockResolvedValue({

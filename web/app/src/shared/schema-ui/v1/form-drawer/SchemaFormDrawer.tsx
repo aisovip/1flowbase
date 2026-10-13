@@ -152,14 +152,24 @@ function renderFieldControl(field: PluginFormFieldSchema) {
     return <Switch />;
   }
 
-  if (field.type === 'select') {
+  if (field.type === 'select' || field.control === 'multi-select') {
     return (
       <Select
+        mode={field.control === 'multi-select' ? 'multiple' : undefined}
         options={(field.options ?? []).map((option) => ({
           disabled: option.disabled,
           label: option.label,
           value: option.value as string | number | boolean
         }))}
+      />
+    );
+  }
+
+  if (field.control === 'password' || field.type === 'password') {
+    return (
+      <Input.Password
+        placeholder={field.placeholder}
+        autoComplete="new-password"
       />
     );
   }

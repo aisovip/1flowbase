@@ -1,0 +1,158 @@
+import type { ConsolePluginFormSchema } from '../../console-model-providers';
+import { apiFetch, apiFetchVoid, getDefaultApiBaseUrl } from '../../transport';
+
+export interface NotificationType {
+  type_code: string;
+  display_name: string;
+  description: string | null;
+  config_schema: Record<string, unknown>;
+  config_form: ConsolePluginFormSchema;
+  input_schema: Record<string, unknown>;
+  input_form: ConsolePluginFormSchema;
+  output_schema: Record<string, unknown>;
+  contribution_id: string;
+  installation_id: string | null;
+  available: boolean;
+  unavailable_reason: string | null;
+}
+export interface NotificationInstance {
+  id: string;
+  workspace_id: string;
+  type_code: string;
+  installation_id: string | null;
+  display_name: string;
+  status: 'enabled' | 'disabled';
+  config_json: Record<string, unknown>;
+  configured_secret_fields: string[];
+  available: boolean;
+  unavailable_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface NotificationMessage {
+  id: string;
+  workspace_id: string;
+  instance_id: string;
+  recipient_user_id: string;
+  title: string;
+  content: string;
+  read_at: string | null;
+  created_at: string;
+}
+export interface NotificationMessages {
+  items: NotificationMessage[];
+  next_cursor: string | null;
+  unread_count: number;
+}
+export interface CreateNotificationInstance {
+  type_code: string;
+  installation_id: string | null;
+  display_name: string;
+  config_json: Record<string, unknown>;
+  status?: NotificationInstance['status'];
+}
+export type UpdateNotificationInstance = Partial<
+  Pick<CreateNotificationInstance, 'display_name' | 'status' | 'config_json'>
+>;
+const path = '/api/console/notifications';
+export const listNotificationTypes = (signal?: AbortSignal) =>
+  apiFetch<NotificationType[]>({ path: `${path}/types`, signal });
+export const listNotificationInstances = (signal?: AbortSignal) =>
+  apiFetch<NotificationInstance[]>({ path: `${path}/instances`, signal });
+export const getNotificationInstance = (id: string, signal?: AbortSignal) =>
+  apiFetch<NotificationInstance>({
+    path: `${path}/instances/${encodeURIComponent(id)}`,
+    signal
+  });
+export const createNotificationInstance = (
+  body: CreateNotificationInstance,
+  csrfToken: string
+) =>
+  apiFetch<NotificationInstance>({
+    path: `${path}/instances`,
+    method: 'POST',
+    body,
+    csrfToken
+  });
+export const updateNotificationInstance = (
+  id: string,
+  body: UpdateNotificationInstance,
+  csrfToken: string
+) =>
+  apiFetch<NotificationInstance>({
+    path: `${path}/instances/${encodeURIComponent(id)}`,
+    method: 'PATCH',
+    body,
+    csrfToken
+  });
+export const deleteNotificationInstance = (id: string, csrfToken: string) =>
+  apiFetchVoid({
+    path: `${path}/instances/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+    csrfToken
+  });
+export const sendNotification = (
+  id: string,
+  input: Record<string, unknown>,
+  csrfToken: string
+) =>
+  apiFetch<{
+    instance_id: string;
+    type_code: string;
+    result: Record<string, unknown>;
+  }>({
+    path: `${path}/instances/${encodeURIComponent(id)}/send`,
+    method: 'POST',
+    body: { input },
+    csrfToken
+  });
+export function listNotificationMessages(
+  input: { cursor?: string; page_size?: number; unread_only?: boolean } = {},
+  signal?: AbortSignal
+) {
+  const search = new URLSearchParams();
+  if (input.cursor) search.set('cursor', input.cursor);
+  if (input.page_size !== undefined)
+    search.set('page_size', String(input.page_size));
+  if (input.unread_only !== undefined)
+    search.set('unread_only', String(input.unread_only));
+  return apiFetch<NotificationMessages>({
+    path: `${path}/messages?${search}`,
+    signal
+  });
+}
+export const getNotificationUnreadCount = (signal?: AbortSignal) =>
+  apiFetch<{ unread_count: number }>({
+    path: `${path}/messages/unread-count`,
+    signal
+  });
+export const markNotificationRead = (id: string, csrfToken: string) =>
+  apiFetch<NotificationMessage>({
+    path: `${path}/messages/${encodeURIComponent(id)}/read`,
+    method: 'POST',
+    csrfToken
+  });
+export const markAllNotificationsRead = (csrfToken: string) =>
+  apiFetch<{ updated_count: number }>({
+    path: `${path}/messages/read-all`,
+    method: 'POST',
+    csrfToken
+  });
+/** The session cookie is the same credential used by apiFetch. Every open,
+ * including reconnect, requests a fresh HTTP snapshot from the consumer. */
+export function subscribeNotificationChanges(
+  onRefresh: () => void,
+  onConnectionChange: (connected: boolean) => void,
+  baseUrl = getDefaultApiBaseUrl()
+) {
+  const source = new EventSource(`${baseUrl}${path}/events`, {
+    withCredentials: true
+  });
+  source.onopen = () => {
+    onConnectionChange(true);
+    onRefresh();
+  };
+  source.onerror = () => onConnectionChange(false);
+  source.addEventListener('notification.changed', onRefresh);
+  return () => source.close();
+}

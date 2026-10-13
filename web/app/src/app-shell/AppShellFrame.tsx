@@ -1,3 +1,4 @@
+import { NotificationBell } from '../features/notifications/components/NotificationBell';
 import { useLayoutEffect, type PropsWithChildren } from 'react';
 
 import { AppShell } from '@1flowbase/ui';
@@ -99,6 +100,7 @@ function AppShellFrameContent({
             <HelpChromeMenu />
             <LanguageChromeMenu />
           </span>
+          <NotificationBell />
           <AccountMenu useRouterNavigation={useRouterLinks} />
         </Space>
       }
