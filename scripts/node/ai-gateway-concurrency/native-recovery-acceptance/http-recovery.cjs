@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const assert = require('node:assert/strict');
 const { createHttpRecoveryMock } = require('./http-recovery-mock.cjs');
 const { createOwnedGateway } = require('./gateway-owner.cjs');
@@ -51,11 +52,28 @@ async function run() {
         parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false }, strict: true }],
       include: ['reasoning.encrypted_content'], parallel_tool_calls: true };
     evidence.websocket_events = await websocketTurn(gateway.target, body, session);
+    const failureRows = execFileSync('docker', ['exec', 'docker-db-1', 'psql', '-U', 'postgres',
+      '-d', gateway.databaseName, '-At', '-v', 'ON_ERROR_STOP=1', '-c',
+      'select error_payload from flow_runs where error_payload is not null order by started_at'],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    evidence.failures = failureRows.trim().split('\n').filter(Boolean).map(JSON.parse);
+    evidence.upstream = mock.trace;
+    fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));
     assert.ok(evidence.websocket_events.some(e => e.type === 'error' || e.type === 'response.failed'));
     assert.ok(!evidence.websocket_events.some(e => e.type === 'response.completed'), 'physical close cannot fabricate completion');
     assert.ok(!evidence.websocket_events.some(e => /delta|output_item.done/u.test(e.type)), 'failed attempts expose no semantic output');
     const wsCount = mock.trace.length;
-    assert.ok(wsCount > 1, 'bare close1008 must permit a budgeted pre-output recovery attempt');
+    // AI Native cannot prove an opaque request replayable. The provider reports
+    // the retryable physical interruption; Codex owns replay and HTTP fallback.
+    assert.equal(wsCount, 1, 'NativeOpaque must not be replayed by the host');
+    assert.equal(evidence.failures.length, 1);
+    const recovery = evidence.failures[0].ai_native_recovery;
+    assert.equal(evidence.failures[0].error_code, 'provider_transport_unavailable');
+    assert.equal(recovery.decision, 'non_reproducible');
+    assert.equal(recovery.provider_attempts_consumed, 1);
+    assert.equal(recovery.provider_inner_receipt.disposition, 'logical_invocation_retry');
+    assert.equal(recovery.provider_inner_receipt.commit_level, 'lifecycle_only');
+    assert.equal(recovery.provider_inner_receipt.reason, 'transport_disconnected');
     for (const previous of [undefined, null]) {
       const retry = { ...body, stream: true, ...(previous === null ? { previous_response_id: null } : {}) };
       const response = await fetch(gateway.target.gateway.responses_url, {
