@@ -28,6 +28,25 @@ fn parse(value: &Value) -> crate::FrameworkResult<crate::PluginManifestV1> {
 }
 
 #[test]
+fn notification_sdk_package_fixture_is_a_valid_managed_manifest() {
+    let manifest = parse_plugin_manifest(include_str!(
+        "../../../../plugins/fixtures/acme.notification/manifest.yaml"
+    ))
+    .expect("the documented SDK fixture must parse without rewriting its identity");
+    assert_eq!(manifest.plugin_code().unwrap(), "notification-fixture");
+    assert_eq!(
+        manifest.notification_types[0].type_code,
+        "acme/notification-fixture/receipt"
+    );
+    let module = &manifest.managed.as_ref().unwrap().module;
+    assert_eq!(module.module_id.as_str(), manifest.plugin_code().unwrap());
+    assert_eq!(
+        module.contributions[0].contributor_module_id,
+        module.module_id
+    );
+}
+
+#[test]
 fn notification_manifest_registers_explicit_config_and_send_contract() {
     let manifest = parse(&fixture()).unwrap();
     assert_eq!(manifest.notification_types.len(), 1);

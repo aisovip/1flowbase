@@ -31,8 +31,8 @@
   }],
   "managed": {
     "module": {
-      "bus_version":"v1","module_id":"acme.notification-fixture","module_version":"1.0.0","module_kind":"runtime",
-      "contributions":[{"contribution_id":"acme.notification-fixture.send","contributor_module_id":"acme.notification-fixture","point_id":"1flowbase.notification.send","contract_version":"1flowbase.notification/v1","required_permissions":["notification.send"],"mode":"append"}]
+      "bus_version":"v1","module_id":"notification-fixture","module_version":"1.0.0","module_kind":"runtime",
+      "contributions":[{"contribution_id":"acme.notification-fixture.send","contributor_module_id":"notification-fixture","point_id":"1flowbase.notification.send","contract_version":"1flowbase.notification/v1","required_permissions":["notification.send"],"mode":"append"}]
     },
     "execution_bindings":[{"contribution_id":"acme.notification-fixture.send","execution_mode":"process_per_call","runtime":{"protocol":"stdio_json","entry":"bin/worker"},"handler":"send","payload":{"kind":"notification_type","type_code":"acme/notification-fixture/receipt"}}]
   }
