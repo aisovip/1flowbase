@@ -3,9 +3,14 @@ import {
   getNotificationUnreadCount,
   listNotificationInstances,
   listNotificationMessages,
+  listNotificationSendLogs,
+  getNotificationSendLog,
   listNotificationTypes
 } from '@1flowbase/api-client';
-import type { NotificationInstanceListInput } from '@1flowbase/api-client';
+import type {
+  NotificationInstanceListInput,
+  NotificationLogListInput
+} from '@1flowbase/api-client';
 export {
   createNotificationInstance,
   updateNotificationInstance,
@@ -48,4 +53,18 @@ export const notificationMessagesOptions = (
     ],
     queryFn: ({ signal }) =>
       listNotificationMessages({ cursor, unread_only }, signal)
+  });
+
+export const notificationLogsOptions = (
+  scope: string,
+  input: NotificationLogListInput
+) =>
+  queryOptions({
+    queryKey: [...notificationQueryKey(scope), 'logs', input],
+    queryFn: ({ signal }) => listNotificationSendLogs(input, signal)
+  });
+export const notificationLogOptions = (scope: string, id: string) =>
+  queryOptions({
+    queryKey: [...notificationQueryKey(scope), 'log', id],
+    queryFn: ({ signal }) => getNotificationSendLog(id, signal)
   });

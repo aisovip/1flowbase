@@ -42,3 +42,16 @@
     padding: 12px;
   }
 }
+
+.notification-logs__filter {
+  min-width: 150px;
+}
+.notification-log-detail__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .notification-logs__filter {
+    width: 100%;
+  }
+}

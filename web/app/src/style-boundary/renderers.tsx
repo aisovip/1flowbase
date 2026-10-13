@@ -1,5 +1,6 @@
 import {
   NotificationInboxStyleBoundaryScene,
+  NotificationLogsStyleBoundaryScene,
   NotificationSettingsStyleBoundaryScene,
   seedStyleBoundaryNotificationFetch,
   seedStyleBoundaryNotificationSettingsFetch
@@ -174,6 +175,18 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'page.notification-logs.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationSettingsFetch();
+    return <NotificationLogsStyleBoundaryScene />;
+  },
+  'page.notification-logs.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationSettingsFetch();
+    return <NotificationLogsStyleBoundaryScene />;
+  },
   'page.settings-notifications.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();

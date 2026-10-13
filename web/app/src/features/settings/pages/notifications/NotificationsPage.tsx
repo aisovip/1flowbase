@@ -13,6 +13,7 @@ import {
   Popconfirm,
   Space,
   Switch,
+  Tabs,
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -37,9 +38,30 @@ import {
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import { NotificationInstanceDrawer } from './NotificationInstanceDrawer';
 import { NotificationInstanceFilters } from './NotificationInstanceFilters';
+import { NotificationLogs } from './NotificationLogs';
 import './notifications-page.css';
 
 export function NotificationsPage() {
+  const { t } = useTranslation('notifications');
+  const scope = useAuthStore(selectNavigationQueryScope);
+  return (
+    <section className="notifications-page">
+      <Tabs
+        key={scope}
+        items={[
+          {
+            key: 'channels',
+            label: t('channels'),
+            children: <NotificationChannelsPage />
+          },
+          { key: 'logs', label: t('logs'), children: <NotificationLogs /> }
+        ]}
+      />
+    </section>
+  );
+}
+
+function NotificationChannelsPage() {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';

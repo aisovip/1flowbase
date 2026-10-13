@@ -68,7 +68,11 @@ export function NotificationInstanceDrawer({
       footerAlign="end"
       schema={schema}
       initialValues={initialValues}
-      width="min(720px, 100vw)"
+      resizable
+      defaultWidth={720}
+      minWidth={480}
+      maxWidth={1200}
+      resizeLabel={t('resize_drawer')}
       submitText={t('submit')}
       cancelText={t('cancel')}
       leadingContent={
