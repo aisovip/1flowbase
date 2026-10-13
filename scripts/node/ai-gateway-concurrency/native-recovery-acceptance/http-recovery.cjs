@@ -18,7 +18,8 @@ async function websocketTurn(target, body, session) {
   const WebSocket = loadWebSocket();
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(target.gateway.websocket_url, { headers: {
-      authorization: target.gateway.authorization, 'session-id': session, 'x-codex-turn-id': 'ws-failure',
+      authorization: target.gateway.authorization, 'session-id': session,
+      'openai-beta': 'responses_websockets=2026-02-06',
     } });
     const events = [];
     const timer = setTimeout(() => { socket.terminate(); reject(new Error('WebSocket fixture timed out')); }, 60_000);
