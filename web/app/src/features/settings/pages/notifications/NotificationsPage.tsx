@@ -12,7 +12,7 @@ import {
   Grid,
   Popconfirm,
   Space,
-  Tag,
+  Switch,
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -84,7 +84,7 @@ export function NotificationsPage() {
       if (instance.available) return null;
       switch (instance.unavailable_reason) {
         case 'instance_disabled':
-          return t('instance_disabled');
+          return null;
         case 'plugin_unavailable':
           return t('plugin_unavailable');
         case 'type_unavailable':
@@ -148,9 +148,13 @@ export function NotificationsPage() {
         title: t('status'),
         render: (_, item) => (
           <Space orientation="vertical" size="small">
-            <Tag>
-              {item.status === 'enabled' ? t('enabled') : t('disabled')}
-            </Tag>
+            <Switch
+              aria-label={`${item.display_name}: ${t('status')}`}
+              checked={item.status === 'enabled'}
+              disabled={statusPending}
+              loading={statusPending && statusVariables?.id === item.id}
+              onChange={() => changeStatus(item)}
+            />
             {availability(item) && (
               <Typography.Text type="secondary">
                 {availability(item)}
@@ -172,15 +176,6 @@ export function NotificationsPage() {
               onClick={() => editInstance(item)}
             >
               {t('edit')}
-            </Button>
-            <Button
-              danger={item.status === 'enabled'}
-              type="link"
-              className="notifications-page__action"
-              loading={statusPending && statusVariables?.id === item.id}
-              onClick={() => changeStatus(item)}
-            >
-              {item.status === 'enabled' ? t('disable') : t('enable')}
             </Button>
             <Popconfirm
               title={t('delete_confirm')}

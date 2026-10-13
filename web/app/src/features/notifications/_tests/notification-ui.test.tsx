@@ -79,6 +79,8 @@ let catalog: NotificationType[];
 let filteredInstances: NotificationInstance[] | undefined;
 let read_at: string | null;
 let rejectRead: boolean;
+let rejectStatus: boolean;
+let statusRequest: Promise<void> | undefined;
 let calls: Array<{
   url: string;
   method: string;
@@ -99,6 +101,8 @@ beforeEach(() => {
   filteredInstances = undefined;
   read_at = null;
   rejectRead = false;
+  rejectStatus = false;
+  statusRequest = undefined;
   calls = [];
   SignalStream.instances = [];
   useAuthStore.setState({
@@ -143,6 +147,16 @@ beforeEach(() => {
           ? (filteredInstances ?? [instance])
           : [instance];
       else if (url.includes('/instances/') && method === 'PATCH') {
+        if (body?.status) {
+          await statusRequest;
+          if (rejectStatus)
+            return new Response(
+              JSON.stringify({
+                error: { code: 'forbidden', message: 'Forbidden' }
+              }),
+              { status: 403, headers: { 'content-type': 'application/json' } }
+            );
+        }
         instance = { ...instance, ...body } as NotificationInstance;
         data = instance;
       } else if (url.endsWith('/unread-count'))
@@ -296,14 +310,45 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     instance.unavailable_reason = 'plugin_unavailable';
     renderUI(<NotificationsPage />);
     await screen.findByText('通知插件不可用');
-    fireEvent.click(screen.getByRole('button', { name: /^停\s*用$/u }));
-    await screen.findByText('已停用');
+    const toggle = screen.getByRole('switch', { name: '系统站内通知: 状态' });
+    expect(toggle).toBeChecked();
+    expect(
+      screen.queryByRole('button', { name: /^停\s*用$/u })
+    ).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).not.toBeChecked());
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       status: 'disabled'
     });
     expect(
       screen.getByRole('button', { name: '系统站内通知' })
     ).toBeInTheDocument();
+    await waitFor(() => expect(toggle).toBeEnabled());
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(
+      calls.filter((call) => call.method === 'PATCH').at(-1)?.body
+    ).toEqual({ status: 'enabled' });
+  });
+  test('keeps the backend switch state while saving and after a rejected status update', async () => {
+    rejectStatus = true;
+    let finishRequest!: () => void;
+    statusRequest = new Promise<void>((resolve) => {
+      finishRequest = resolve;
+    });
+    renderUI(<NotificationsPage />);
+    const toggle = await screen.findByRole('switch', {
+      name: '系统站内通知: 状态'
+    });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(toggle).toBeChecked();
+    expect(instance.status).toBe('enabled');
+    finishRequest();
+    await screen.findByText('通知实例操作失败，请刷新后重试。');
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
+    expect(instance.status).toBe('enabled');
   });
   test('marks messages read through HTTP and refetches after both a signal and reconnect', async () => {
     const view = renderUI(<NotificationBell />);
