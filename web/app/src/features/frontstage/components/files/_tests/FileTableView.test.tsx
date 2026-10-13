@@ -4,7 +4,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
@@ -84,6 +85,53 @@ afterEach(() => {
 });
 
 describe('FileTableView', () => {
+  test.each(['text/plain', 'application/pdf', 'application/zip'])(
+    'shows the access URL in the preview cell when %s has no backend preview',
+    async (mimetype) => {
+      vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+        items: [{ ...record, mimetype }],
+        total: 1
+      });
+      mount();
+      const filename = await screen.findByRole('link', {
+        name: record.filename
+      });
+      const previewCell = within(filename.closest('tr')!).getAllByRole(
+        'cell'
+      )[0];
+      expect(
+        within(previewCell).getByRole('link', { name: record.url })
+      ).toHaveAttribute('href', record.url);
+      expect(within(previewCell).queryByRole('img')).not.toBeInTheDocument();
+    }
+  );
+
+  test('falls back to the access URL when the preview image cannot load', async () => {
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [{ ...record, preview_url: '/unavailable-image.png' }],
+      total: 1
+    });
+    mount();
+    const thumbnail = await screen.findByRole('img', { name: record.filename });
+    const cell = thumbnail.closest('td')!;
+    fireEvent.error(thumbnail);
+    expect(
+      await within(cell).findByRole('link', { name: record.url })
+    ).toHaveAttribute('href', record.url);
+    expect(within(cell).queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  test('shows two-decimal binary size and exact bytes on hover', async () => {
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [{ ...record, size: 1_667_307 }],
+      total: 1
+    });
+    mount();
+    const size = await screen.findByText('1.59 MiB');
+    fireEvent.mouseEnter(size);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('1,667,307 B');
+  });
+
   test('renders backend preview URL lazily and opens image preview on click', async () => {
     const imageRecord = {
       ...record,

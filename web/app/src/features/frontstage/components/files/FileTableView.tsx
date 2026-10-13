@@ -5,10 +5,10 @@ import {
   App,
   Button,
   ConfigProvider,
-  Image,
   Modal,
   Space,
   Typography,
+  Tooltip,
   Upload
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
@@ -33,6 +33,8 @@ import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayou
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import { useNativeBlockSurface } from '../../lib/native-modules/native-block-surface-context';
 import { FileTemporaryAccessModal } from './FileTemporaryAccessModal';
+import { FileRecordPreview } from './FileRecordPreview';
+import { formatFileSize } from './file-size';
 
 export interface FileTableViewProps {
   fileTableCode: string;
@@ -88,20 +90,9 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
       {
         key: 'preview_url',
         dataIndex: 'preview_url',
-        title: i18nText('frontstage', 'files.image_preview'),
-        width: 112,
-        render: (_, record) =>
-          record.preview_url ? (
-            <Image
-              src={record.preview_url}
-              alt={record.filename}
-              width={64}
-              height={64}
-              loading="lazy"
-              style={{ objectFit: 'contain' }}
-              preview={{ getContainer: surface?.overlayHost.getPopupContainer }}
-            />
-          ) : null
+        title: i18nText('frontstage', 'auto.preview'),
+        width: 200,
+        render: (_, record) => <FileRecordPreview record={record} />
       },
       {
         key: 'filename',
@@ -122,7 +113,14 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         dataIndex: 'size',
         title: i18nText('frontstage', 'files.size'),
         width: 140,
-        render: (_, record) => `${formatNumber(record.size)} B`
+        render: (_, record) => (
+          <Tooltip
+            title={`${formatNumber(record.size)} B`}
+            getPopupContainer={surface?.overlayHost.getPopupContainer}
+          >
+            <span>{formatFileSize(record.size)}</span>
+          </Tooltip>
+        )
       },
       {
         key: 'mimetype',
