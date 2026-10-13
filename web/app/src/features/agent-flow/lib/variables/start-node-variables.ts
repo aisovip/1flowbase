@@ -147,6 +147,10 @@ export function getNodeVariableOutputs(
       .map(normalizeCodeOutput);
   }
 
+  if (node.type === 'notification') {
+    return node.outputs.filter((output) => isValidPublicOutputKey(output.key));
+  }
+
   if (node.type === 'plugin_node') {
     return node.outputs.filter((output) => isValidPublicOutputKey(output.key));
   }

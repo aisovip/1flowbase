@@ -135,7 +135,7 @@ function fieldRules(field: PluginFormFieldSchema): Rule[] {
   return rules;
 }
 
-function renderFieldControl(field: PluginFormFieldSchema) {
+export function renderSchemaFormFieldControl(field: PluginFormFieldSchema) {
   if (field.type === 'number') {
     return (
       <InputNumber
@@ -479,7 +479,7 @@ export function SchemaFormDrawer({
               {field.read_only ? (
                 <Input disabled placeholder={field.placeholder} />
               ) : (
-                renderFieldControl(field)
+                renderSchemaFormFieldControl(field)
               )}
             </Form.Item>
           )

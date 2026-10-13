@@ -73,6 +73,10 @@ const lazyField = <TModule, K extends keyof TModule>(
     }))
   );
 
+const NotificationField = lazyField(
+  () => import('../components/detail/fields/notification/NotificationField'),
+  'NotificationField'
+);
 const ConditionGroupField = lazyField(
   () => import('../components/bindings/ConditionGroupField'),
   'ConditionGroupField'
@@ -1138,6 +1142,7 @@ export const agentFlowFieldRenderers = {
   output_contract_definition: renderOutputContractDefinitionField,
   start_input_fields: renderStartInputFieldsField,
   start_model_list: renderStartModelListField,
+  notification: NotificationField,
   http_request_endpoint: renderHttpRequestEndpointField,
   http_request_key_values: renderHttpRequestKeyValuesField,
   http_request_body: renderHttpRequestBodyField,
