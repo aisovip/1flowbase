@@ -7,6 +7,17 @@ use super::{
 // registry operation must be added here with its historic proof or default-disabled reason.
 pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_authenticated_other(
+        "core.authenticated",
+        &[
+            "notifications.events.subscribe",
+            "notifications.messages.list",
+            "notifications.messages.read",
+            "notifications.messages.read_all",
+            "notifications.messages.unread_count",
+            "notifications.types.list",
+        ],
+    ),
     core_simple_other(
         "other.agent-flow",
         &[
@@ -80,6 +91,17 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     ),
     core_simple_other("other.workspace", &["workspace.update"]),
     core_simple_settings("system.api-key-authentication", &["user_api_keys.manage"]),
+    core_simple_settings(
+        "system.notifications",
+        &[
+            "notifications.instances.create",
+            "notifications.instances.delete",
+            "notifications.instances.get",
+            "notifications.instances.list",
+            "notifications.instances.send",
+            "notifications.instances.update",
+        ],
+    ),
     core_row_settings(
         "system.applications",
         &[
@@ -442,6 +464,13 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Notification management is new authority; historic settings grants must not gain it.
+    "notifications.instances.create",
+    "notifications.instances.delete",
+    "notifications.instances.get",
+    "notifications.instances.list",
+    "notifications.instances.send",
+    "notifications.instances.update",
     // Log deletion is new destructive authority, never inferred from legacy application grants.
     "applications.logs.delete",
     "applications.logs.delete.preview",
