@@ -3372,7 +3372,7 @@ name = "runtime-extension-host"
 version = "0.5.6"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64",
  "extension-contracts",
  "extension-package-runtime",
  "http 1.4.0",
@@ -3395,7 +3395,7 @@ dependencies = [
 name = "runtime-extension-sdk"
 version = "0.5.6"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "extension-contracts",
  "serde",
  "serde_json",
