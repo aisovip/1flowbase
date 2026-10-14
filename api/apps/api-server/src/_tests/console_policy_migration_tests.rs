@@ -596,32 +596,60 @@ fn agent_logs_exchange_does_not_expand_legacy_application_settings_authority() {
             }
         }
     }
-    for operation in [
+    for profile in [
         "applications.create",
         "applications.logs.export",
         "applications.logs.import",
     ] {
-        assert!(migration
-            .disposition(operation)
-            .unwrap()
-            .has_legacy_grant(legacy));
-        assert!(preview
-            .effective_after
+        let operations = registry
+            .inventory()
+            .operations
             .iter()
-            .any(|entry| entry.operation_id.as_str() == operation
-                && entry.simple_enabled == Some(true)));
+            .filter(|operation| operation.authorization_profile_id == profile)
+            .collect::<Vec<_>>();
+        assert!(
+            !operations.is_empty(),
+            "native simple profile must retain live routes: {profile}"
+        );
+        for operation in operations {
+            let operation_id = operation.operation_id.as_str();
+            assert!(migration
+                .disposition(operation_id)
+                .unwrap()
+                .has_legacy_grant(legacy));
+            assert!(preview.effective_after.iter().any(|entry| {
+                entry.operation_id.as_str() == operation_id && entry.simple_enabled == Some(true)
+            }));
+        }
     }
-    for operation in [
+    for profile in [
         "applications.delete",
         "applications.update",
         "applications.view",
     ] {
-        assert!(preview.effective_after.iter().any(|entry| {
-            entry.operation_id.as_str() == operation
-                && entry.same_scope_own == Some(true)
-                && entry.same_scope_other == Some(true)
-                && entry.cross_scope == Some(false)
-        }));
+        let operations = registry
+            .inventory()
+            .operations
+            .iter()
+            .filter(|operation| operation.authorization_profile_id == profile)
+            .collect::<Vec<_>>();
+        assert!(
+            !operations.is_empty(),
+            "native row profile must retain live routes: {profile}"
+        );
+        for operation in operations {
+            let operation_id = operation.operation_id.as_str();
+            assert!(migration
+                .disposition(operation_id)
+                .unwrap()
+                .has_legacy_grant(legacy));
+            assert!(preview.effective_after.iter().any(|entry| {
+                entry.operation_id.as_str() == operation_id
+                    && entry.same_scope_own == Some(true)
+                    && entry.same_scope_other == Some(true)
+                    && entry.cross_scope == Some(false)
+            }));
+        }
     }
     assert!(preview.authorization_delta.added.is_empty());
     assert!(preview.authorization_delta.removed.is_empty());

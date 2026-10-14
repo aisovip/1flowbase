@@ -128,6 +128,22 @@ async fn console_otlp_roundtrip_preserves_multisource_facts_and_null_console_pro
             StatusCode::BAD_REQUEST
         );
     }
+    // New Agent Logs applications default to enabled reception. Set the tested
+    // disabled state through the canonical writer before asserting the import gate.
+    {
+        use control_plane_contracts::ports::{
+            ApplicationPublicationRepository, ApplicationRepository, SetApplicationApiEnabledInput,
+        };
+        let application = store.get_application(scope, id).await.unwrap().unwrap();
+        store
+            .set_application_api_enabled(&SetApplicationApiEnabledInput {
+                actor_user_id: application.created_by,
+                application_id: id,
+                api_enabled: false,
+            })
+            .await
+            .unwrap();
+    }
     assert_eq!(
         request(
             &app,
