@@ -29,6 +29,7 @@ const notificationInstance: NotificationInstance = {
   installation_id: null,
   display_name: '团队工作流通知渠道',
   status: 'enabled',
+  authorization: null,
   config_json: {},
   configured_secret_fields: [],
   available: true,

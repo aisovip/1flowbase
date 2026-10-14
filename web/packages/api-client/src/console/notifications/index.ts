@@ -1,6 +1,25 @@
 import type { ConsolePluginFormSchema } from '../../console-model-providers';
 import { apiFetch, apiFetchVoid, getDefaultApiBaseUrl } from '../../transport';
 
+export interface NotificationAuthorizationDescriptor {
+  actions: Array<{ code: string; label: string; kind: 'qr_code' }>;
+  managed_secret_keys: string[];
+}
+export interface NotificationAuthorizationView {
+  status: 'unauthorized' | 'pending' | 'authorized' | 'invalid';
+  user_action?: {
+    kind: 'qr_code';
+    qr_code_url: string;
+    poll_interval_seconds: number;
+    expires_at?: string;
+  };
+}
+export type NotificationAuthorizationOperation =
+  | { type: 'begin'; action: string }
+  | { type: 'poll' }
+  | { type: 'cancel' }
+  | { type: 'maintain' };
+
 export interface NotificationType {
   type_code: string;
   display_name: string;
@@ -10,6 +29,7 @@ export interface NotificationType {
   input_schema: Record<string, unknown>;
   input_form: ConsolePluginFormSchema;
   output_schema: Record<string, unknown>;
+  authorization?: NotificationAuthorizationDescriptor | null;
   contribution_id: string;
   installation_id: string | null;
   available: boolean;
@@ -22,6 +42,7 @@ export interface NotificationInstance {
   installation_id: string | null;
   display_name: string;
   status: 'enabled' | 'disabled';
+  authorization: NotificationAuthorizationView | null;
   config_json: Record<string, unknown>;
   configured_secret_fields: string[];
   available: boolean;
@@ -66,7 +87,11 @@ export interface NotificationMessageListInput {
   instance_id?: string;
   read_status?: NotificationReadStatus;
 }
-export type NotificationLogStatus = 'pending' | 'success' | 'failure' | 'unknown';
+export type NotificationLogStatus =
+  | 'pending'
+  | 'success'
+  | 'failure'
+  | 'unknown';
 export interface NotificationSendLog {
   id: string;
   workspace_id: string;
@@ -157,6 +182,19 @@ export const updateNotificationInstance = (
     body,
     csrfToken
   });
+export const authorizeNotificationInstance = (
+  id: string,
+  body: NotificationAuthorizationOperation,
+  csrfToken: string,
+  signal?: AbortSignal
+) =>
+  apiFetch<NotificationAuthorizationView>({
+    path: `${path}/instances/${encodeURIComponent(id)}/authorization`,
+    method: 'POST',
+    body,
+    csrfToken,
+    signal
+  });
 export const deleteNotificationInstance = (id: string, csrfToken: string) =>
   apiFetchVoid({
     path: `${path}/instances/${encodeURIComponent(id)}`,
@@ -218,31 +256,51 @@ export const markNotificationUnread = (id: string, csrfToken: string) =>
     method: 'POST',
     csrfToken
   });
-export const markNotificationChannelRead = (instance_id: string, csrfToken: string) =>
+export const markNotificationChannelRead = (
+  instance_id: string,
+  csrfToken: string
+) =>
   apiFetch<{ updated_count: number }>({
     path: `${path}/channels/${encodeURIComponent(instance_id)}/read-all`,
     method: 'POST',
     csrfToken
   });
 export function listNotificationChannels(
-  input: { cursor?: string; page_size?: number; read_status?: NotificationReadStatus } = {},
+  input: {
+    cursor?: string;
+    page_size?: number;
+    read_status?: NotificationReadStatus;
+  } = {},
   signal?: AbortSignal
 ) {
   const search = new URLSearchParams();
   if (input.cursor) search.set('cursor', input.cursor);
-  if (input.page_size !== undefined) search.set('page_size', String(input.page_size));
+  if (input.page_size !== undefined)
+    search.set('page_size', String(input.page_size));
   if (input.read_status) search.set('read_status', input.read_status);
-  return apiFetch<NotificationChannels>({ path: `${path}/channels?${search}`, signal });
+  return apiFetch<NotificationChannels>({
+    path: `${path}/channels?${search}`,
+    signal
+  });
 }
-export function listNotificationSendLogs(input: NotificationLogListInput = {}, signal?: AbortSignal) {
+export function listNotificationSendLogs(
+  input: NotificationLogListInput = {},
+  signal?: AbortSignal
+) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(input)) {
     if (value !== undefined && value !== '') search.set(key, String(value));
   }
-  return apiFetch<NotificationSendLogs>({ path: `${path}/logs?${search}`, signal });
+  return apiFetch<NotificationSendLogs>({
+    path: `${path}/logs?${search}`,
+    signal
+  });
 }
 export const getNotificationSendLog = (id: string, signal?: AbortSignal) =>
-  apiFetch<NotificationSendLog>({ path: `${path}/logs/${encodeURIComponent(id)}`, signal });
+  apiFetch<NotificationSendLog>({
+    path: `${path}/logs/${encodeURIComponent(id)}`,
+    signal
+  });
 /** The session cookie is the same credential used by apiFetch. Every open,
  * including reconnect, requests a fresh HTTP snapshot from the consumer. */
 export function subscribeNotificationChanges(
