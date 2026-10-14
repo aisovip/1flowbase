@@ -23,7 +23,8 @@
   color: var(--text-secondary);
 }
 
-.notification-bell-menu > .ant-menu-item::after {
+/* Outrank Ant Design's light horizontal menu rule, which otherwise leaves a 2px line. */
+.notification-bell-menu.ant-menu.ant-menu-horizontal > .ant-menu-item::after {
   inset-inline: 0;
 }
 
