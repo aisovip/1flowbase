@@ -1,0 +1,70 @@
+name: aliyun image sync
+
+on:
+  workflow_run:
+    workflows: [container images]
+    branches: [latest]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful container images run ID on the latest branch.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  # Deduplicate retries of one release without cancelling other pending releases.
+  group: aliyun-image-sync-${{ github.event.workflow_run.id || inputs.source_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: >-
+      vars.ACR_SYNC_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # Execute only the trusted default-branch implementation, never source-run code.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install multi-architecture registry copier
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/regclient/regclient/releases/download/v0.11.6/regctl-linux-amd64 \
+            --output "$RUNNER_TEMP/regctl"
+          echo "8e0e62a497fcdb8048d18aa927a139613176ba0531f412bc541044e28f9856bd  $RUNNER_TEMP/regctl" | sha256sum --check
+          chmod 700 "$RUNNER_TEMP/regctl"
+
+      - name: Copy published images and verify remote digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+          ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
+          ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}
+          REGCTL_EXECUTABLE: ${{ runner.temp }}/regctl
+        run: node scripts/node/registry-image-sync/sync.js
+
+      - name: Upload sync evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aliyun-image-sync-${{ github.run_id }}
+          path: tmp/test-governance/aliyun-image-sync/report.json
+          if-no-files-found: warn
