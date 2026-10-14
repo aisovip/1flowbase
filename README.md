@@ -192,6 +192,7 @@ Development guidelines:
 ## Friends
 
 - [Linux.do](https://linux.do/) - Learn AI, on L Station.
+- [openai](https://openai.com/form/codex-for-oss/) - Thanks to the early OpenAI Developer Program for supporting this project.
 - [Aionui](https://github.com/iOfficeAI/AionUi) - Remotely control AI from your phone.
 - [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) - Office suite designed for AI Agents.
 - [deepseek-pp](https://github.com/zhu1090093659/deepseek-pp) - DeepSeek web chat browser extension.
