@@ -70,5 +70,9 @@
   "no_channels": "暂无消息渠道",
   "channel_messages": "渠道消息",
   "select_channel": "请选择通知渠道",
-  "back_channels": "返回渠道"
+  "back_channels": "返回渠道",
+  "log_id": "日志 ID",
+  "channel_identifier": "渠道标识",
+  "message": "消息",
+  "system_message_type": "站内信"
 }

@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
   DatePicker,
-  Descriptions,
+  Input,
+  Tag,
   Empty,
   Flex,
   Select,
@@ -268,67 +269,103 @@ function NotificationLogDetail({
       {detail.isError && <Alert type="error" title={t('logs_failed')} />}
       {detail.isPending && <Spin />}
       {item && (
-        <>
-          <Descriptions
-            column={1}
-            items={[
-              {
-                key: 'created_at',
-                label: t('sent_at'),
-                children: formatDateTime(item.created_at)
-              },
-              {
-                key: 'source',
-                label: t('source'),
-                children:
-                  item.source === 'workflow'
-                    ? t('source_workflow')
-                    : t('source_api')
-              },
-              {
-                key: 'display_name',
-                label: t('display_name'),
-                children: item.display_name ?? t('deleted_channel')
-              },
-              {
-                key: 'type_code',
-                label: t('type'),
-                children: item.type_code ?? '—'
-              },
-              {
-                key: 'status',
-                label: t('send_status'),
-                children: statusLabel(item.status)
-              },
-              {
-                key: 'failure_code',
-                label: t('failure_reason'),
-                children: failureLabel(item.failure_code)
-              },
-              {
-                key: 'recipient_count',
-                label: t('recipient_count'),
-                children: item.recipient_count ?? '—'
-              },
-              {
-                key: 'completed_at',
-                label: t('completed_at'),
-                children: item.completed_at
-                  ? formatDateTime(item.completed_at)
-                  : '—'
-              }
-            ]}
-          />
-          <Typography.Title level={5}>{t('message_title')}</Typography.Title>
-          <Typography.Paragraph className="notification-log-detail__text">
-            {item.title ?? '—'}
-          </Typography.Paragraph>
-          <Typography.Title level={5}>{t('message_content')}</Typography.Title>
-          <Typography.Paragraph className="notification-log-detail__text">
-            {item.content ?? '—'}
-          </Typography.Paragraph>
-        </>
+        <section
+          className="notification-log-detail__form"
+          aria-label={t('log_detail')}
+        >
+          <dl className="notification-log-detail__fields">
+            <NotificationLogField label={t('log_id')}>
+              <Input
+                readOnly
+                value={item.id}
+                aria-label={t('log_id')}
+                className="notification-log-detail__id"
+              />
+            </NotificationLogField>
+            <NotificationLogField label={t('channel_identifier')}>
+              {item.instance_id}
+            </NotificationLogField>
+            <NotificationLogField label={t('display_name')}>
+              {item.display_name ?? t('deleted_channel')}
+            </NotificationLogField>
+            <NotificationLogField label={t('type')}>
+              <Tag>
+                {item.type_code === 'system'
+                  ? t('system_message_type')
+                  : (item.type_code ?? '—')}
+              </Tag>
+            </NotificationLogField>
+            <NotificationLogField label={t('source')}>
+              {item.source === 'workflow'
+                ? t('source_workflow')
+                : t('source_api')}
+            </NotificationLogField>
+            <NotificationLogField label={t('send_status')}>
+              <Tag
+                color={
+                  item.status === 'success'
+                    ? 'success'
+                    : item.status === 'failure'
+                      ? 'error'
+                      : undefined
+                }
+              >
+                {statusLabel(item.status)}
+              </Tag>
+            </NotificationLogField>
+            <NotificationLogField label={t('message')}>
+              <div className="notification-log-detail__message">
+                <div className="notification-log-detail__message-part">
+                  <span className="notification-log-detail__message-label">
+                    {t('message_title')}
+                  </span>
+                  <div className="notification-log-detail__text">
+                    {item.title ?? '—'}
+                  </div>
+                </div>
+                <div className="notification-log-detail__message-part">
+                  <span className="notification-log-detail__message-label">
+                    {t('message_content')}
+                  </span>
+                  <div className="notification-log-detail__text">
+                    {item.content ?? '—'}
+                  </div>
+                </div>
+              </div>
+            </NotificationLogField>
+            {(item.status === 'failure' || item.status === 'unknown') &&
+              item.failure_code !== null && (
+                <NotificationLogField label={t('failure_reason')}>
+                  {failureLabel(item.failure_code)}
+                </NotificationLogField>
+              )}
+            <NotificationLogField label={t('recipient_count')}>
+              {item.recipient_count ?? '—'}
+            </NotificationLogField>
+            <NotificationLogField label={t('completed_at')}>
+              {item.completed_at ? formatDateTime(item.completed_at) : '—'}
+            </NotificationLogField>
+            <NotificationLogField label={t('sent_at')}>
+              {formatDateTime(item.created_at)}
+            </NotificationLogField>
+          </dl>
+        </section>
       )}
     </ResizableDrawer>
+  );
+}
+
+function NotificationLogField({
+  label,
+  children
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="notification-log-detail__field">
+      <dt className="notification-log-detail__label">{label}</dt>
+      <dd className="notification-log-detail__value">{children}</dd>
+    </div>
   );
 }

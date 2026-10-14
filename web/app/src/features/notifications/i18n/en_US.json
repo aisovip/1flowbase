@@ -70,5 +70,9 @@
   "no_channels": "No message channels",
   "channel_messages": "Channel messages",
   "select_channel": "Select a notification channel",
-  "back_channels": "Back to channels"
+  "back_channels": "Back to channels",
+  "log_id": "Log ID",
+  "channel_identifier": "Channel identifier",
+  "message": "Message",
+  "system_message_type": "In-app message"
 }
