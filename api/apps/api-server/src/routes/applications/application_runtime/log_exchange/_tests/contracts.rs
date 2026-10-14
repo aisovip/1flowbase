@@ -23,7 +23,8 @@ fn exchange_managed_projection_excludes_credentials_destinations_and_facts() {
         ExchangeInput::LangfuseExport {
             application_id: id,
             body: LangfuseExportBody {
-                record_ids: vec![id],
+                record_ids: Some(vec![id]),
+                log_conversation_ids: None,
                 base_url: secret.into(),
                 public_key: secret.into(),
                 secret_key: secret.into(),

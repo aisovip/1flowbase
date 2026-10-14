@@ -99,6 +99,17 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Vec<AgentLogsBatch>> {
         anyhow::bail!("read_imported_agent_logs not implemented")
     }
+    /// Resolve an exact record or complete conversation selection and read every
+    /// original fact in one repeatable-read snapshot. Missing/foreign/native/mixed
+    /// selections fail as a whole; reception state does not gate historical reads.
+    async fn read_imported_agent_logs_selection(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _selector: &AgentLogsExportSelector,
+    ) -> anyhow::Result<AgentLogsExportFacts> {
+        anyhow::bail!("read_imported_agent_logs_selection not implemented")
+    }
     async fn query_application_log_records(
         &self,
         _scope_id: Uuid,

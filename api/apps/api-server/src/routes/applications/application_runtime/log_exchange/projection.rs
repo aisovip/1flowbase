@@ -16,9 +16,13 @@ impl InterfaceContract for ExchangeInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         let count = match self {
-            Self::OtlpExport { body, .. } => json!(body.record_ids.len()),
+            Self::OtlpExport { body, .. } => {
+                selection_count(&body.record_ids, &body.log_conversation_ids)
+            }
             Self::OtlpImport { .. } => Value::Null,
-            Self::LangfuseExport { body, .. } => json!(body.record_ids.len()),
+            Self::LangfuseExport { body, .. } => {
+                selection_count(&body.record_ids, &body.log_conversation_ids)
+            }
             Self::LangfuseImport { body, .. } => json!(body.trace_ids.len()),
         };
         Some(
@@ -62,5 +66,12 @@ impl InterfaceContract for ExchangeOutput {
                 json!({"action":"langfuse_export","records":receipt.exported_records,"events":receipt.exported_spans,"duplicates":0})
             }
         })
+    }
+}
+
+fn selection_count(records: &Option<Vec<Uuid>>, conversations: &Option<Vec<Uuid>>) -> Value {
+    match (records, conversations) {
+        (Some(ids), None) | (None, Some(ids)) if !ids.is_empty() => json!(ids.len()),
+        _ => Value::Null,
     }
 }

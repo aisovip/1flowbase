@@ -43,7 +43,7 @@ pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 #[utoipa::path(post, path = "/api/console/applications/{id}/logs/otlp/export",
     summary = "OTLP JSON file",
-    description = "Download complete source facts for the selected imported records as a standard OTLP JSON ExportTraceServiceRequest. Reception may be disabled.",
+    description = "Download complete source facts for exactly one nonempty selector: record_ids for exact imported records, or log_conversation_ids for every imported task in those conversations. Resolve membership and facts in one snapshot. Reception may be disabled.",
     request_body = OtlpExportBody,
     params(("id" = Uuid, Path, description = "Agent logs application ID")),
     responses((status = 200, body = Value), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 502, body = crate::error_response::ErrorBody))
@@ -108,7 +108,7 @@ pub(crate) async fn otlp_import(
 
 #[utoipa::path(post, path = "/api/console/applications/{id}/logs/langfuse/export",
     summary = "Langfuse OTLP export",
-    description = "Send selected imported source facts to the Langfuse OTLP endpoint using request-scoped Basic credentials and configured Network Egress. Return a receipt only for a complete successful acknowledgement.",
+    description = "Send source facts for exactly one nonempty selector: record_ids for exact records, or log_conversation_ids for complete imported conversations. Resolve membership and facts in one snapshot; the receipt counts resolved task records. Use request-scoped Basic credentials and configured Network Egress. Return a receipt only for a complete successful acknowledgement.",
     request_body = LangfuseExportBody,
     params(("id" = Uuid, Path, description = "Agent logs application ID")),
     responses((status = 200, body = LangfuseExportReceipt), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 502, body = crate::error_response::ErrorBody))

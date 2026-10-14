@@ -1,6 +1,9 @@
 //! Selected immutable source facts, independent of native flow-run archives.
 use super::super::*;
-use control_plane_contracts::ports::{AgentLogEvent, AgentLogsBatch, AGENT_LOGS_SCHEMA_VERSION};
+use control_plane_contracts::ports::{
+    AgentLogEvent, AgentLogsBatch, AgentLogsExportFacts, AgentLogsExportSelector,
+    AGENT_LOGS_SCHEMA_VERSION,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) async fn read(
@@ -9,21 +12,68 @@ pub(crate) async fn read(
     scope_id: Uuid,
     record_ids: &[Uuid],
 ) -> Result<Vec<AgentLogsBatch>> {
-    anyhow::ensure!(!record_ids.is_empty(), "agent_logs.read_selection_empty");
-    let selected: Vec<Uuid> = record_ids
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
+    Ok(read_selection(
+        store,
+        application_id,
+        scope_id,
+        &AgentLogsExportSelector::Records(record_ids.to_vec()),
+    )
+    .await?
+    .batches)
+}
+
+pub(crate) async fn read_selection(
+    store: &PgControlPlaneStore,
+    application_id: Uuid,
+    scope_id: Uuid,
+    selector: &AgentLogsExportSelector,
+) -> Result<AgentLogsExportFacts> {
     let mut tx = store.pool().begin().await?;
     // Validation and content reads see one snapshot even if ingestion/deletion commits.
     sqlx::query("set transaction isolation level repeatable read, read only")
         .execute(&mut *tx)
         .await?;
+    let facts = read_snapshot(&mut tx, application_id, scope_id, selector).await?;
+    tx.commit().await?;
+    Ok(facts)
+}
+
+async fn read_snapshot(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    application_id: Uuid,
+    scope_id: Uuid,
+    selector: &AgentLogsExportSelector,
+) -> Result<AgentLogsExportFacts> {
+    let ids = match selector {
+        AgentLogsExportSelector::Records(ids) | AgentLogsExportSelector::Conversations(ids) => ids,
+    };
+    anyhow::ensure!(!ids.is_empty(), "agent_logs.read_selection_empty");
+    let requested: Vec<Uuid> = ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let selected = match selector {
+        AgentLogsExportSelector::Records(_) => requested,
+        AgentLogsExportSelector::Conversations(_) => {
+            // Use the canonical conversation FK, including child tasks. Do not
+            // infer membership from the latest record locator or session strings.
+            let present: i64 = sqlx::query_scalar(
+                "select count(*) from application_conversations c join applications a on a.id=c.application_id and a.scope_id=c.scope_id where c.application_id=$1 and c.scope_id=$2 and c.id=any($3) and c.source_kind='imported' and a.application_type='agent_logs' and exists(select 1 from application_run_log_tasks t where t.log_conversation_id=c.id) and not exists(select 1 from application_run_log_tasks t where t.log_conversation_id=c.id and (t.application_id<>c.application_id or t.scope_id<>c.scope_id or t.source_kind<>'imported'))",
+            ).bind(application_id).bind(scope_id).bind(&requested).fetch_one(&mut **tx).await?;
+            anyhow::ensure!(
+                present as usize == requested.len(),
+                "agent_logs.read_selection_invalid"
+            );
+            sqlx::query_scalar::<_, Uuid>(
+                "select t.id from application_run_log_tasks t where t.application_id=$1 and t.scope_id=$2 and t.log_conversation_id=any($3) and t.source_kind='imported' order by t.id",
+            ).bind(application_id).bind(scope_id).bind(&requested).fetch_all(&mut **tx).await?
+        }
+    };
     let present: i64 = sqlx::query_scalar(
         "select count(*) from application_run_log_tasks t join applications a on a.id=t.application_id and a.scope_id=t.scope_id where t.application_id=$1 and t.scope_id=$2 and t.id=any($3) and t.source_kind='imported' and a.application_type='agent_logs'",
-    ).bind(application_id).bind(scope_id).bind(&selected).fetch_one(&mut *tx).await?;
+    ).bind(application_id).bind(scope_id).bind(&selected).fetch_one(&mut **tx).await?;
     anyhow::ensure!(
         present as usize == selected.len(),
         "agent_logs.read_selection_invalid"
@@ -47,7 +97,7 @@ pub(crate) async fn read(
     .bind(application_id)
     .bind(scope_id)
     .bind(&selected)
-    .fetch_all(&mut *tx)
+    .fetch_all(&mut **tx)
     .await?;
     let mut batches = BTreeMap::<(String, String), AgentLogsBatch>::new();
     let mut loaded = BTreeSet::new();
@@ -93,8 +143,10 @@ pub(crate) async fn read(
     for batch in &batches {
         batch.validate()?;
     }
-    tx.commit().await?;
-    Ok(batches)
+    Ok(AgentLogsExportFacts {
+        batches,
+        record_ids: selected,
+    })
 }
 
 #[cfg(test)]

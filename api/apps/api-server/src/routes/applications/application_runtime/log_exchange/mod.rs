@@ -15,7 +15,9 @@ use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
 };
-use control_plane_contracts::ports::{AgentLogsReceipt, OrchestrationRuntimeRepository};
+use control_plane_contracts::ports::{
+    AgentLogsExportSelector, AgentLogsReceipt, OrchestrationRuntimeRepository,
+};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -34,7 +36,8 @@ pub(crate) use routes::*;
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OtlpExportBody {
-    pub record_ids: Vec<Uuid>,
+    pub record_ids: Option<Vec<Uuid>>,
+    pub log_conversation_ids: Option<Vec<Uuid>>,
 }
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -44,7 +47,8 @@ pub(crate) struct OtlpImportBody {
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LangfuseExportBody {
-    pub record_ids: Vec<Uuid>,
+    pub record_ids: Option<Vec<Uuid>>,
+    pub log_conversation_ids: Option<Vec<Uuid>>,
     pub base_url: String,
     pub public_key: String,
     pub secret_key: String,
@@ -171,16 +175,21 @@ impl ExchangeAdapter {
         let service = AgentLogsService::new(store.clone());
         match input {
             ExchangeInput::OtlpExport { body, .. } => {
-                let batches = store
-                    .read_imported_agent_logs(
+                let selector = AgentLogsExportSelector::from_ids(
+                    body.record_ids,
+                    body.log_conversation_ids,
+                )
+                .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_export_selection"))?;
+                let facts = store
+                    .read_imported_agent_logs_selection(
                         application_id,
                         application.workspace_id,
-                        &body.record_ids,
+                        &selector,
                     )
                     .await
                     .map_err(selection_error)?;
                 Ok(ExchangeOutput::Otlp(serde_json::to_value(
-                    protocol::batches_to_traces(&batches)
+                    protocol::batches_to_traces(&facts.batches)
                         .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_otlp_export"))?,
                 )?))
             }
@@ -197,15 +206,20 @@ impl ExchangeAdapter {
             }
             ExchangeInput::LangfuseExport { body, .. } => {
                 let base = remote::base_url(&body.base_url, &body.public_key, &body.secret_key)?;
-                let batches = store
-                    .read_imported_agent_logs(
+                let selector = AgentLogsExportSelector::from_ids(
+                    body.record_ids,
+                    body.log_conversation_ids,
+                )
+                .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_export_selection"))?;
+                let facts = store
+                    .read_imported_agent_logs_selection(
                         application_id,
                         application.workspace_id,
-                        &body.record_ids,
+                        &selector,
                     )
                     .await
                     .map_err(selection_error)?;
-                let request = protocol::batches_to_traces(&batches)
+                let request = protocol::batches_to_traces(&facts.batches)
                     .map_err(|_| ControlPlaneError::InvalidInput("agent_logs_otlp_export"))?;
                 let trace_ids = request
                     .resource_spans
@@ -227,7 +241,7 @@ impl ExchangeAdapter {
                     .flat_map(|resource| &resource.scope_spans)
                     .map(|scope| scope.spans.len())
                     .sum();
-                let exported_records = body.record_ids.into_iter().collect::<BTreeSet<_>>().len();
+                let exported_records = facts.record_ids.len();
                 let scope = self
                     .network
                     .resolve_http_request(

@@ -76,6 +76,31 @@ pub struct AgentLogsReceipt {
     pub record_ids: Vec<Uuid>,
 }
 
+/// One nonempty selector; conversation membership is resolved with facts in one snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentLogsExportSelector {
+    Records(Vec<Uuid>),
+    Conversations(Vec<Uuid>),
+}
+impl AgentLogsExportSelector {
+    pub fn from_ids(
+        record_ids: Option<Vec<Uuid>>,
+        log_conversation_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Self> {
+        match (record_ids, log_conversation_ids) {
+            (Some(ids), None) if !ids.is_empty() => Ok(Self::Records(ids)),
+            (None, Some(ids)) if !ids.is_empty() => Ok(Self::Conversations(ids)),
+            _ => anyhow::bail!("agent_logs.read_selection_empty"),
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct AgentLogsExportFacts {
+    pub batches: Vec<AgentLogsBatch>,
+    /// Deduplicated actual task records, including all tasks in selected conversations.
+    pub record_ids: Vec<Uuid>,
+}
+
 /// Internal maintenance projection; does not load conversation or raw bodies.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentLogPricingEvent {
