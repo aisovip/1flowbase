@@ -9,6 +9,7 @@ import {
 import { beforeEach, expect, test, vi } from 'vitest';
 import { appI18n } from '../../../../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../../../../state/auth-store';
+import { ApiClientError } from '@1flowbase/api-client';
 import { AgentLogsExchange } from '../AgentLogsExchange';
 const api = vi.hoisted(() => ({
   exportApplicationLogsOtlp: vi.fn(),
@@ -69,7 +70,11 @@ function credentials() {
   });
 }
 function execute() {
-  fireEvent.click(screen.getByRole('button', { name: '执行交换' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /执行交换$/
+    })
+  );
 }
 
 test('OTLP export groups the selection by owner and preserves a successful download when another app fails', async () => {
@@ -115,7 +120,11 @@ test('Langfuse multi-record export prevents reentry and exposes partial receipt 
   execute();
   execute();
   expect(api.exportApplicationLogsLangfuse).toHaveBeenCalledOnce();
-  expect(screen.getByRole('button', { name: '关闭' })).toBeDisabled();
+  expect(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /^关\s*闭$/
+    })
+  ).toBeDisabled();
   resolve({ exported_records: 1, exported_spans: 4, trace_ids: ['trace-one'] });
   expect(
     await screen.findByText('服务端仅导出了部分所选日志，请核对回执。')
@@ -174,7 +183,11 @@ test('global Langfuse import requires explicit destination, sends multiple IDs a
     'fixture-csrf'
   );
   expect(onImported).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /^关\s*闭$/
+    })
+  );
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   );
@@ -226,4 +239,103 @@ test('invalid OTLP file and missing CSRF cannot start exchange', async () => {
   ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '执行交换' })).toBeDisabled();
   expect(api.importApplicationLogsOtlp).not.toHaveBeenCalled();
+});
+
+test('real partial-import transport error shows committed counts, refreshes rows and permits a safe retry', async () => {
+  const message =
+    'Earlier source batches persisted. Retry unchanged source facts to finish the import safely.';
+  const error = await ApiClientError.fromResponse(
+    new Response(
+      JSON.stringify({
+        status: 409,
+        code: 'agent_logs_partial_import',
+        message,
+        inventory: null,
+        details: {
+          accepted_events: 2,
+          duplicate_events: 3,
+          committed_records: 1
+        }
+      }),
+      { status: 409, headers: { 'content-type': 'application/json' } }
+    )
+  );
+  api.importApplicationLogsLangfuse
+    .mockRejectedValueOnce(error)
+    .mockResolvedValueOnce({
+      accepted_events: 1,
+      duplicate_events: 5,
+      record_ids: ['committed-record', 'remaining-record']
+    });
+  const onImported = open([], 'app-a');
+  await operation('从 Langfuse 导入');
+  credentials();
+  fireEvent.change(screen.getByLabelText('Trace IDs（逗号或换行分隔）'), {
+    target: { value: 'trace-1,trace-2' }
+  });
+  execute();
+  const dialog = screen.getByRole('dialog');
+  expect(
+    await within(dialog).findByText('导入未完成，部分来源批次已提交。')
+  ).toBeInTheDocument();
+  expect(
+    within(dialog).getByText(
+      '已提交的日志会保留。检查问题后可重试同一导入，已提交事件不会重复创建。'
+    )
+  ).toBeInTheDocument();
+  for (const [label, count] of [
+    ['接收事件数', '2'],
+    ['重复事件数', '3'],
+    ['已提交日志数', '1']
+  ]) {
+    const row = within(dialog).getByText(label, { exact: true }).closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText(count, { exact: true })).toBeInTheDocument();
+  }
+  expect(onImported).toHaveBeenCalledOnce();
+  expect(within(dialog).queryByText('服务端交换回执')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('日志记录 ID')).not.toBeInTheDocument();
+  const failure = within(dialog).getByRole('alert');
+  expect(failure).toHaveClass('ant-alert-error');
+  expect(failure.textContent).not.toContain('public-fixture');
+  expect(failure.textContent).not.toContain('secret-fixture');
+  execute();
+  expect(
+    await within(dialog).findByText('committed-record, remaining-record')
+  ).toBeInTheDocument();
+  expect(onImported).toHaveBeenCalledTimes(2);
+  expect(api.importApplicationLogsLangfuse).toHaveBeenCalledTimes(2);
+  expect(api.importApplicationLogsLangfuse.mock.calls[1]).toEqual(
+    api.importApplicationLogsLangfuse.mock.calls[0]
+  );
+});
+
+test('upstream error diagnostics containing credentials remain hidden and do not imply a committed import', async () => {
+  const message = 'upstream diagnostic public-fixture secret-fixture';
+  const error = await ApiClientError.fromResponse(
+    new Response(
+      JSON.stringify({
+        status: 502,
+        code: 'upstream',
+        message,
+        inventory: null,
+        details: null
+      }),
+      { status: 502, headers: { 'content-type': 'application/json' } }
+    )
+  );
+  api.importApplicationLogsLangfuse.mockRejectedValue(error);
+  const onImported = open([], 'app-a');
+  await operation('从 Langfuse 导入');
+  credentials();
+  fireEvent.change(screen.getByLabelText('Trace IDs（逗号或换行分隔）'), {
+    target: { value: 'trace-1' }
+  });
+  execute();
+  expect(
+    await screen.findByText('交换失败，请检查输入或连接后重试。')
+  ).toBeInTheDocument();
+  expect(screen.getByRole('alert').textContent).not.toContain('public-fixture');
+  expect(screen.getByRole('alert').textContent).not.toContain('secret-fixture');
+  expect(onImported).not.toHaveBeenCalled();
 });

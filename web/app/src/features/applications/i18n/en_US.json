@@ -343,7 +343,6 @@
     "application": "Application",
     "exchange": {
       "open": "Exchange logs",
-      "close": "Close",
       "execute": "Execute exchange",
       "operation": "Exchange operation",
       "otlp_export": "Export OTLP JSON",
@@ -361,6 +360,9 @@
       "failed": "Exchange failed. Check inputs or connectivity and retry.",
       "downloaded": "Downloaded {{filename}}",
       "partial": "The server exported only part of the selection. Review the receipt.",
+      "partial_import": "Import incomplete. Earlier source batches were committed.",
+      "partial_import_retry": "Committed logs are retained. Resolve the issue and retry the same import; committed events will not be created again.",
+      "committed_records": "Committed records",
       "receipt": "Server exchange receipt",
       "accepted_events": "Accepted events",
       "duplicate_events": "Duplicate events",

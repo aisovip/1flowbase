@@ -5,6 +5,11 @@ export interface ApplicationLogImportReceipt {
   duplicate_events: number;
   record_ids: string[];
 }
+export interface ApplicationLogPartialImportReceipt {
+  accepted_events: number;
+  duplicate_events: number;
+  committed_records: number;
+}
 export interface ApplicationLogLangfuseCredentials {
   base_url: string;
   public_key: string;

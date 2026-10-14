@@ -53,7 +53,7 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         await chooseOperation(dialog, /^(导出到 Langfuse|Export to Langfuse)$/);
         const exportMasks = await fillCredentials(dialog);
         await save('02-langfuse-export.png', applicationId, exportMasks);
-        await dialog.getByRole('button', { name: /^(关闭|Close)$/ }).click();
+        await dialog.getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
 
         await page.goto(`${args.webBaseUrl}/applications/${targetApplicationId}/logs?language=zh`, { waitUntil: 'domcontentloaded' });
         await page.locator(`input[type=checkbox][name="${importedRecordIds[0]}"]`).waitFor({ state: 'visible' });
@@ -78,7 +78,7 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         assert.ok(await importDialog.getByText(String(eventCount), { exact: true }).isVisible(), 'UI renders duplicate count');
         await save('langfuse-import-receipt.png', targetApplicationId, importMasks);
         receipt.checks.push({ name: `${name} real UI Langfuse repeat import`, status: 'pass', application_id: targetApplicationId, accepted_events: imported.accepted_events, duplicate_events: imported.duplicate_events, record_ids: imported.record_ids, trace_ids: traceIds });
-        await importDialog.getByRole('button', { name: /^(关闭|Close)$/ }).click();
+        await importDialog.getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
         await page.goto(`${args.webBaseUrl}/applications/${targetApplicationId}/logs?language=zh&run_id=${encodeURIComponent(conversation.record_id)}`, { waitUntil: 'domcontentloaded' });
         const details = page.getByTestId('application-logs-floating-run-detail');
         await details.getByText(conversation.user, { exact: true }).waitFor({ state: 'visible' });

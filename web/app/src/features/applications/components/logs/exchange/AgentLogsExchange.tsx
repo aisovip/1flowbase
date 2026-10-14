@@ -11,9 +11,11 @@ import {
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
-import type {
-  ApplicationLogImportReceipt,
-  ApplicationLogLangfuseExportReceipt
+import {
+  ApiClientError,
+  type ApplicationLogPartialImportReceipt,
+  type ApplicationLogImportReceipt,
+  type ApplicationLogLangfuseExportReceipt
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
@@ -37,10 +39,45 @@ interface Props {
 }
 interface Receipt {
   application_id: string;
-  kind: 'download' | 'import' | 'export' | 'error';
+  kind: 'download' | 'import' | 'export' | 'error' | 'partial_import';
+  partial_import?: ApplicationLogPartialImportReceipt;
   value?: ApplicationLogImportReceipt | ApplicationLogLangfuseExportReceipt;
   filename?: string;
   partial?: boolean;
+}
+
+function readPartialImportReceipt(
+  error: unknown
+): ApplicationLogPartialImportReceipt | null {
+  if (
+    !(error instanceof ApiClientError) ||
+    error.status !== 409 ||
+    error.code !== 'agent_logs_partial_import'
+  )
+    return null;
+  const body = error.body;
+  if (!body || typeof body !== 'object' || !('details' in body)) return null;
+  const details = body.details;
+  if (!details || typeof details !== 'object') return null;
+  if (
+    !('accepted_events' in details) ||
+    !('duplicate_events' in details) ||
+    !('committed_records' in details)
+  )
+    return null;
+  const { accepted_events, duplicate_events, committed_records } = details;
+  if (
+    ![accepted_events, duplicate_events, committed_records].every(
+      (value) =>
+        typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    )
+  )
+    return null;
+  return {
+    accepted_events: accepted_events as number,
+    duplicate_events: duplicate_events as number,
+    committed_records: committed_records as number
+  };
 }
 
 export function AgentLogsExchange(props: Props) {
@@ -148,8 +185,20 @@ function ExchangeModal({
             receipt = { application_id: owner, kind: 'import', value };
             onImported();
           }
-        } catch {
-          receipt = { application_id: owner, kind: 'error' };
+        } catch (error) {
+          const partial_import = importing
+            ? readPartialImportReceipt(error)
+            : null;
+          if (partial_import) {
+            receipt = {
+              application_id: owner,
+              kind: 'partial_import',
+              partial_import
+            };
+            if (partial_import.committed_records > 0) onImported();
+          } else {
+            receipt = { application_id: owner, kind: 'error' };
+          }
         }
         setReceipts((previous) => [...previous, receipt]);
       }
@@ -170,7 +219,7 @@ function ExchangeModal({
       footer={
         <Space>
           <Button disabled={busy} onClick={onClose}>
-            {t('logs.exchange.close')}
+            {t('auto.close')}
           </Button>
           <Button
             type="primary"
@@ -310,7 +359,36 @@ function ExchangeModal({
               {applications.find((app) => app.id === receipt.application_id)
                 ?.name ?? receipt.application_id}
             </Typography.Text>
-            {receipt.kind === 'error' ? (
+            {receipt.kind === 'partial_import' ? (
+              <>
+                <Alert
+                  type="error"
+                  message={t('logs.exchange.partial_import')}
+                  description={t('logs.exchange.partial_import_retry')}
+                />
+                <Descriptions
+                  column={1}
+                  size="small"
+                  items={[
+                    {
+                      key: 'accepted_events',
+                      label: t('logs.exchange.accepted_events'),
+                      children: receipt.partial_import!.accepted_events
+                    },
+                    {
+                      key: 'duplicate_events',
+                      label: t('logs.exchange.duplicate_events'),
+                      children: receipt.partial_import!.duplicate_events
+                    },
+                    {
+                      key: 'committed_records',
+                      label: t('logs.exchange.committed_records'),
+                      children: receipt.partial_import!.committed_records
+                    }
+                  ]}
+                />
+              </>
+            ) : receipt.kind === 'error' ? (
               <Alert type="error" message={t('logs.exchange.failed')} />
             ) : receipt.kind === 'download' ? (
               <Alert

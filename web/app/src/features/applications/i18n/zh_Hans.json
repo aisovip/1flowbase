@@ -343,7 +343,6 @@
     "application": "应用",
     "exchange": {
       "open": "日志交换",
-      "close": "关闭",
       "execute": "执行交换",
       "operation": "交换方式",
       "otlp_export": "导出 OTLP JSON",
@@ -361,6 +360,9 @@
       "failed": "交换失败，请检查输入或连接后重试。",
       "downloaded": "已下载 {{filename}}",
       "partial": "服务端仅导出了部分所选日志，请核对回执。",
+      "partial_import": "导入未完成，部分来源批次已提交。",
+      "partial_import_retry": "已提交的日志会保留。检查问题后可重试同一导入，已提交事件不会重复创建。",
+      "committed_records": "已提交日志数",
       "receipt": "服务端交换回执",
       "accepted_events": "接收事件数",
       "duplicate_events": "重复事件数",
