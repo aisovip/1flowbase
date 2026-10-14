@@ -3,17 +3,18 @@ import {
   importConsoleApplicationLogsOtlp,
   exportConsoleApplicationLogsLangfuse,
   importConsoleApplicationLogsLangfuse,
+  type ApplicationLogExportSelector,
   type ApplicationLogLangfuseCredentials
 } from '@1flowbase/api-client';
 import { getApplicationsApiBaseUrl } from './applications';
 export function exportApplicationLogsOtlp(
   applicationId: string,
-  record_ids: string[],
+  selection: string[] | ApplicationLogExportSelector,
   csrfToken: string
 ) {
   return exportConsoleApplicationLogsOtlp(
     applicationId,
-    { record_ids },
+    Array.isArray(selection) ? { record_ids: selection } : selection,
     csrfToken,
     getApplicationsApiBaseUrl()
   );
@@ -32,13 +33,16 @@ export function importApplicationLogsOtlp(
 }
 export function exportApplicationLogsLangfuse(
   applicationId: string,
-  record_ids: string[],
+  selection: string[] | ApplicationLogExportSelector,
   credentials: ApplicationLogLangfuseCredentials,
   csrfToken: string
 ) {
   return exportConsoleApplicationLogsLangfuse(
     applicationId,
-    { record_ids, ...credentials },
+    {
+      ...(Array.isArray(selection) ? { record_ids: selection } : selection),
+      ...credentials
+    },
     csrfToken,
     getApplicationsApiBaseUrl()
   );

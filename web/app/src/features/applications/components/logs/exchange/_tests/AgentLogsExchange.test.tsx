@@ -29,9 +29,13 @@ beforeEach(async () => {
   useAuthStore.setState({ csrfToken: 'fixture-csrf' });
 });
 function open(
-  selectedRecords = [
-    { id: 'r1', application_id: 'app-a' },
-    { id: 'r2', application_id: 'app-b' }
+  selectedRecords: Array<{
+    id: string;
+    application_id: string;
+    log_conversation_id: string | null;
+  }> = [
+    { id: 'r1', application_id: 'app-a', log_conversation_id: 'c1' },
+    { id: 'r2', application_id: 'app-b', log_conversation_id: 'c2' }
   ],
   applicationId = ''
 ) {
@@ -94,13 +98,13 @@ test('OTLP export groups the selection by owner and preserves a successful downl
     await screen.findByText('交换失败，请检查输入或连接后重试。')
   ).toBeInTheDocument();
   expect(api.exportApplicationLogsOtlp.mock.calls).toEqual([
-    ['app-a', ['r1'], 'fixture-csrf'],
-    ['app-b', ['r2'], 'fixture-csrf']
+    ['app-a', { log_conversation_ids: ['c1'] }, 'fixture-csrf'],
+    ['app-b', { log_conversation_ids: ['c2'] }, 'fixture-csrf']
   ]);
   expect(save).toHaveBeenCalledOnce();
 });
 
-test('Langfuse multi-record export prevents reentry and exposes partial receipt without success text', async () => {
+test('Langfuse exports two complete conversations as three records without inventing partial failure', async () => {
   let resolve!: (value: unknown) => void;
   api.exportApplicationLogsLangfuse.mockImplementation(
     () =>
@@ -110,8 +114,8 @@ test('Langfuse multi-record export prevents reentry and exposes partial receipt 
   );
   open(
     [
-      { id: 'r1', application_id: 'app-a' },
-      { id: 'r2', application_id: 'app-a' }
+      { id: 'r1', application_id: 'app-a', log_conversation_id: 'c1' },
+      { id: 'r2', application_id: 'app-a', log_conversation_id: 'c2' }
     ],
     'app-a'
   );
@@ -125,14 +129,18 @@ test('Langfuse multi-record export prevents reentry and exposes partial receipt 
       name: /^关\s*闭$/
     })
   ).toBeDisabled();
-  resolve({ exported_records: 1, exported_spans: 4, trace_ids: ['trace-one'] });
-  expect(
-    await screen.findByText('服务端仅导出了部分所选日志，请核对回执。')
-  ).toBeInTheDocument();
-  expect(screen.getByText('trace-one')).toBeInTheDocument();
+  resolve({
+    exported_records: 3,
+    exported_spans: 21,
+    trace_ids: ['trace-one', 'trace-two']
+  });
+  expect(await screen.findByText('服务端交换回执')).toBeInTheDocument();
+  expect(screen.getByText('trace-one, trace-two')).toBeInTheDocument();
+  expect(screen.queryByText(/仅导出了部分/)).not.toBeInTheDocument();
+  expect(screen.getByText('3', { exact: true })).toBeInTheDocument();
   expect(api.exportApplicationLogsLangfuse.mock.calls[0]).toEqual([
     'app-a',
-    ['r1', 'r2'],
+    { log_conversation_ids: ['c1', 'c2'] },
     {
       base_url: 'https://langfuse.example',
       public_key: 'public-fixture',
@@ -338,4 +346,16 @@ test('upstream error diagnostics containing credentials remain hidden and do not
   expect(screen.getByRole('alert').textContent).not.toContain('public-fixture');
   expect(screen.getByRole('alert').textContent).not.toContain('secret-fixture');
   expect(onImported).not.toHaveBeenCalled();
+});
+
+test('missing canonical conversation ID disables export without falling back to the task ID', () => {
+  open([{ id: 'r1', application_id: 'app-a', log_conversation_id: null }]);
+  expect(
+    screen.getByText('部分所选日志缺少会话标识，请刷新列表后再导出。')
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('dialog')).getByRole('button', { name: /执行交换$/ })
+  ).toBeDisabled();
+  execute();
+  expect(api.exportApplicationLogsOtlp).not.toHaveBeenCalled();
 });

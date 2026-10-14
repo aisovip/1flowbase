@@ -34,7 +34,11 @@ type Operation =
 interface Props {
   applicationId: string;
   applications: Array<{ id: string; name: string }>;
-  selectedRecords: Array<{ id: string; application_id: string }>;
+  selectedRecords: Array<{
+    id: string;
+    application_id: string;
+    log_conversation_id: string | null;
+  }>;
   onImported: () => void;
 }
 interface Receipt {
@@ -43,7 +47,6 @@ interface Receipt {
   partial_import?: ApplicationLogPartialImportReceipt;
   value?: ApplicationLogImportReceipt | ApplicationLogLangfuseExportReceipt;
   filename?: string;
-  partial?: boolean;
 }
 
 function readPartialImportReceipt(
@@ -121,9 +124,12 @@ function ExchangeModal({
   const trace_ids = Array.from(
     new Set(traceIds.split(/[\s,]+/).filter(Boolean))
   );
+  const missingConversation = selectedRecords.some(
+    (record) => !record.log_conversation_id
+  );
   const ready = Boolean(
     csrfToken &&
-    (!importing ? selectedRecords.length : target) &&
+    (!importing ? selectedRecords.length && !missingConversation : target) &&
     (!langfuse || (base_url.trim() && public_key.trim() && secret_key)) &&
     (operation !== 'otlp_import' || otlp) &&
     (operation !== 'langfuse_import' || trace_ids.length)
@@ -144,16 +150,24 @@ function ExchangeModal({
     else
       for (const record of selectedRecords) {
         const owner = applicationId || record.application_id;
-        groups.set(owner, [...(groups.get(owner) ?? []), record.id]);
+        groups.set(
+          owner,
+          Array.from(
+            new Set([
+              ...(groups.get(owner) ?? []),
+              record.log_conversation_id!
+            ])
+          )
+        );
       }
     try {
-      for (const [owner, record_ids] of groups) {
+      for (const [owner, log_conversation_ids] of groups) {
         let receipt: Receipt;
         try {
           if (operation === 'otlp_export') {
             const download = await exportApplicationLogsOtlp(
               owner,
-              record_ids,
+              { log_conversation_ids },
               csrfToken
             );
             const filename = download.filename ?? `${owner}-logs-otlp.json`;
@@ -162,15 +176,14 @@ function ExchangeModal({
           } else if (operation === 'langfuse_export') {
             const value = await exportApplicationLogsLangfuse(
               owner,
-              record_ids,
+              { log_conversation_ids },
               credentials,
               csrfToken
             );
             receipt = {
               application_id: owner,
               kind: 'export',
-              value,
-              partial: value.exported_records !== record_ids.length
+              value
             };
           } else {
             const value =
@@ -275,9 +288,17 @@ function ExchangeModal({
             )}
           </Form.Item>
         ) : (
-          <Typography.Paragraph>
-            {t('logs.exchange.selection', { count: selectedRecords.length })}
-          </Typography.Paragraph>
+          <>
+            <Typography.Paragraph>
+              {t('logs.exchange.selection', { count: selectedRecords.length })}
+            </Typography.Paragraph>
+            {missingConversation && (
+              <Alert
+                type="warning"
+                message={t('logs.exchange.missing_conversation')}
+              />
+            )}
+          </>
         )}
         {operation === 'otlp_import' && (
           <Form.Item label={t('logs.exchange.file')}>
@@ -400,12 +421,8 @@ function ExchangeModal({
             ) : (
               <>
                 <Alert
-                  type={receipt.partial ? 'warning' : 'info'}
-                  message={
-                    receipt.partial
-                      ? t('logs.exchange.partial')
-                      : t('logs.exchange.receipt')
-                  }
+                  type="info"
+                  message={t('logs.exchange.receipt')}
                 />
                 <Descriptions
                   column={1}

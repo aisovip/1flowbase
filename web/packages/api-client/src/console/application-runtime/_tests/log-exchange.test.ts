@@ -66,3 +66,34 @@ test('Langfuse exchange preserves exact credential fields and multiple record or
     baseUrl: undefined
   });
 });
+
+test('conversation selectors preserve canonical IDs through both export transports', async () => {
+  const selection = {
+    log_conversation_ids: ['conversation-one', 'conversation-two']
+  };
+  await exportConsoleApplicationLogsOtlp('app', selection, 'csrf');
+  expect(apiFetchBlob).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/otlp/export',
+    method: 'POST',
+    body: selection,
+    csrfToken: 'csrf',
+    baseUrl: undefined
+  });
+  const credentials = {
+    base_url: 'https://langfuse.example',
+    public_key: 'public',
+    secret_key: 'secret'
+  };
+  await exportConsoleApplicationLogsLangfuse(
+    'app',
+    { ...selection, ...credentials },
+    'csrf'
+  );
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/langfuse/export',
+    method: 'POST',
+    body: { ...selection, ...credentials },
+    csrfToken: 'csrf',
+    baseUrl: undefined
+  });
+});

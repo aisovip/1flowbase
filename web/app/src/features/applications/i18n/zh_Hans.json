@@ -359,7 +359,7 @@
       "trace_ids": "Trace IDs（逗号或换行分隔）",
       "failed": "交换失败，请检查输入或连接后重试。",
       "downloaded": "已下载 {{filename}}",
-      "partial": "服务端仅导出了部分所选日志，请核对回执。",
+      "missing_conversation": "部分所选日志缺少会话标识，请刷新列表后再导出。",
       "partial_import": "导入未完成，部分来源批次已提交。",
       "partial_import_retry": "已提交的日志会保留。检查问题后可重试同一导入，已提交事件不会重复创建。",
       "committed_records": "已提交日志数",

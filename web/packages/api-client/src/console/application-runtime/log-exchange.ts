@@ -1,5 +1,9 @@
 import { apiFetch, apiFetchBlob } from '../../transport';
 
+export type ApplicationLogExportSelector =
+  | { record_ids: string[]; log_conversation_ids?: never }
+  | { log_conversation_ids: string[]; record_ids?: never };
+
 export interface ApplicationLogImportReceipt {
   accepted_events: number;
   duplicate_events: number;
@@ -22,7 +26,7 @@ export interface ApplicationLogLangfuseExportReceipt {
 }
 export function exportConsoleApplicationLogsOtlp(
   applicationId: string,
-  input: { record_ids: string[] },
+  input: ApplicationLogExportSelector,
   csrfToken: string,
   baseUrl?: string
 ) {
@@ -50,7 +54,7 @@ export function importConsoleApplicationLogsOtlp(
 }
 export function exportConsoleApplicationLogsLangfuse(
   applicationId: string,
-  input: ApplicationLogLangfuseCredentials & { record_ids: string[] },
+  input: ApplicationLogLangfuseCredentials & ApplicationLogExportSelector,
   csrfToken: string,
   baseUrl?: string
 ) {

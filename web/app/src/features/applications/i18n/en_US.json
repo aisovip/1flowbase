@@ -359,7 +359,7 @@
       "trace_ids": "Trace IDs (comma or newline separated)",
       "failed": "Exchange failed. Check inputs or connectivity and retry.",
       "downloaded": "Downloaded {{filename}}",
-      "partial": "The server exported only part of the selection. Review the receipt.",
+      "missing_conversation": "Some selected logs have no conversation ID. Refresh the list before exporting.",
       "partial_import": "Import incomplete. Earlier source batches were committed.",
       "partial_import_retry": "Committed logs are retained. Resolve the issue and retry the same import; committed events will not be created again.",
       "committed_records": "Committed records",

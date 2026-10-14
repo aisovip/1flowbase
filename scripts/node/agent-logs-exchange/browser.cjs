@@ -45,7 +45,11 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
           return [dialog.getByLabel('Public Key', { exact: true }), dialog.getByLabel('Secret Key', { exact: true })];
         };
         await page.goto(`${args.webBaseUrl}/applications/${applicationId}/logs?language=zh`, { waitUntil: 'domcontentloaded' });
-        for (const id of recordIds.slice(0, 2)) await page.locator(`input[type=checkbox][name="${id}"]`).check();
+        // Canonical rows expose only the latest task in each conversation.
+        const sourceRows = page.locator(recordIds.map(id => `input[type=checkbox][name="${id}"]`).join(', '));
+        await sourceRows.nth(1).waitFor({ state: 'visible' });
+        assert.equal(await sourceRows.count(), 2, 'three task facts render two canonical conversations');
+        for (const row of await sourceRows.all()) await row.check();
         await save('01-record-selection.png', applicationId);
         const dialog = await openExchange();
         assert.ok(await dialog.getByText(/已选择 2 条日志|2 logs selected/).isVisible());
@@ -53,10 +57,28 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         await chooseOperation(dialog, /^(导出到 Langfuse|Export to Langfuse)$/);
         const exportMasks = await fillCredentials(dialog);
         await save('02-langfuse-export.png', applicationId, exportMasks);
+        const exportRoute = `/api/console/applications/${applicationId}/logs/langfuse/export`;
+        const exportResponse = page.waitForResponse(response => new URL(response.url()).pathname === exportRoute && response.request().method() === 'POST', { timeout: args.deadlineMs });
+        await dialog.getByRole('button', { name: /^(执行交换|Execute exchange)$/ }).click();
+        const exportedResponse = await exportResponse;
+        assert.ok(exportedResponse.ok(), 'UI Langfuse export must receive HTTP success');
+        const exportBody = exportedResponse.request().postDataJSON();
+        assert.equal(exportBody.log_conversation_ids.length, 2, 'UI selects two canonical conversations');
+        assert.equal(new Set(exportBody.log_conversation_ids).size, 2);
+        assert.ok(!Object.hasOwn(exportBody, 'record_ids'), 'UI must not export only latest tasks');
+        const exported = (await exportedResponse.json()).data;
+        assert.equal(exported.exported_records, 3, 'two conversations export all three task facts');
+        assert.equal(exported.exported_spans, eventCount, 'UI exports all raw spans');
+        assert.equal(exported.trace_ids.length, 2);
+        assert.deepEqual([...exported.trace_ids].sort(), [...traceIds].sort(), 'UI retains the API-verified trace identities');
+        await dialog.getByText(/^(服务端交换回执|Server exchange receipt)$/).waitFor({ state: 'visible' });
+        assert.equal(await dialog.getByText(/仅导出了部分|exported only part/).count(), 0, 'conversation expansion is not a partial failure');
+        receipt.checks.push({ name: `${name} real UI Langfuse complete conversation export`, status: 'pass', application_id: applicationId, log_conversation_ids: exportBody.log_conversation_ids, exported_records: exported.exported_records, exported_spans: exported.exported_spans, trace_ids: exported.trace_ids });
         await dialog.getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
 
         await page.goto(`${args.webBaseUrl}/applications/${targetApplicationId}/logs?language=zh`, { waitUntil: 'domcontentloaded' });
-        await page.locator(`input[type=checkbox][name="${importedRecordIds[0]}"]`).waitFor({ state: 'visible' });
+        const targetRows = page.locator(importedRecordIds.map(id => `input[type=checkbox][name="${id}"]`).join(', '));
+        await targetRows.first().waitFor({ state: 'visible' });
         const importDialog = await openExchange();
         await chooseOperation(importDialog, /^(从 Langfuse 导入|Import from Langfuse)$/);
         const importMasks = await fillCredentials(importDialog);
