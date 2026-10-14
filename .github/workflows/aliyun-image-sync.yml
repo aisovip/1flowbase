@@ -54,7 +54,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
-          ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
+          ACR_API_REPOSITORY: ${{ vars.ACR_API_REPOSITORY }}
+          ACR_WEB_REPOSITORY: ${{ vars.ACR_WEB_REPOSITORY }}
+          ACR_POSTGRES_REPOSITORY: ${{ vars.ACR_POSTGRES_REPOSITORY }}
+          POSTGRES_SOURCE_IMAGE: ${{ vars.POSTGRES_SOURCE_IMAGE }}
           ACR_USERNAME: ${{ vars.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}

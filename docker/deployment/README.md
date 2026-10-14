@@ -47,14 +47,18 @@ Configure Settings → Secrets and variables → Actions:
 | --- | --- | --- |
 | `ACR_SYNC_ENABLED` | Variable | `true` to enable; any other value disables syncing |
 | `ACR_REGISTRY` | Variable | Public registry hostname, without `https://` |
-| `ACR_REPOSITORY` | Variable | `namespace/repository` |
+| `ACR_API_REPOSITORY` | Variable | API `namespace/repository` |
+| `ACR_WEB_REPOSITORY` | Variable | Web `namespace/repository` |
+| `ACR_POSTGRES_REPOSITORY` | Variable | PostgreSQL `namespace/repository` |
+| `POSTGRES_SOURCE_IMAGE` | Variable | `docker.io/library/postgres:18-alpine`, or a pinned PostgreSQL 18 minor release |
 | `ACR_USERNAME` | Variable | Registry login username |
 | `ACR_PASSWORD` | Secret | Registry login password |
 
 The mirror processes only components successfully published by the source run. Each
 component uses its own version, and its image revision must match the publishing
-commit. API and Web share the target repository under `api-v<version>`,
-`web-v<version>`, `api-latest`, and `web-latest`. Copying preserves runtime images
+commit. API and Web use separate repositories, each publishing `v<version>` and `latest`.
+PostgreSQL mirrors the official 18 Alpine image into its own repository with
+`18.<minor>-alpine` and `18-alpine` tags. Its deployment never uses a cross-major `latest` tag. Copying preserves runtime images
 and per-platform image digests for `linux/amd64` and `linux/arm64` without rebuilding.
 Personal ACR does not support OCI build attestations, so they are excluded from the
 destination index. Its top-level digest changes; verification compares both runtime
@@ -69,7 +73,19 @@ candidate was not promoted to an official version, the source image was overwrit
 by another commit, or runtime image digests cannot be preserved. Verification evidence is saved
 in the mirror run's `aliyun-image-sync-*` artifact.
 
-To deploy from the mirror, set both API and init `image` values in Compose to
-`hostname/namespace/repository:api-v<version>`, and Web to
-`hostname/namespace/repository:web-v<version>`. This workflow does not edit Compose.
-For a private registry, log in on the deployment machine before starting the services.
+## Deploy from domestic mirrors
+
+Save `compose.aliyun.yaml` as `compose.yaml` in an empty directory and run `docker compose up -d`.
+API and Web pull `latest` from separate Aliyun repositories; PostgreSQL uses
+`taichuy/postgres:18-alpine`. API and init use the same API image. Startup checks for
+remote updates while preserving existing configuration and database files.
+
+An optional `.env` can override `FLOWBASE_REGISTRY`, `FLOWBASE_API_REPOSITORY`,
+`FLOWBASE_WEB_REPOSITORY`, `FLOWBASE_POSTGRES_REPOSITORY`, and each component's version:
+`FLOWBASE_API_SERVER_VERSION`, `FLOWBASE_WEB_VERSION`, `FLOWBASE_POSTGRES_VERSION`.
+To pin this tested release, use `v0.5.6`, `v0.5.6`, and `18.6-alpine` respectively.
+Port and bootstrap account options remain the same as above.
+
+The [English Wiki guide](https://github.com/taichuy/1flowbase/wiki/Docker-Aliyun-Deployment)
+includes the complete single-file configuration, upgrade and persistence instructions.
+For a private registry, log in on the deployment machine before starting services.

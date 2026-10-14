@@ -6,18 +6,26 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const COMPONENTS = [
-  { job: 'publish-api-server', image: '1flowbase-api-server', prefix: 'api', manifest: 'api/apps/api-server/Cargo.toml' },
-  { job: 'publish-web', image: '1flowbase-web', prefix: 'web', manifest: 'web/app/package.json' },
+  { job: 'publish-api-server', image: '1flowbase-api-server', prefix: 'api', repositoryEnv: 'ACR_API_REPOSITORY', manifest: 'api/apps/api-server/Cargo.toml' },
+  { job: 'publish-web', image: '1flowbase-web', prefix: 'web', repositoryEnv: 'ACR_WEB_REPOSITORY', manifest: 'web/app/package.json' },
 ];
 
 function validateConfig(env) {
-  for (const name of ['GITHUB_REPOSITORY', 'GH_TOKEN', 'SOURCE_RUN_ID', 'ACR_REGISTRY', 'ACR_REPOSITORY', 'ACR_USERNAME', 'ACR_PASSWORD']) {
+  for (const name of ['GITHUB_REPOSITORY', 'GH_TOKEN', 'SOURCE_RUN_ID', 'ACR_REGISTRY', 'ACR_API_REPOSITORY', 'ACR_WEB_REPOSITORY', 'ACR_POSTGRES_REPOSITORY', 'POSTGRES_SOURCE_IMAGE', 'ACR_USERNAME', 'ACR_PASSWORD']) {
     if (!env[name]?.trim()) throw new Error(`Missing ${name}`);
   }
   if (!/^\d+$/.test(env.SOURCE_RUN_ID)) throw new Error('SOURCE_RUN_ID must be numeric');
   if (!/^[a-zA-Z0-9.-]+(?::\d+)?$/.test(env.ACR_REGISTRY)) throw new Error('ACR_REGISTRY must be a registry hostname');
-  if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(env.ACR_REPOSITORY)) {
-    throw new Error('ACR_REPOSITORY must be a namespace/repository path');
+  for (const name of ['ACR_API_REPOSITORY', 'ACR_WEB_REPOSITORY', 'ACR_POSTGRES_REPOSITORY']) {
+    if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(env[name])) {
+      throw new Error(`${name} must be a namespace/repository path`);
+    }
+  }
+  if (new Set([env.ACR_API_REPOSITORY, env.ACR_WEB_REPOSITORY, env.ACR_POSTGRES_REPOSITORY]).size !== 3) {
+    throw new Error('API, Web and PostgreSQL must use different repositories');
+  }
+  if (!/^docker\.io\/library\/postgres:18(?:\.\d+)?-alpine$/.test(env.POSTGRES_SOURCE_IMAGE)) {
+    throw new Error('POSTGRES_SOURCE_IMAGE must use the official PostgreSQL 18 Alpine image');
   }
 }
 
@@ -83,13 +91,48 @@ async function githubApi(env, endpoint) {
   return response.json();
 }
 
+function copyRuntimeIndex({ regctl, pinnedSource, target, platforms, log }) {
+  log(`Copy ${pinnedSource} -> ${target}`);
+  // Personal ACR rejects OCI attestation manifests. Runtime image digests remain intact.
+  regctl(['index', 'create', target, '--ref', pinnedSource, '--platform', 'linux/amd64', '--platform', 'linux/arm64']);
+  const destinationRaw = regctl(['manifest', 'get', target, '--format', 'raw-body']);
+  if (JSON.parse(destinationRaw).manifests?.length !== 2 ||
+      JSON.stringify(runtimeManifests(destinationRaw)) !== JSON.stringify(platforms)) {
+    throw new Error(`${target} remote platform digest mismatch`);
+  }
+  return digest(destinationRaw);
+}
+
+function syncPostgres(env, { regctl, report, log }) {
+  const sourceRaw = regctl(['manifest', 'get', env.POSTGRES_SOURCE_IMAGE, '--format', 'raw-body']);
+  const sourceRepo = 'docker.io/library/postgres';
+  const source = `${sourceRepo}@${digest(sourceRaw)}`;
+  const platforms = runtimeManifests(sourceRaw);
+  const imageEnv = JSON.parse(regctl(['image', 'inspect', source, '--platform', 'linux/amd64', '--format', '{{json .Config.Env}}']));
+  const config = Object.fromEntries(imageEnv.map(line => { const i = line.indexOf('='); return [line.slice(0, i), line.slice(i + 1)]; }));
+  if (config.PG_MAJOR !== '18' || !/^18\.\d+$/.test(config.PG_VERSION) || config.PGDATA !== '/var/lib/postgresql/18/docker') {
+    throw new Error('PostgreSQL image is incompatible with the PostgreSQL 18 deployment data layout');
+  }
+  const tag = `${config.PG_VERSION}-alpine`;
+  const entry = { component: 'postgres', source, tag, destination_repository: `${env.ACR_REGISTRY}/${env.ACR_POSTGRES_REPOSITORY}`,
+    destination_tag: tag, platforms, excluded_manifests: JSON.parse(sourceRaw).manifests.length - 2, major_tag_updated: false };
+  report.images.push(entry);
+  entry.verified_digest = copyRuntimeIndex({ regctl, pinnedSource: source, target: `${entry.destination_repository}:${tag}`, platforms, log });
+  const majorSource = `${sourceRepo}:18-alpine`;
+  if (digest(regctl(['manifest', 'get', majorSource, '--format', 'raw-body'])) === digest(sourceRaw)) {
+    const majorDigest = copyRuntimeIndex({ regctl, pinnedSource: source, target: `${entry.destination_repository}:18-alpine`, platforms, log });
+    if (majorDigest !== entry.verified_digest) throw new Error('PostgreSQL major tag differs from verified version tag');
+    entry.major_tag_updated = true;
+  }
+}
+
 async function syncImages(env, { api, regctl, report = { images: [] }, log = console.log }) {
   validateConfig(env);
   const run = await api(`actions/runs/${env.SOURCE_RUN_ID}`);
   validateRun(run, env.GITHUB_REPOSITORY);
   report.source_run_id = run.id;
   report.source_sha = run.head_sha;
-  report.destination = `${env.ACR_REGISTRY}/${env.ACR_REPOSITORY}`;
+  report.registry = env.ACR_REGISTRY;
   const jobs = [];
   for (let page = 1; ; page++) {
     const result = await api(`actions/runs/${run.id}/jobs?filter=latest&per_page=100&page=${page}`);
@@ -100,6 +143,8 @@ async function syncImages(env, { api, regctl, report = { images: [] }, log = con
   if (!components.length) throw new Error('Source run did not publish any component');
 
   regctl(['registry', 'login', env.ACR_REGISTRY, '--user', env.ACR_USERNAME, '--pass-stdin'], `${env.ACR_PASSWORD}\n`);
+  // Personal ACR can return 404 for chunked blob uploads; use standard full-blob PUT.
+  regctl(['registry', 'set', env.ACR_REGISTRY, '--blob-max', '-1']);
   regctl(['registry', 'login', 'ghcr.io', '--user', env.GITHUB_ACTOR || env.GITHUB_REPOSITORY.split('/')[0], '--pass-stdin'], `${env.GH_TOKEN}\n`);
   for (const component of components) {
     const file = await api(`contents/${component.manifest}?ref=${run.head_sha}`);
@@ -115,33 +160,25 @@ async function syncImages(env, { api, regctl, report = { images: [] }, log = con
         labels?.['org.opencontainers.image.version'] !== tag) {
       throw new Error(`${component.prefix} official image does not match source run; candidate-only builds cannot be mirrored`);
     }
-    const entry = { component: component.prefix, source: pinnedSource, tag, destination_tag: `${component.prefix}-${tag}`, platforms,
+    const entry = { component: component.prefix, source: pinnedSource, tag, destination_repository: `${env.ACR_REGISTRY}/${env[component.repositoryEnv]}`, destination_tag: tag, platforms,
       excluded_manifests: JSON.parse(sourceRaw).manifests.length - platforms.length, latest_updated: false };
     report.images.push(entry);
     function copyAndVerify(destinationTag) {
-      const target = `${report.destination}:${destinationTag}`;
-      log(`Copy ${pinnedSource} -> ${target}`);
-      // Personal ACR rejects OCI empty-config attestation manifests. Keep both runtime
-      // architectures, preserving each image digest while rebuilding only the index.
-      regctl(['index', 'create', target, '--ref', pinnedSource, '--platform', 'linux/amd64', '--platform', 'linux/arm64']);
-      const destinationRaw = regctl(['manifest', 'get', target, '--format', 'raw-body']);
-      if (JSON.parse(destinationRaw).manifests?.length !== 2 ||
-          JSON.stringify(runtimeManifests(destinationRaw)) !== JSON.stringify(platforms)) {
-        throw new Error(`${destinationTag} remote platform digest mismatch`);
-      }
-      return digest(destinationRaw);
+      const target = `${entry.destination_repository}:${destinationTag}`;
+      return copyRuntimeIndex({ regctl, pinnedSource, target, platforms, log });
     }
     entry.verified_digest = copyAndVerify(entry.destination_tag);
     // A historical retry must never replace a newer official latest image.
     if (digest(regctl(['manifest', 'get', `${sourceRepo}:latest`, '--format', 'raw-body'])) === sourceDigest) {
-      if (copyAndVerify(`${component.prefix}-latest`) !== entry.verified_digest) {
-        throw new Error(`${component.prefix}-latest differs from the verified version tag`);
+      if (copyAndVerify('latest') !== entry.verified_digest) {
+        throw new Error(`${component.prefix} latest differs from the verified version tag`);
       }
       entry.latest_updated = true;
     } else {
-      log(`Keep ${component.prefix}-latest: GHCR latest has moved to another image`);
+      log(`Keep ${component.prefix} latest: GHCR latest has moved to another image`);
     }
   }
+  syncPostgres(env, { regctl, report, log });
   return report;
 }
 
@@ -167,5 +204,5 @@ async function main(env = process.env) {
   }
 }
 
-module.exports = { COMPONENTS, validateConfig, validateRun, imageTag, digest, runtimeManifests, regctlAdapter, syncImages, main };
+module.exports = { COMPONENTS, validateConfig, validateRun, imageTag, digest, runtimeManifests, regctlAdapter, copyRuntimeIndex, syncPostgres, syncImages, main };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

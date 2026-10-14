@@ -41,13 +41,17 @@ docker compose up -d
 | --- | --- | --- |
 | `ACR_SYNC_ENABLED` | Variable | `true` 启用，其他值停用 |
 | `ACR_REGISTRY` | Variable | 实例公网域名，不含 `https://` |
-| `ACR_REPOSITORY` | Variable | `命名空间/仓库名` |
+| `ACR_API_REPOSITORY` | Variable | 后端 `命名空间/仓库名` |
+| `ACR_WEB_REPOSITORY` | Variable | 前端 `命名空间/仓库名` |
+| `ACR_POSTGRES_REPOSITORY` | Variable | PostgreSQL `命名空间/仓库名` |
+| `POSTGRES_SOURCE_IMAGE` | Variable | `docker.io/library/postgres:18-alpine`，也可固定 18 的小版本 |
 | `ACR_USERNAME` | Variable | 登录账号 |
 | `ACR_PASSWORD` | Secret | Registry 登录密码 |
 
 同步仅处理来源任务实际发布成功的组件，使用各组件自己的版本号，并核对镜像的
-发布提交。前后端共用目标仓库，标签分别为 `api-v版本`、`web-v版本`、
-`api-latest` 和 `web-latest`。复制保留 `linux/amd64`、`linux/arm64` 运行镜像及各架构摘要，不重新构建。
+发布提交。前后端使用不同目标仓库，各自发布 `v版本` 和 `latest` 标签。PostgreSQL 单独镜像
+官方 18 Alpine，发布当前 `18.小版本-alpine` 和 `18-alpine`；不使用会跨主版本的
+`latest` 标签。复制保留 `linux/amd64`、`linux/arm64` 运行镜像及各架构摘要，不重新构建。
 阿里云个人版不支持 OCI 构建证明，因此目标镜像列表排除 attestation，顶层摘要
 会变化；验收逐一比较两种运行架构的镜像摘要。同步使用固定版本和校验和的
 regctl v0.11.6，仅用于 CI 镜像复制，不增加应用依赖。
@@ -58,7 +62,16 @@ regctl v0.11.6，仅用于 CI 镜像复制，不增加应用依赖。
 推广到正式版本、来源镜像已被另一提交覆盖或运行架构摘要无法保留时，同步会失败。
 校验记录位于该次同步的 `aliyun-image-sync-*` artifact。
 
-切换部署来源时，将 Compose 中 API 和 init 的 `image` 都设为
-`实例域名/命名空间/仓库名:api-v版本`，Web 设为
-`实例域名/命名空间/仓库名:web-v版本`。此工作流不自动修改 Compose；
-私有仓库需要在部署机器上先登录 Registry。
+## 国内镜像一键部署
+
+将 `compose.aliyun.yaml` 保存到空目录，重命名为 `compose.yaml`，运行 `docker compose up -d`。
+默认前后端分别拉取阿里云独立仓库的 `latest`，数据库拉取 `taichuy/postgres:18-alpine`。
+API 与 init 使用同一份后端镜像。每次启动都会检查远端镜像，已有配置和数据库保持不变。
+
+可选的 `.env` 可以设置 `FLOWBASE_REGISTRY`、`FLOWBASE_API_REPOSITORY`、
+`FLOWBASE_WEB_REPOSITORY`、`FLOWBASE_POSTGRES_REPOSITORY`，以及三个组件各自的版本变量
+`FLOWBASE_API_SERVER_VERSION`、`FLOWBASE_WEB_VERSION`、`FLOWBASE_POSTGRES_VERSION`。
+绑定版本示例为 `v0.5.6`、`v0.5.6`、`18.6-alpine`。服务端口、初始账号等配置沿用上文。
+
+[中文 Wiki 教程](https://github.com/taichuy/1flowbase/wiki/Docker-Aliyun-Deployment-CN)
+提供完整单文件配置、升级与持久化说明。私有仓库需要在部署机器上先登录 Registry。
