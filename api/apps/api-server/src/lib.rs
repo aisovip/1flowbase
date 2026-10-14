@@ -6,6 +6,7 @@ mod managed_service_mcp;
 mod managed_services;
 mod resource_import;
 
+pub mod agent_logs_protocol;
 pub mod app_state;
 pub mod application_public_docs;
 pub mod config;
