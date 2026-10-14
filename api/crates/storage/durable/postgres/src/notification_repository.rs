@@ -5,7 +5,10 @@ use crate::{
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ports::{NotificationMessageListInput, NotificationRepository, SaveNotificationInstanceInput},
+    ports::{
+        NotificationAuthorizationSnapshot, NotificationMessageListInput, NotificationRepository,
+        SaveNotificationAuthorizationInput, SaveNotificationInstanceInput,
+    },
     ControlPlaneContractError as Error,
 };
 use domain::{
@@ -89,8 +92,76 @@ pub(crate) fn aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
     format!("notification-instance:{workspace}:{id}").into_bytes()
 }
 
+pub(crate) fn managed_aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
+    format!("notification-managed-authorization:{workspace}:{id}").into_bytes()
+}
+
 #[async_trait]
 impl NotificationRepository for PgControlPlaneStore {
+    async fn notification_authorization_view(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<extension_contracts::NotificationAuthorizationView>> {
+        let value: Option<Value> = sqlx::query_scalar(
+            "SELECT authorization_json FROM notification_instances WHERE workspace_id=$1 AND id=$2",
+        )
+        .bind(workspace_id)
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(Error::NotFound("notification_instance"))?;
+        value
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| Error::Conflict("notification_authorization_state").into())
+    }
+    async fn resolve_notification_authorization(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        master_key: &str,
+    ) -> Result<NotificationAuthorizationSnapshot> {
+        let row = sqlx::query("SELECT authorization_json,encrypted_managed_secret_json,authorization_revision FROM notification_instances WHERE workspace_id=$1 AND id=$2")
+            .bind(workspace_id).bind(id).fetch_optional(self.pool()).await?
+            .ok_or(Error::NotFound("notification_instance"))?;
+        let authorization: Option<Value> = row.get("authorization_json");
+        let encrypted: Option<Value> = row.get("encrypted_managed_secret_json");
+        let managed_secrets = match encrypted {
+            Some(value) => serde_json::from_value(decrypt_secret_json_with_aad(
+                &value,
+                master_key,
+                &managed_aad(workspace_id, id),
+            )?)?,
+            None => Default::default(),
+        };
+        Ok(NotificationAuthorizationSnapshot {
+            authorization: authorization
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|_| Error::Conflict("notification_authorization_state"))?,
+            managed_secrets,
+            revision: row.get("authorization_revision"),
+        })
+    }
+    async fn save_notification_authorization(
+        &self,
+        input: SaveNotificationAuthorizationInput,
+    ) -> Result<Option<i64>> {
+        input
+            .authorization
+            .validate()
+            .map_err(|_| Error::Conflict("notification_authorization_state"))?;
+        let encrypted = encrypt_secret_json_with_aad(
+            &serde_json::to_value(input.managed_secrets)?,
+            &input.master_key,
+            &managed_aad(input.workspace_id, input.instance_id),
+        )?;
+        Ok(sqlx::query_scalar("UPDATE notification_instances SET authorization_json=$4,encrypted_managed_secret_json=$5,authorization_revision=authorization_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND authorization_revision=$3 RETURNING authorization_revision")
+            .bind(input.workspace_id).bind(input.instance_id).bind(input.expected_revision)
+            .bind(serde_json::to_value(input.authorization)?).bind(encrypted)
+            .fetch_optional(self.pool()).await?)
+    }
     async fn create_notification_send_log(&self, log: domain::NotificationSendLog) -> Result<()> {
         sqlx::query("INSERT INTO notification_send_logs (id,workspace_id,actor_user_id,instance_id,display_name,type_code,source,status,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)")
             .bind(log.id).bind(log.workspace_id).bind(log.actor_user_id).bind(log.instance_id).bind(log.display_name).bind(log.type_code).bind(log.source.as_str()).bind(log.created_at).execute(self.pool()).await?;
@@ -274,14 +345,18 @@ impl NotificationRepository for PgControlPlaneStore {
         input: SaveNotificationInstanceInput,
     ) -> Result<NotificationInstanceRecord> {
         let r = input.record;
+        if let Some(view) = &input.initial_authorization {
+            view.validate()
+                .map_err(|_| Error::Conflict("notification_authorization_state"))?;
+        }
         let encrypted = encrypt_secret_json_with_aad(
             &input.secret_config_json,
             &input.master_key,
             &aad(r.workspace_id, r.id),
         )?;
         let row = if input.create {
-            sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,installation_id,display_name,status,config_json,configured_secret_fields,encrypted_secret_json) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *")
-                .bind(r.id).bind(r.workspace_id).bind(&r.type_code).bind(r.installation_id).bind(&r.display_name).bind(r.status.as_str()).bind(&r.config_json).bind(json!(r.configured_secret_fields)).bind(encrypted).fetch_one(self.pool()).await?
+            sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,installation_id,display_name,status,config_json,configured_secret_fields,encrypted_secret_json,authorization_json) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *")
+                .bind(r.id).bind(r.workspace_id).bind(&r.type_code).bind(r.installation_id).bind(&r.display_name).bind(r.status.as_str()).bind(&r.config_json).bind(json!(r.configured_secret_fields)).bind(encrypted).bind(input.initial_authorization.map(serde_json::to_value).transpose()?).fetch_one(self.pool()).await?
         } else {
             sqlx::query("UPDATE notification_instances SET display_name=$3,status=$4,config_json=$5,configured_secret_fields=$6,encrypted_secret_json=$7,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND updated_at=$8 RETURNING *")
                 .bind(r.workspace_id).bind(r.id).bind(&r.display_name).bind(r.status.as_str()).bind(&r.config_json).bind(json!(r.configured_secret_fields)).bind(encrypted).bind(r.updated_at).fetch_optional(self.pool()).await?.ok_or(Error::Conflict("notification_instance_changed"))?

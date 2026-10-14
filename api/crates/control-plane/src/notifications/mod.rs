@@ -19,7 +19,11 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, sync::Arc};
 use uuid::Uuid;
 
+mod authorization;
+mod managed_send;
+
 pub use domain::{NotificationSendResult, NotificationSource};
+pub use extension_contracts::{NotificationAuthorizationOperation, NotificationAuthorizationView};
 pub const NOTIFICATIONS_SETTINGS_FEATURE: &str = "system.notifications";
 
 #[async_trait]
@@ -67,6 +71,7 @@ pub struct NotificationInstance {
     pub record: NotificationInstanceRecord,
     pub available: bool,
     pub unavailable_reason: Option<&'static str>,
+    pub authorization: Option<NotificationAuthorizationView>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -253,7 +258,25 @@ where
                 })
                 .map_or(Some("type_unavailable"), |entry| entry.unavailable_reason)
         };
+        let persisted = self
+            .repository
+            .notification_authorization_view(actor.current_workspace_id, record.id)
+            .await?;
+        let authorization = match persisted {
+            Some(view) => Some(view),
+            None => self
+                .types(actor)
+                .await?
+                .into_iter()
+                .find(|entry| {
+                    entry.descriptor.type_code == record.type_code
+                        && entry.installation_id == record.installation_id
+                        && entry.descriptor.authorization.is_some()
+                })
+                .map(|_| authorization::unauthorized()),
+        };
         Ok(NotificationInstance {
+            authorization,
             record,
             available: reason.is_none(),
             unavailable_reason: reason,
@@ -344,6 +367,11 @@ where
                 secret_config_json: secret,
                 master_key: self.master_key.clone(),
                 create: true,
+                initial_authorization: entry
+                    .descriptor
+                    .authorization
+                    .as_ref()
+                    .map(|_| authorization::unauthorized()),
             })
             .await?;
         self.project_instance(actor, record).await
@@ -404,6 +432,7 @@ where
                 secret_config_json: secret,
                 master_key: self.master_key.clone(),
                 create: false,
+                initial_authorization: None,
             })
             .await?;
         self.project_instance(actor, record).await
@@ -551,6 +580,16 @@ where
             let terminal = error.downcast_ref::<Error>().and_then(|error| match error {
                 Error::NotFound("notification_instance") => Some(("failure", "instance_missing")),
                 Error::Conflict("instance_disabled") => Some(("failure", "instance_disabled")),
+                Error::Conflict("authorization_required") => {
+                    Some(("failure", "authorization_required"))
+                }
+                Error::Conflict("authorization_invalid") => {
+                    Some(("failure", "authorization_invalid"))
+                }
+                Error::Conflict("recipient_not_ready") => Some(("failure", "recipient_not_ready")),
+                Error::UpstreamUnavailable("provider_rejected") => {
+                    Some(("failure", "provider_rejected"))
+                }
                 Error::Conflict("type_unavailable") => Some(("failure", "type_unavailable")),
                 Error::Conflict("plugin_unavailable") => Some(("failure", "plugin_unavailable")),
                 Error::InvalidInput("notification_input_schema" | "notification_recipients") => {
@@ -611,6 +650,11 @@ where
             .descriptor
             .validate_input(&input)
             .map_err(|_| Error::InvalidInput("notification_input_schema"))?;
+        if entry.descriptor.authorization.is_some() {
+            return self
+                .send_authorizable(actor, &instance, &entry.descriptor, input, log_id)
+                .await;
+        }
         let result = if instance.type_code == "system" {
             #[derive(Deserialize)]
             struct SystemInput {

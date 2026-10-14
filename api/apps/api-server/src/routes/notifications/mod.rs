@@ -59,6 +59,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 .delete(delete, Op("notifications.instances.delete".into())),
         )
         .route(
+            "/notifications/instances/:instance_id/authorization",
+            console_post(
+                authorize,
+                Op("notifications.instances.authorization".into()),
+            ),
+        )
+        .route(
             "/notifications/instances/:instance_id/send",
             console_post(send, Op("notifications.instances.send".into())),
         )
@@ -104,6 +111,7 @@ async fn invoke(
         Input::Create(_)
         | Input::Patch(..)
         | Input::Delete(_)
+        | Input::Authorize(..)
         | Input::Send(..)
         | Input::Read(_)
         | Input::ReadAll
@@ -186,6 +194,21 @@ pub async fn patch(
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     invoke(state, headers, "instances.update", Input::Patch(id, body)).await
 }
+pub async fn authorize(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<extension_contracts::NotificationAuthorizationOperation>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "instances.authorization",
+        Input::Authorize(id, body),
+    )
+    .await
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SendBody {

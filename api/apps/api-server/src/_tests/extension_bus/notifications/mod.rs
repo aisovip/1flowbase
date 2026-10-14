@@ -329,3 +329,5 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         .iter()
         .all(|log| log.title.is_none() && log.content.is_none()));
 }
+
+mod authorization;

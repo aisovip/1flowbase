@@ -17,7 +17,7 @@ fn descriptor() -> NotificationTypeDescriptor {
             .expect("fixture descriptor");
     value.authorization = Some(serde_json::from_value(json!({
         "actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],
-        "managed_secret_keys":["qr_credential","bot_token","bound_user_id","context_token","cursor"]
+        "managed_secret_keys":["qr_credential","qr_code_url","bot_token","bound_user_id","context_token","cursor"]
     })).expect("fixture authorization"));
     value
 }
@@ -29,16 +29,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(request) => request,
             Err(_) => return json!({"ok":false,"result":null,"error":{"message":"invalid fixture request"}}),
         };
+        // A peer can bypass author helpers; Host must independently reject its write set.
+        if request.input["input_payload"]["operation"]["input_payload"]["text"] == "fixture-undeclared-patch" {
+            return json!({"ok":true,"result":{"type":"send","outcome":{"status":"failed","failure_code":"provider_rejected"},"managed_secret_patch":{"undeclared":"private-provider-secret"}}});
+        }
         let response = execute_authorizable_notification(request, &descriptor(), |config, input| async move {
             let result = match input.operation {
                 NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Begin { .. } } => json!({
-                    "type":"authorization","authorization":{"status":"pending","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/fixture-qr","poll_interval_seconds":2}},"managed_secret_patch":{"qr_credential":"fixture-qr-credential"}
+                    "type":"authorization","authorization":{"status":"pending","user_action":{"kind":"qr_code","qr_code_url":if config["channel"]=="unsafe-qr" {"https://example.com/fixture-qr-credential"} else {"https://example.com/fixture-qr"},"poll_interval_seconds":2}},"managed_secret_patch":{"qr_credential":"fixture-qr-credential","qr_code_url":"https://example.com/fixture-qr"}
                 }),
                 NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Poll } => {
                     if !input.managed_secrets.contains_key("qr_credential") {
                         return Err("fixture missing persisted QR credential");
                     }
-                    json!({"type":"authorization","authorization":{"status":"authorized"},"managed_secret_patch":{"qr_credential":null,"bot_token":"fixture-bot-token","bound_user_id":"fixture-scanned-peer"}})
+                    json!({"type":"authorization","authorization":{"status":"authorized"},"managed_secret_patch":{"qr_credential":null,"qr_code_url":null,"bot_token":"fixture-bot-token","bound_user_id":"fixture-scanned-peer"}})
                 }
                 NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Cancel } => json!({"type":"authorization","authorization":{"status":"unauthorized"},"managed_secret_patch":{"qr_credential":null}}),
                 NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Maintain } => json!({"type":"authorization","authorization":{"status":if input.managed_secrets.contains_key("bot_token") {"authorized"} else {"unauthorized"}}}),
@@ -52,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ => ("", None),
                     };
                     if code.is_empty() {
-                        json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":true,"delivery_id":format!("{}:fixture",config["channel"].as_str().unwrap())}},"authorization":{"status":"authorized"},"managed_secret_patch":{"cursor":"next","context_token":"fixture-context"}})
+                        json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":true,"delivery_id":if input_payload["text"]=="fixture-secret-output" {input.managed_secrets["bot_token"].as_str().unwrap_or("private-provider-secret").to_owned()} else {format!("{}:fixture",config["channel"].as_str().unwrap())}}},"authorization":{"status":"authorized"},"managed_secret_patch":{"cursor":"next","context_token":"fixture-context"}})
                     } else {
-                        let mut result = json!({"type":"send","outcome":{"status":"failed","failure_code":code}});
+                        let mut result = json!({"type":"send","outcome":{"status":"failed","failure_code":code},"managed_secret_patch":{"cursor":"failure-next"}});
                         if let Some(status) = status { result["authorization"] = json!({"status":status}); }
                         result
                     }
