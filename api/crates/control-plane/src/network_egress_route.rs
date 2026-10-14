@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
-    network_egress_pool::{ensure_global_network_egress_pool, GLOBAL_NETWORK_EGRESS_POOL_ID},
+    network_egress_pool::{GLOBAL_NETWORK_EGRESS_POOL_ID, ensure_global_network_egress_pool},
     ports::{
         CreateNetworkEgressRouteInput, NetworkEgressPoolRepository, NetworkEgressRepository,
         NetworkEgressRouteRepository, UpdateNetworkEgressRouteInput,
@@ -225,6 +225,10 @@ mod tests {
         assert!(
             domain::NetworkEgressConsumerSelector::from_storage("github", Some(instance_id))
                 .is_err()
+        );
+        assert_eq!(
+            matching_selectors(&domain::NetworkEgressConsumerSelector::AgentLogsExchange),
+            vec![domain::NetworkEgressConsumerSelector::AgentLogsExchange]
         );
     }
 }
