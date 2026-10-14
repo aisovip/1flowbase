@@ -18,7 +18,7 @@ const options = {
 };
 function argumentsForRun() {
   const { values } = parseArgs({ options });
-  for (const required of ['api-base-url', 'web-base-url', 'credentials-root', 'langfuse-private-file', 'openlit-module-root', 'out-dir'])
+  for (const required of ['api-base-url', 'web-base-url', 'credentials-root', 'langfuse-private-file', 'openlit-module-root', 'langfuse-storage-private-file', 'out-dir'])
     assert.ok(values[required], `missing --${required}`);
   const args = Object.fromEntries(Object.entries(values).map(([key, value]) => [key.replace(/-([a-z])/g, (_, char) => char.toUpperCase()), value]));
   for (const key of ['apiBaseUrl', 'webBaseUrl']) {
@@ -264,7 +264,16 @@ async function run(args) {
     }
     check(stage, { sdk: summary.sdk, version: summary.version, spans: summary.spans, record_ids: sdkRecords.map(record => record.record_id), message_source: gatewayKey ? 'gateway' : 'synthetic' });
     stage = 'browser screenshots';
-    await capture({ args, credentials, applicationId: apps[0], recordIds: ingested.record_ids, langfuse, receipt });
+    const conversationRecord = await request('GET', recordPath(apps[2], lfImported.record_ids[0]));
+    const conversationEvents = batch.events.filter(event => event.source_task_id === conversationRecord.source_task_id);
+    const conversation = {
+      record_id: conversationRecord.record_id,
+      user: conversationEvents.find(event => event.kind === 'user').content,
+      final_answer: conversationEvents.find(event => event.kind === 'assistant' && event.phase === 'final_answer').content
+    };
+    await capture({ args, credentials, applicationId: apps[0], recordIds: ingested.record_ids,
+      targetApplicationId: apps[2], importedRecordIds: lfImported.record_ids,
+      conversation, traceIds: exported.trace_ids, eventCount: batch.events.length, langfuse, receipt });
   } catch (error) {
     // Do not serialize error messages, bodies or SDK diagnostics: these can contain credentials.
     receipt.errors.push({ stage, ...(error.safe_reason ? { reason: error.safe_reason } : {}), error_name: ['AssertionError', 'TypeError', 'SyntaxError'].includes(error.name) ? error.name : 'Error' });
