@@ -40,3 +40,26 @@ export function collectorInstallerCommand(
     : '';
   return `(installer="$(mktemp)" && trap 'rm -f "$installer"' EXIT && curl -fsSL --max-redirs 0 ${shellQuote(downloadUrl(collector.shell_installer_url))} -o "$installer" && ${setKey}bash "$installer" --endpoint ${shellQuote(endpoint)} --version ${shellQuote(collector.installed_version)} --release-base ${shellQuote(releaseBase)} --installation-id ${shellQuote(applicationId)})`;
 }
+
+export function collectorUninstallerCommand(
+  collector: ConsoleApplicationCollector,
+  operatingSystem: CollectorOperatingSystem,
+  applicationId: string,
+  apiBaseUrl: string
+): string | null {
+  const installerUrl =
+    operatingSystem === 'powershell'
+      ? collector.powershell_installer_url
+      : collector.shell_installer_url;
+  if (
+    collector.installation_status !== 'installed' ||
+    !collector.installed_version ||
+    !installerUrl
+  )
+    return null;
+  const downloadUrl = `${apiBaseUrl.replace(/\/$/, '')}${installerUrl}`;
+  if (operatingSystem === 'powershell') {
+    return `& { $ErrorActionPreference = 'Stop'; $installer = Join-Path ([System.IO.Path]::GetTempPath()) (([guid]::NewGuid().ToString()) + '.ps1'); try { Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri ${powershellQuote(downloadUrl)} -OutFile $installer; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Uninstall -InstallationId ${powershellQuote(applicationId)}; if ($LASTEXITCODE -ne 0) { throw "Collector removal failed (exit $LASTEXITCODE)" } } finally { Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue } }`;
+  }
+  return `(installer="$(mktemp)" && trap 'rm -f "$installer"' EXIT && curl -fsSL --max-redirs 0 ${shellQuote(downloadUrl)} -o "$installer" && bash "$installer" --uninstall --installation-id ${shellQuote(applicationId)})`;
+}

@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 import type { ConsoleApplicationCollector } from '@1flowbase/api-client';
-import { collectorInstallerCommand } from '../../components/collector/installer-command';
+import {
+  collectorInstallerCommand,
+  collectorUninstallerCommand
+} from '../../components/collector/installer-command';
 const collector = {
   installation_status: 'installed',
   shell_installer_url: '/assets/install.sh',
@@ -136,6 +139,84 @@ bash() { printf '%s' "$FLOWBASE_AGENT_LOGS_API_KEY" > "$COLLECTOR_PROOF_DIR/key"
       await readFile(join(directory, 'installer-args'), 'utf8')
     ).not.toContain('proof');
     await expect(access(join(directory, 'injected'))).rejects.toThrow();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test.each(['shell', 'powershell'] as const)(
+  '%s removal targets the application using installed assets without credentials or ingestion parameters',
+  (os) => {
+    const command = collectorUninstallerCommand(
+      collector,
+      os,
+      "application'one",
+      'https://example.com/'
+    )!;
+    if (os === 'shell') {
+      expect(command).toContain("'https://example.com/assets/install.sh'");
+      expect(command).toContain(
+        "--uninstall --installation-id 'application'\\''one'"
+      );
+      expect(command).toContain('trap');
+    } else {
+      expect(command).toContain("'https://example.com/assets/install.ps1'");
+      expect(command).toContain(
+        "-Uninstall -InstallationId 'application''one'"
+      );
+      expect(command).toContain('if ($LASTEXITCODE -ne 0)');
+      expect(command).toContain('finally { Remove-Item');
+    }
+    expect(command).not.toMatch(
+      /API_KEY|api_key|Endpoint|endpoint|ReleaseBase|release-base/
+    );
+    expect(
+      collectorUninstallerCommand(
+        { ...collector, installation_status: 'missing' },
+        os,
+        'application',
+        'https://example.com'
+      )
+    ).toBeNull();
+    expect(
+      collectorUninstallerCommand(
+        {
+          ...collector,
+          shell_installer_url: null,
+          powershell_installer_url: null
+        },
+        os,
+        'application',
+        'https://example.com'
+      )
+    ).toBeNull();
+  }
+);
+
+test('shell removal passes the literal application ID and removal flag to the installer', async () => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const directory = await mkdtemp(join(tmpdir(), 'collector-removal-proof-'));
+  try {
+    const applicationId = "application'one $() `data`";
+    const command = collectorUninstallerCommand(
+      collector,
+      'shell',
+      applicationId,
+      'https://example.com'
+    )!;
+    const stubs = `curl() { :; }
+bash() { printf '%s\\n' "$2" "$3" "$4" > "$COLLECTOR_PROOF_DIR/args"; }
+`;
+    execFileSync('bash', ['-c', stubs + command], {
+      env: { ...process.env, COLLECTOR_PROOF_DIR: directory },
+      timeout: 10000
+    });
+    expect(await readFile(join(directory, 'args'), 'utf8')).toBe(
+      `--uninstall\n--installation-id\n${applicationId}\n`
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

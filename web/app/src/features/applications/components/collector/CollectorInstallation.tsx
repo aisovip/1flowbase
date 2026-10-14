@@ -16,6 +16,7 @@ import {
 } from '../../api/public-api';
 import {
   collectorInstallerCommand,
+  collectorUninstallerCommand,
   type CollectorOperatingSystem
 } from './installer-command';
 
@@ -58,6 +59,19 @@ export function CollectorInstallation({
   const documentationUrl = collector.documentation_url
     ? `${apiBaseUrl.replace(/\/$/, '')}${collector.documentation_url}`
     : undefined;
+  const uninstallCommand = collectorUninstallerCommand(
+    collector,
+    operatingSystem,
+    applicationId,
+    apiBaseUrl
+  );
+  const copyUninstallCommand = () => {
+    if (!uninstallCommand) return;
+    void copyTextToClipboard(uninstallCommand).then(
+      () => message.success(t('agent_logs.remove_command_copied')),
+      () => message.error(t('agent_logs.remove_command_copy_failed'))
+    );
+  };
   const copyCommand = () => {
     if (!command) return;
     void copyTextToClipboard(command).then(
@@ -206,6 +220,39 @@ export function CollectorInstallation({
             <Typography.Paragraph>
               {t('agent_logs.start_collecting_description')}
             </Typography.Paragraph>
+          </div>
+        </section>
+        <section
+          className="application-collector__step"
+          aria-label={t('agent_logs.remove_collector')}
+        >
+          <span className="application-collector__number" aria-hidden="true">
+            4
+          </span>
+          <div>
+            <Typography.Title level={5}>
+              {t('agent_logs.remove_collector')}
+            </Typography.Title>
+            <Typography.Paragraph>
+              {t('agent_logs.remove_collector_description')}
+            </Typography.Paragraph>
+            {uninstallCommand ? (
+              <div className="application-collector__command">
+                <pre>{uninstallCommand}</pre>
+                <Button
+                  icon={<CopyOutlined aria-hidden="true" />}
+                  onClick={copyUninstallCommand}
+                >
+                  {t('agent_logs.copy_remove_command')}
+                </Button>
+              </div>
+            ) : (
+              <Alert
+                type="warning"
+                showIcon
+                title={t('agent_logs.package_unavailable')}
+              />
+            )}
           </div>
         </section>
       </section>

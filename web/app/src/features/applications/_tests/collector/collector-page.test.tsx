@@ -3,7 +3,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -101,6 +102,54 @@ beforeEach(() => {
     id: 'key-one',
     token: 'proof-generated-key'
   });
+});
+
+test('fourth step copies removal commands without a key and follows the operating system selection', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  const removal = screen.getByRole('region', { name: '移除' });
+  expect(within(removal).getByText('4')).toBeInTheDocument();
+  expect(removal).toHaveTextContent('无需 API Key');
+  expect(screen.getByLabelText('API 密钥')).toHaveValue('');
+  fireEvent.click(
+    within(removal).getByRole('button', { name: '复制移除命令' })
+  );
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        `--uninstall --installation-id '${applicationId}'`
+      )
+    )
+  );
+  expect(await screen.findByText('移除命令已复制')).toBeInTheDocument();
+  expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('API 密钥'), {
+    target: { value: 'private-install-key' }
+  });
+  fireEvent.click(screen.getByRole('radio', { name: 'Windows (PowerShell)' }));
+  const command = removal.querySelector('pre')!.textContent!;
+  expect(command).toContain(`${assetBase}/install.ps1`);
+  expect(command).toContain(`-Uninstall -InstallationId '${applicationId}'`);
+  expect(command).not.toMatch(/private-install-key|API_KEY|Endpoint/);
+  fireEvent.click(
+    within(removal).getByRole('button', { name: '复制移除命令' })
+  );
+  await waitFor(() =>
+    expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(command)
+  );
+});
+
+test('failed removal copy offers a manual fallback without asking for a key', async () => {
+  clipboard.copyTextToClipboard.mockRejectedValueOnce(
+    new Error('clipboard denied')
+  );
+  renderPage();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Codex' }));
+  fireEvent.click(screen.getByRole('button', { name: '复制移除命令' }));
+  expect(
+    await screen.findByText('无法复制移除命令，请重试或手动复制下方命令。')
+  ).toBeInTheDocument();
+  expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
 });
 
 test('collector tab directly opens version-pinned local CLI detail and returns to all collectors', async () => {
