@@ -98,3 +98,64 @@ fn encrypted_cached_qr_url_is_public_only_in_the_exact_authorization_display_fie
         &empty
     ));
 }
+
+#[test]
+fn qr_challenge_may_appear_only_in_its_exact_cached_display_url() {
+    let descriptor = system_notification_descriptor();
+    let challenge = "scan-challenge";
+    let url = format!("https://example.com/scan?key={challenge}");
+    let patch = BTreeMap::from([
+        ("qr_credential".into(), json!(challenge)),
+        ("qr_code_url".into(), json!(url)),
+    ]);
+    let empty = BTreeMap::new();
+    let pending = json!({"status":"pending","user_action":{"kind":"qr_code","qr_code_url":url,"poll_interval_seconds":2}});
+    assert!(!public_contains_credentials(
+        &pending,
+        &descriptor,
+        &json!({}),
+        &empty,
+        &patch
+    ));
+    assert!(!public_contains_credentials(
+        &json!({"authorization":pending,"result":null}),
+        &descriptor,
+        &json!({}),
+        &patch,
+        &empty
+    ));
+    let mut reflected = pending.clone();
+    reflected["user_action"]["expires_at"] = json!(challenge);
+    assert!(public_contains_credentials(
+        &reflected,
+        &descriptor,
+        &json!({}),
+        &empty,
+        &patch
+    ));
+    let mut substituted = pending.clone();
+    substituted["user_action"]["qr_code_url"] =
+        json!(format!("https://example.com/other?key={challenge}"));
+    assert!(public_contains_credentials(
+        &substituted,
+        &descriptor,
+        &json!({}),
+        &empty,
+        &patch
+    ));
+    assert!(public_contains_credentials(
+        &json!({"authorization":pending,"result":{"delivery_id":challenge}}),
+        &descriptor,
+        &json!({}),
+        &empty,
+        &patch
+    ));
+    let tokens = BTreeMap::from([("bot_token".into(), json!(challenge))]);
+    assert!(public_contains_credentials(
+        &pending,
+        &descriptor,
+        &json!({}),
+        &tokens,
+        &patch
+    ));
+}

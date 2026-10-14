@@ -204,6 +204,10 @@ context token, cursor and recipient binding in separate managed-secret storage.
 Bind pending attempts to a persisted revision/challenge; discard a delayed poll
 response after cancel/re-begin instead of overwriting newer state. Do provider
 I/O outside a database transaction lock. Cancel removes the pending challenge.
+Cache a displayable QR URL as `qr_code_url` and its encoded challenge as
+`qr_credential`. The Host allows those two values only in the exact cached
+`user_action.qr_code_url`; reflection into another output field is rejected.
+This exception never permits bot tokens or other managed secrets in a QR URL.
 Never log config/input/result, QR credentials, tokens or raw provider errors;
 notification logs expose only fixed `failure_code` and terminal delivery status.
 

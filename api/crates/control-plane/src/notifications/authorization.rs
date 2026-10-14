@@ -277,16 +277,19 @@ pub(super) fn public_contains_credentials(
         .filter_map(|key| config.get(key))
         .any(|secret| reflects(public, secret))
         || managed.iter().chain(patch.iter()).any(|(key, secret)| {
-            if key != "qr_code_url" {
+            if key != "qr_code_url" && key != "qr_credential" {
                 return reflects(public, secret);
             }
-            // Suppliers may encrypt/cache the displayable QR URL for later polls. Only
-            // that exact authorization display field is public; the same cached value
-            // in send result, expiry or any other field remains credential reflection.
+            // A QR URL intentionally encodes its challenge. Only the exact cached URL
+            // in the authorization display field may reveal qr_credential/qr_code_url;
+            // bot tokens and every other secret remain protected even inside that URL.
+            let display_url = patch
+                .get("qr_code_url")
+                .or_else(|| managed.get("qr_code_url"));
             let mut projected = public.clone();
             for action in ["/user_action", "/authorization/user_action"] {
                 if let Some(action) = projected.pointer_mut(action) {
-                    if action.get("qr_code_url") == Some(secret) {
+                    if display_url.is_some() && action.get("qr_code_url") == display_url {
                         action
                             .as_object_mut()
                             .expect("QR action object")
