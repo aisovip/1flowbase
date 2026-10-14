@@ -1,0 +1,75 @@
+name: Agent Logs OTLP exchange evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact full candidate source SHA
+        type: string
+        required: true
+  push:
+    branches: [codex/agent-logs-otlp-ci]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-logs-otlp-${{ inputs.source_ref || github.sha }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  api-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: isolated-otlp-fixture
+          POSTGRES_DB: agent_logs_otlp
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agent_logs_otlp"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+      DATABASE_URL: postgres://postgres:isolated-otlp-fixture@localhost:5432/agent_logs_otlp
+      API_DATABASE_URL: postgres://postgres:isolated-otlp-fixture@localhost:5432/agent_logs_otlp
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            api/target
+          key: agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+      - name: Set verification budget from this isolated runner
+        run: |
+          node <<'JS'
+          const os = require('node:os');
+          const fs = require('node:fs');
+          const jobs = Math.max(1, os.availableParallelism() - 1);
+          fs.writeFileSync('.1flowbase.verify.local.json', JSON.stringify({backend: {
+            cargoJobs: jobs, cargoTestThreads: jobs, incremental: false
+          }}));
+          JS
+      - name: Execute finite API evidence and build the exact runtime artifact
+        run: node scripts/node/agent-logs-exchange/ci-api.cjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: agent-logs-otlp-api-${{ inputs.source_ref || github.sha }}
+          path: tmp/test-governance/agent-logs-otlp/ci-api
+          if-no-files-found: error
+          retention-days: 14
