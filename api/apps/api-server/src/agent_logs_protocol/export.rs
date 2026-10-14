@@ -1,6 +1,6 @@
 use super::{
     attributes::{int_attribute, string_attribute},
-    facts::{hash, nanos, SourceFact},
+    facts::{encode_source_fact, hash, nanos, SourceFact, SELF_NAMESPACE},
     ExportTraceServiceRequest,
 };
 use anyhow::Result;
@@ -95,7 +95,7 @@ pub fn batches_to_traces(batches: &[AgentLogsBatch]) -> Result<ExportTraceServic
                 source_client: batch.source_client.clone(),
                 event: event.clone(),
             };
-            let metadata = json!({"1flowbase_agent_log": fact});
+            let metadata = json!({SELF_NAMESPACE: encode_source_fact(&fact)?});
             let mut attrs = vec![
                 string_attribute(
                     "langfuse.observation.metadata",

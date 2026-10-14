@@ -1,4 +1,5 @@
 use anyhow::{ensure, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane_contracts::ports::{AgentLogEvent, AgentLogsBatch, AGENT_LOGS_SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,6 +8,7 @@ use std::collections::BTreeMap;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub(super) const SELF_NAMESPACE: &str = "1flowbase_agent_log";
+const SOURCE_FACT_ENCODING: &str = "1flowbase.agent-logs.source-fact/v1;base64,";
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -15,6 +17,15 @@ pub(super) struct SourceFact {
     pub source_id: String,
     pub source_client: String,
     pub event: AgentLogEvent,
+}
+
+/// Keep the replay authority in one string leaf: Langfuse recursively flattens
+/// objects with first-write collisions between dotted keys and nested paths.
+pub(super) fn encode_source_fact(fact: &SourceFact) -> Result<String> {
+    Ok(format!(
+        "{SOURCE_FACT_ENCODING}{}",
+        STANDARD.encode(serde_json::to_vec(fact)?)
+    ))
 }
 
 /// A malformed self namespace must never fall through to a lossy generic mapping.
@@ -31,9 +42,32 @@ pub(super) fn source_fact(metadata: Option<&Value>) -> Result<Option<SourceFact>
         value => value.clone(),
     };
     let Some(value) = object.get(SELF_NAMESPACE) else {
+        ensure!(
+            !object
+                .as_object()
+                .is_some_and(|object| object.keys().any(|key| {
+                    key.strip_prefix(SELF_NAMESPACE)
+                        .is_some_and(|suffix| suffix.starts_with('.'))
+                })),
+            "agent_logs.source_fact_flattened"
+        );
         return Ok(None);
     };
-    let fact: SourceFact = serde_json::from_value(value.clone())?;
+    let fact: SourceFact = match value {
+        Value::String(encoded) => {
+            let payload = encoded
+                .strip_prefix(SOURCE_FACT_ENCODING)
+                .ok_or_else(|| anyhow::anyhow!("agent_logs.source_fact_encoding"))?;
+            let bytes = STANDARD.decode(payload)?;
+            ensure!(
+                STANDARD.encode(&bytes) == payload,
+                "agent_logs.source_fact_encoding"
+            );
+            serde_json::from_slice(&bytes)?
+        }
+        // Legacy local OTLP files retain an intact, validated nested SourceFact.
+        _ => serde_json::from_value(value.clone())?,
+    };
     AgentLogsBatch {
         schema_version: fact.schema_version.clone(),
         source_id: fact.source_id.clone(),

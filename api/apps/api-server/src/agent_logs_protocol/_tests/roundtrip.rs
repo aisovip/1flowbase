@@ -1,4 +1,5 @@
 use super::*;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 #[test]
 fn self_export_is_one_observation_per_source_fact_with_stable_identity_and_parent_links() {
@@ -22,14 +23,13 @@ fn self_export_is_one_observation_per_source_fact_with_stable_identity_and_paren
     };
     let metadata: Value = serde_json::from_str(metadata).unwrap();
     assert!(metadata.is_object());
-    assert_eq!(
-        metadata["1flowbase_agent_log"]["schema_version"],
-        AGENT_LOGS_SCHEMA_VERSION
-    );
-    assert_eq!(
-        metadata["1flowbase_agent_log"]["event"]["raw"],
-        batches[0].events[0].raw
-    );
+    let encoded = metadata["1flowbase_agent_log"].as_str().unwrap();
+    let payload = encoded
+        .strip_prefix("1flowbase.agent-logs.source-fact/v1;base64,")
+        .unwrap();
+    let fact: Value = serde_json::from_slice(&STANDARD.decode(payload).unwrap()).unwrap();
+    assert_eq!(fact["schema_version"], AGENT_LOGS_SCHEMA_VERSION);
+    assert_eq!(fact["event"]["raw"], batches[0].events[0].raw);
     for (mime, body) in [
         ("application/json", encode_json(&request).unwrap()),
         ("application/x-protobuf", encode_protobuf(&request)),
@@ -39,6 +39,30 @@ fn self_export_is_one_observation_per_source_fact_with_stable_identity_and_paren
                 .unwrap();
         assert_eq!(
             serde_json::to_value(&imported).unwrap(),
+            serde_json::to_value(&batches).unwrap()
+        );
+    }
+}
+
+#[test]
+fn legacy_nested_otlp_file_still_replays_all_original_source_facts() {
+    let batches = source_batches();
+    let mut request = batches_to_traces(&batches).unwrap();
+    for (span, event) in request.resource_spans[0].scope_spans[0]
+        .spans
+        .iter_mut()
+        .zip(&batches[0].events)
+    {
+        let legacy = json!({"1flowbase_agent_log":{"schema_version":batches[0].schema_version,"source_id":batches[0].source_id,"source_client":batches[0].source_client,"event":event}});
+        string_attr(span, "langfuse.observation.metadata", &legacy.to_string());
+    }
+    for (mime, body) in [
+        ("application/json", encode_json(&request).unwrap()),
+        ("application/x-protobuf", encode_protobuf(&request)),
+    ] {
+        let decoded = decode(mime, None, &body).unwrap();
+        assert_eq!(
+            serde_json::to_value(traces_to_batches(&decoded).unwrap()).unwrap(),
             serde_json::to_value(&batches).unwrap()
         );
     }
