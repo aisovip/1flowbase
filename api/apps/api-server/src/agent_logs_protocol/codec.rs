@@ -1,21 +1,14 @@
 use super::ExportTraceServiceRequest;
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, Result};
 use flate2::{read::MultiGzDecoder, write::GzEncoder, Compression};
 use prost::Message;
 use std::io::{Read, Write};
-
-/// Both compressed and expanded request bodies are bounded before decoding.
-pub const MAX_DECODED_BYTES: usize = 16 * 1024 * 1024;
 
 pub fn decode(
     content_type: &str,
     content_encoding: Option<&str>,
     bytes: &[u8],
 ) -> Result<ExportTraceServiceRequest> {
-    ensure!(
-        bytes.len() <= MAX_DECODED_BYTES,
-        "agent_logs.otlp_body_too_large"
-    );
     let expanded;
     let bytes = match content_encoding
         .unwrap_or("identity")
@@ -25,13 +18,9 @@ pub fn decode(
     {
         "" | "identity" => bytes,
         "gzip" => {
-            let mut decoder = MultiGzDecoder::new(bytes).take((MAX_DECODED_BYTES + 1) as u64);
+            let mut decoder = MultiGzDecoder::new(bytes);
             let mut body = Vec::new();
             decoder.read_to_end(&mut body)?;
-            ensure!(
-                body.len() <= MAX_DECODED_BYTES,
-                "agent_logs.otlp_body_too_large"
-            );
             expanded = body;
             expanded.as_slice()
         }

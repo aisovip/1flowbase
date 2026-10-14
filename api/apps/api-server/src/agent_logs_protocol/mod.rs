@@ -8,7 +8,7 @@ mod langfuse;
 mod observations;
 mod traces;
 
-pub use codec::{decode, encode_gzip, encode_json, encode_protobuf, MAX_DECODED_BYTES};
+pub use codec::{decode, encode_gzip, encode_json, encode_protobuf};
 pub use export::batches_to_traces;
 pub use langfuse::lf_observations_to_batches;
 pub use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;

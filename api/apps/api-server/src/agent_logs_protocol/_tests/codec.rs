@@ -31,18 +31,10 @@ fn official_json_protobuf_gzip_typed_any_values_and_nanoseconds_agree() {
 }
 
 #[test]
-fn wire_validation_rejects_unsupported_mime_encoding_invalid_gzip_and_expansion() {
+fn wire_validation_rejects_unsupported_mime_encoding_and_invalid_gzip() {
     assert!(decode("application/grpc", None, b"").is_err());
     assert!(decode("application/json", Some("br"), b"{}").is_err());
     assert!(decode("application/json", Some("gzip"), b"not gzip").is_err());
-    let expanded = vec![b' '; MAX_DECODED_BYTES + 1];
-    let compressed = encode_gzip(&expanded).unwrap();
-    assert_eq!(
-        decode("application/json", Some("gzip"), &compressed)
-            .unwrap_err()
-            .to_string(),
-        "agent_logs.otlp_body_too_large"
-    );
 }
 
 #[test]
