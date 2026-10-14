@@ -33,6 +33,7 @@ use utoipa::OpenApi;
         crate::routes::application_api::get_application_api_docs_operation_openapi,
         crate::routes::application_public_api::native::create_native_run,
         crate::routes::application_public_api::agent_logs::ingest_events,
+        crate::routes::application_public_api::agent_logs::otlp::ingest_traces,
         crate::routes::application_runtime::log_query::current_context::get_current_run_context,
         crate::routes::application_runtime::log_query::get_query_fields,
         crate::routes::application_runtime::log_query::query_log_records,

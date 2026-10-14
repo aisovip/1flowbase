@@ -312,6 +312,8 @@ impl DocTextResolver {
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::EnUs) => {
                 "Count Anthropic-compatible message input tokens"
             }
+            (agent_logs::OTLP_DOC_KEY, DocsLocale::ZhHans) => "采集 OTLP Trace 日志",
+            (agent_logs::OTLP_DOC_KEY, DocsLocale::EnUs) => "Ingest OTLP Trace logs",
             (agent_logs::DOC_KEY, DocsLocale::ZhHans) => "采集客户端 Agent 日志",
             (agent_logs::DOC_KEY, DocsLocale::EnUs) => "Ingest client agent logs",
             _ => "Public API operation",
@@ -398,6 +400,8 @@ impl DocTextResolver {
             ("application_public_api.anthropic.count_message_tokens", DocsLocale::EnUs) => {
                 "Translates an Anthropic Messages request into the active published binding's provider CountTokens call. When native provider counting is unavailable, the host derives input_tokens from a total local estimate carrying method, coverage, unknown_block_count, and fallback_reason; an unbound target still returns an explicit error and never creates a Native public run."
             }
+            (agent_logs::OTLP_DOC_KEY, DocsLocale::ZhHans) => "以标准 OTLP/HTTP JSON 或 protobuf 将 Trace 来源事实写入当前应用的日志。",
+            (agent_logs::OTLP_DOC_KEY, DocsLocale::EnUs) => "Persist Trace source facts into this application's logs using standard OTLP/HTTP JSON or protobuf.",
             (agent_logs::DOC_KEY, DocsLocale::ZhHans) => "将版本化事件批次写入当前应用的日志、对话与客户端轨迹。",
             (agent_logs::DOC_KEY, DocsLocale::EnUs) => "Persist a versioned event batch into this application's logs, conversation, and client trajectory.",
             _ => "Public API operation.",

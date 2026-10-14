@@ -1784,6 +1784,12 @@ pub(crate) fn production_interface_contributions(
             crate::routes::application_public_api::agent_logs::compile_registry(state.store.clone())?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.application-agent-logs-otlp",
+            &["application.logs.otlp.traces.ingest"],
+            &["api-server.application-agent-logs-otlp"],
+            crate::routes::application_public_api::agent_logs::otlp::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
