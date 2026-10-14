@@ -129,7 +129,13 @@ source / session / task / event / usage / raw + persistence
 native collector adapters / OpenLIT       source adapter layer
 ```
 
-Generic source recovery stays in the shared collector SDK rather than being copied into each plugin. The backend protocol layer uses `opentelemetry-proto` **0.33.1** with its matching `prost` dependencies for protobuf decoding. Existing native collectors do not need an upgrade for this exchange feature; this change does not modify collector plugins.
+Generic source recovery stays in the shared collector SDK rather than being copied into each plugin. Existing native collectors do not need an upgrade for this exchange feature; collector plugins are unchanged.
+
+The backend protocol layer newly declares `opentelemetry-proto` **0.33.1** for generated Trace messages and their official serde representation, `prost` **0.14.1** for protobuf encoding and decoding, and `tonic-types` **0.14.1** for the official `google.rpc.Status` error representation. Default features are disabled on the protocol dependencies that expose them; no gRPC server or transport, or telemetry provider, is initialized. The OpenTelemetry API or SDK may appear as transitive dependencies of the protocol package, but that does not initialize an instrumentation runtime. OpenLIT **1.15.0** is temporary interoperability test tooling, not a 1flowbase product dependency; the SDK examples above configure your separate client application.
+
+## Optional Network Center routing
+
+Langfuse import and export make outbound requests from the 1flowbase server. If your deployment needs a proxy or another configured egress route, configure **Agent Logs exchange** in **Network Center**; its consumer identifier is `agent_logs_exchange`. This routing configuration is optional and separate from the Langfuse project URL and keys. Local OTLP file exchange does not require a remote Langfuse connection. Incoming OpenLIT traces still use the public HTTP receiver described above.
 
 ## Troubleshooting
 

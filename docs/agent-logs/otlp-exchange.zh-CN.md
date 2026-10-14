@@ -129,7 +129,13 @@ source / session / task / event / usage / raw + 持久化
 原生 collector adapter / OpenLIT          来源适配层
 ```
 
-通用来源恢复留在共享 collector SDK，不复制到每个插件。后端协议层使用 `opentelemetry-proto` **0.33.1** 与配套 `prost` 依赖解码 protobuf。现有原生 collector 无需为交换功能升级，本轮不修改 collector 插件。
+通用来源恢复留在共享 collector SDK，不复制到每个插件。现有原生 collector 无需为交换功能升级，collector 插件保持不变。
+
+后端协议层新增显式声明 `opentelemetry-proto` **0.33.1**，用于生成的 Trace 消息及官方 serde 表达；`prost` **0.14.1**，用于 protobuf 编解码；`tonic-types` **0.14.1**，用于官方 `google.rpc.Status` 错误表达。提供默认 features 的协议依赖关闭默认 features，不初始化 gRPC server、transport 或 telemetry provider。OpenTelemetry API / SDK 可能作为协议包的间接依赖出现，但不因此初始化 instrumentation runtime。OpenLIT **1.15.0** 只用于临时互通测试工具，不是 1flowbase 产品依赖；上面的 SDK 示例配置的是独立客户端应用。
+
+## 可选的网络中心路由
+
+Langfuse 导入、导出由 1flowbase 服务端发出外部请求。部署需要代理或其他已配置出站路由时，可在「网络中心」配置「Agent Logs 日志交换」，consumer 标识为 `agent_logs_exchange`。该路由配置是可选项，与 Langfuse 项目地址和凭据分开配置。本地 OTLP 文件交换不要求连接远端 Langfuse；OpenLIT 入站 Trace 仍使用前述公开 HTTP receiver。
 
 ## 常见问题
 
