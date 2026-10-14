@@ -81,9 +81,12 @@ function respond(data: unknown) {
     headers: { 'content-type': 'application/json' }
   });
 }
+// Capture the implementation, because spyOn reuses the shared vi.fn in place.
+const getContext = vi
+  .mocked(HTMLCanvasElement.prototype.getContext)
+  .getMockImplementation()!;
 beforeEach(() => {
   // Keep Antd's real QRCodeCanvas path; the shared jsdom context omits fillRect.
-  const getContext = HTMLCanvasElement.prototype.getContext;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     function (this: HTMLCanvasElement, contextId: string, options?: unknown) {
       const context = getContext.call(this, contextId, options);
