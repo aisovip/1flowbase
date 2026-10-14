@@ -1,0 +1,68 @@
+//! Deterministic authorizable supplier fixture on the shared SDK multiplex dispatcher.
+//! No provider communication or persistence; Host tests supply/recover encrypted patches.
+use runtime_extension_sdk::{
+    execute_authorizable_notification, serve, CapabilityStdioRequest,
+    NotificationAuthorizationOperation, NotificationOperation, NotificationRuntimeResult,
+    NotificationTypeDescriptor,
+};
+use serde_json::{json, Value};
+
+fn descriptor() -> NotificationTypeDescriptor {
+    let manifest: Value = serde_json::from_str(include_str!(
+        "../../../../../plugins/fixtures/acme.notification/manifest.yaml"
+    ))
+    .expect("fixture manifest");
+    let mut value: NotificationTypeDescriptor =
+        serde_json::from_value(manifest["notification_types"][0].clone())
+            .expect("fixture descriptor");
+    value.authorization = Some(serde_json::from_value(json!({
+        "actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],
+        "managed_secret_keys":["qr_credential","bot_token","bound_user_id","context_token","cursor"]
+    })).expect("fixture authorization"));
+    value
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    serve(|request, _| async move {
+        let request: CapabilityStdioRequest = match serde_json::from_value(request) {
+            Ok(request) => request,
+            Err(_) => return json!({"ok":false,"result":null,"error":{"message":"invalid fixture request"}}),
+        };
+        let response = execute_authorizable_notification(request, &descriptor(), |config, input| async move {
+            let result = match input.operation {
+                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Begin { .. } } => json!({
+                    "type":"authorization","authorization":{"status":"pending","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/fixture-qr","poll_interval_seconds":2}},"managed_secret_patch":{"qr_credential":"fixture-qr-credential"}
+                }),
+                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Poll } => {
+                    if !input.managed_secrets.contains_key("qr_credential") {
+                        return Err("fixture missing persisted QR credential");
+                    }
+                    json!({"type":"authorization","authorization":{"status":"authorized"},"managed_secret_patch":{"qr_credential":null,"bot_token":"fixture-bot-token","bound_user_id":"fixture-scanned-peer"}})
+                }
+                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Cancel } => json!({"type":"authorization","authorization":{"status":"unauthorized"},"managed_secret_patch":{"qr_credential":null}}),
+                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Maintain } => json!({"type":"authorization","authorization":{"status":if input.managed_secrets.contains_key("bot_token") {"authorized"} else {"unauthorized"}}}),
+                NotificationOperation::Send { input_payload } => {
+                    let (code, status) = match input_payload["text"].as_str() {
+                        Some("fixture-invalid") => ("authorization_invalid", Some("invalid")),
+                        Some("fixture-recipient-not-ready") => ("recipient_not_ready", Some("authorized")),
+                        Some("fixture-rejected") => ("provider_rejected", None),
+                        Some("fixture-unknown") => return Err("fixture ambiguous provider response"),
+                        _ if !input.managed_secrets.contains_key("bot_token") => ("authorization_required", Some("unauthorized")),
+                        _ => ("", None),
+                    };
+                    if code.is_empty() {
+                        json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":true,"delivery_id":format!("{}:fixture",config["channel"].as_str().unwrap())}},"authorization":{"status":"authorized"},"managed_secret_patch":{"cursor":"next","context_token":"fixture-context"}})
+                    } else {
+                        let mut result = json!({"type":"send","outcome":{"status":"failed","failure_code":code}});
+                        if let Some(status) = status { result["authorization"] = json!({"status":status}); }
+                        result
+                    }
+                }
+            };
+            Ok::<NotificationRuntimeResult, &str>(serde_json::from_value(result).expect("fixture outcome"))
+        }).await;
+        serde_json::to_value(response).expect("fixture response")
+    }).await?;
+    Ok(())
+}
