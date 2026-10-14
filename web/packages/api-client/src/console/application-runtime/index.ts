@@ -13,3 +13,5 @@ export * from './client-trajectory';
 export * from './records';
 
 export * from './conversation-trajectory';
+
+export * from './log-exchange';

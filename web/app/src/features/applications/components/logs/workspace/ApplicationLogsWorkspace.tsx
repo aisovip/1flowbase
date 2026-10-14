@@ -15,6 +15,7 @@ import {
   fetchApplicationLogRecord,
   fetchRunPayload
 } from '../../../api/trajectory';
+import { AgentLogsExchange } from '../exchange/AgentLogsExchange';
 import { AgentLogsDeleteButton } from './AgentLogsDeleteButton';
 import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
@@ -1185,6 +1186,18 @@ export function ApplicationLogsWorkspace({
               </Tooltip>
             </>
           ) : null}
+          {applicationType === 'agent_logs' && (
+            <AgentLogsExchange
+              applicationId={applicationId}
+              applications={applications}
+              selectedRecords={runs.filter((run) =>
+                selectedVisibleRunIds.includes(run.id)
+              )}
+              onImported={() => {
+                void refreshRunsFromDurable();
+              }}
+            />
+          )}
           {applicationType === 'agent_logs' && applicationId && (
             <AgentLogsDeleteButton
               key={applicationId}
@@ -1280,9 +1293,7 @@ export function ApplicationLogsWorkspace({
           configuration={runsTableConfiguration}
           columns={runsTableColumns}
           runs={runs}
-          rowSelection={
-            applicationType === 'agent_logs' ? undefined : runsRowSelection
-          }
+          rowSelection={runsRowSelection}
           selectedRunId={selectedRunId}
           onPageChange={changePage}
           onSelectRun={selectRun}

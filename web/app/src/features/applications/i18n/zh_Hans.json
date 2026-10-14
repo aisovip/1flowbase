@@ -340,7 +340,34 @@
   "logs": {
     "all_agent_flow_applications": "全部 Agent Flow 应用",
     "import_target_application": "选择导入目标应用",
-    "application": "应用"
+    "application": "应用",
+    "exchange": {
+      "open": "日志交换",
+      "close": "关闭",
+      "execute": "执行交换",
+      "operation": "交换方式",
+      "otlp_export": "导出 OTLP JSON",
+      "otlp_import": "导入 OTLP JSON",
+      "langfuse_export": "导出到 Langfuse",
+      "langfuse_import": "从 Langfuse 导入",
+      "selection": "已选择 {{count}} 条日志；跨应用将分别导出。",
+      "file": "OTLP JSON 文件",
+      "invalid_file": "请选择有效的 JSON 对象文件。",
+      "credentials_hint": "凭据仅用于本次交换，关闭窗口后清空。",
+      "base_url": "Langfuse 地址",
+      "public_key": "Public Key",
+      "secret_key": "Secret Key",
+      "trace_ids": "Trace IDs（逗号或换行分隔）",
+      "failed": "交换失败，请检查输入或连接后重试。",
+      "downloaded": "已下载 {{filename}}",
+      "partial": "服务端仅导出了部分所选日志，请核对回执。",
+      "receipt": "服务端交换回执",
+      "accepted_events": "接收事件数",
+      "duplicate_events": "重复事件数",
+      "record_ids": "日志记录 ID",
+      "exported_records": "导出日志数",
+      "exported_spans": "导出 Span 数"
+    }
   },
   "agent_logs": {
     "collector": "采集 CLI",
