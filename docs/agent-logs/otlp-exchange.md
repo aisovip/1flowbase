@@ -39,6 +39,8 @@ To import a file, open **Exchange logs**, choose **Import OTLP JSON**, choose an
 
 The server sends OTLP traces to Langfuse's `/api/public/otel/v1/traces` with HTTP Basic authentication using the Public Key and Secret Key. The credentials belong to Langfuse; they are not 1flowbase application keys.
 
+Trace identity follows the source/session pair. Tasks and events become the span hierarchy within that Trace, so several task records in one session can share a Trace ID. Compare `exported_records` with the selected record count, rather than with the length of `trace_ids`. For example, a fixture containing three tasks across two sessions maps to two traces and 21 spans; that is a mapping example, not a claim of completed live interoperability verification.
+
 ## Import several traces from Langfuse
 
 1. Open the target application's **Logs** page, or explicitly select the target on the global logs page.
@@ -50,7 +52,7 @@ The server sends OTLP traces to Langfuse's `/api/public/otel/v1/traces` with HTT
 
 ![Inspect an imported record and its conversation](https://raw.githubusercontent.com/wiki/taichuy/1flowbase/assets/agent-logs-otlp/05-imported-conversation.png)
 
-Remote import reads Langfuse public traces and observations, including all observation pages. It supports the observations-v2 API and the legacy API mode, selecting the legacy capability only for an explicit capability-not-found (404) response. Authentication, network and server failures should be resolved rather than interpreted as a legacy API signal.
+Remote import reads observation data for the requested Trace IDs from Langfuse's public observations-v2 API, including all observation pages. It can use the legacy observations API only after an explicit capability-not-found (404) response. It does not require a separate traces API to supply the data. Authentication, network and server failures should be resolved rather than interpreted as a legacy API signal.
 
 ## Send OpenLIT SDK traces directly
 

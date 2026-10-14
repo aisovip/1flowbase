@@ -39,6 +39,8 @@ Langfuse 需要项目的 **Public Key**、**Secret Key** 和部署根地址，�
 
 服务端使用 Public Key 和 Secret Key 组成 HTTP Basic 认证，向 Langfuse 的 `/api/public/otel/v1/traces` 发送 OTLP Trace。这些是 Langfuse 项目凭据，不是 1flowbase 应用 Key。
 
+Trace 身份对应 source/session 组合；task 和 event 映射为该 Trace 内的 Span 层级。因此同一 session 的多条任务记录可以共享 Trace ID。应将 `exported_records` 与所选记录数比较，不能将记录数与 `trace_ids` 数量等同。例如，包含两个 session、三个 task 的 fixture 映射为两个 Trace、21 个 Span；这是映射示例，不代表已完成真实环境互通验收。
+
 ## 从 Langfuse 导入多个 Trace
 
 1. 进入目标应用「日志」页面；在全局日志页面时明确选择导入目标应用。
@@ -50,7 +52,7 @@ Langfuse 需要项目的 **Public Key**、**Secret Key** 和部署根地址，�
 
 ![查看导入记录的对话](https://raw.githubusercontent.com/wiki/taichuy/1flowbase/assets/agent-logs-otlp/05-imported-conversation.png)
 
-远程导入读取 Langfuse public traces 和 observations，包含全部 observation 分页。支持 observations-v2 API 和 legacy API mode；只有明确的能力不存在响应（404）才选择 legacy 能力。认证、网络或服务端错误需直接处理，不能解释为旧版 API 信号。
+远程导入通过 Langfuse public observations-v2 API 读取指定 Trace ID 的 observation 数据，包含全部 observation 分页。只有明确的能力不存在响应（404）才使用 legacy observations API，不要求另一个 traces API 提供数据。认证、网络或服务端错误需直接处理，不能解释为旧版 API 信号。
 
 ## 使用 OpenLIT SDK 直接上报 Trace
 
