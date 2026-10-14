@@ -164,8 +164,20 @@ async function run(args) {
           const response = await fetch(`${langfuse.base_url}/api/public/v2/observations?${query}`, { headers: { Authorization: 'Basic ' + Buffer.from(`${langfuse.public_key}:${langfuse.secret_key}`).toString('base64') }, signal: AbortSignal.timeout(10000), redirect: 'error' });
           if (!response.ok) fail(`Langfuse readiness HTTP ${response.status}`);
           const data = await response.json(); assert.ok(Array.isArray(data.data), 'Langfuse v2 observations');
-          for (const observation of data.data) if (observation.traceId === traceId) observed.set(observation.id, observation.traceId);
-          cursor = data.meta?.nextCursor ?? undefined;
+          for (const observation of data.data) if (observation.traceId === traceId) {
+            assert.ok(typeof observation.id === 'string' && observation.id, 'Langfuse observation identity');
+            if (observed.has(observation.id)) assert.equal(observed.get(observation.id), observation.traceId, 'observation ID cannot change trace');
+            observed.set(observation.id, observation.traceId);
+          }
+          const readCursor = value => {
+            if (value === undefined || value === null || value === '') return undefined;
+            assert.equal(typeof value, 'string', 'Langfuse opaque cursor contract');
+            return value;
+          };
+          const actualCursor = readCursor(data.meta?.cursor);
+          const variantCursor = readCursor(data.meta?.nextCursor);
+          if (actualCursor !== undefined && variantCursor !== undefined) assert.equal(actualCursor, variantCursor, 'conflicting Langfuse cursor fields');
+          cursor = actualCursor ?? variantCursor;
           if (cursor !== undefined) {
             assert.ok(typeof cursor === 'string' && cursor && !seenCursors.has(cursor), 'Langfuse cursor must advance');
             seenCursors.add(cursor);
