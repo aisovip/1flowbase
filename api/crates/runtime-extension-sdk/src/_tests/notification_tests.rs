@@ -63,3 +63,119 @@ fn notification_sdk_rejects_invalid_input_output_and_redacts_provider_errors() {
             .contains("private-token"));
     }
 }
+
+fn managed_descriptor() -> NotificationTypeDescriptor {
+    let mut value = descriptor();
+    value.authorization = Some(serde_json::from_value(json!({
+        "actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],
+        "managed_secret_keys":["qr_credential","bot_token","bound_user_id","context_token","cursor"]
+    })).unwrap());
+    value
+}
+
+fn managed_request(operation: Value) -> CapabilityStdioRequest {
+    let mut value = serde_json::to_value(request(json!("hello"))).unwrap();
+    value["input"]["input_payload"] =
+        json!({"operation":operation,"managed_secrets":{"bound_user_id":"scanned-peer"}});
+    serde_json::from_value(value).unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn authorizable_sdk_round_trips_public_qr_and_host_only_patch_on_existing_execute() {
+    let descriptor = managed_descriptor();
+    let response = crate::execute_authorizable_notification(
+        managed_request(json!({"type":"authorize","operation":{"type":"begin","action":"qr"}})),
+        &descriptor,
+        |config, input| async move {
+            assert_eq!(config["token"], "private-token");
+            assert_eq!(input.managed_secrets["bound_user_id"], "scanned-peer");
+            Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({
+                "type":"authorization","authorization":{"status":"pending","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/qr","poll_interval_seconds":2}},
+                "managed_secret_patch":{"qr_credential":"encrypted-by-host"}
+            })).unwrap())
+        },
+    ).await;
+    assert!(response.ok);
+    assert_eq!(response.result["type"], "authorization");
+    assert_eq!(
+        response.result["managed_secret_patch"]["qr_credential"],
+        "encrypted-by-host"
+    );
+    let public = &response.result["authorization"];
+    assert!(public.get("managed_secret_patch").is_none());
+    assert!(!serde_json::to_string(public)
+        .unwrap()
+        .contains("encrypted-by-host"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn authorizable_sdk_errors_and_untrustworthy_send_results_are_unknown() {
+    let descriptor = managed_descriptor();
+    for result in [
+        Err("private-token raw provider failure".to_owned()),
+        Ok(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":"yes"}}})).unwrap()),
+        Ok(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({"type":"send","outcome":{"status":"failed","failure_code":"provider_result_unknown"}})).unwrap()),
+        Ok(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({"type":"send","outcome":{"status":"failed","failure_code":"provider_rejected"},"managed_secret_patch":{"undeclared":"private-token"}})).unwrap()),
+    ] {
+        let response = crate::execute_authorizable_notification(
+            managed_request(json!({"type":"send","input_payload":{"text":"hello"}})),
+            &descriptor,
+            |_, _| async move { result },
+        ).await;
+        assert!(response.ok);
+        assert_eq!(response.result, json!({"type":"send","outcome":{"status":"unknown","failure_code":"provider_result_unknown"}}));
+        assert!(response.error.is_none());
+    }
+    let response = crate::execute_authorizable_notification(
+        managed_request(json!({"type":"authorize","operation":{"type":"poll"}})),
+        &descriptor,
+        |_, _| async { Err::<crate::NotificationRuntimeResult, _>("private-token") },
+    )
+    .await;
+    assert!(!response.ok);
+    assert!(!serde_json::to_string(&response)
+        .unwrap()
+        .contains("private-token"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn authorizable_sdk_rejects_invalid_requests_before_provider_io_and_retains_patches() {
+    let descriptor = managed_descriptor();
+    let calls = AtomicUsize::new(0);
+    let mut injected = serde_json::to_value(managed_request(
+        json!({"type":"authorize","operation":{"type":"poll"}}),
+    ))
+    .unwrap();
+    injected["input"]["config_payload"]["bot_token"] = json!("private-token");
+    for request in [
+        serde_json::from_value(injected).unwrap(),
+        managed_request(json!({"type":"send","input_payload":{"text":42}})),
+        managed_request(
+            json!({"type":"authorize","operation":{"type":"begin","action":"not-declared"}}),
+        ),
+    ] {
+        let response = crate::execute_authorizable_notification(request, &descriptor, |_, _| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            async {
+                Err::<crate::NotificationRuntimeResult, String>("unexpected provider call".into())
+            }
+        })
+        .await;
+        assert!(!response.ok);
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    for (code, status) in [
+        ("authorization_required", "unauthorized"),
+        ("authorization_invalid", "invalid"),
+        ("recipient_not_ready", "authorized"),
+    ] {
+        let response = crate::execute_authorizable_notification(
+            managed_request(json!({"type":"send","input_payload":{"text":"hello"}})),
+            &descriptor,
+            |_, _| async move { Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({"type":"send","outcome":{"status":"failed","failure_code":code},"authorization":{"status":status},"managed_secret_patch":{"cursor":"next"}})).unwrap()) },
+        ).await;
+        assert!(response.ok);
+        assert_eq!(response.result["authorization"]["status"], status);
+        assert_eq!(response.result["managed_secret_patch"]["cursor"], "next");
+    }
+}

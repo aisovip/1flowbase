@@ -161,6 +161,7 @@ const systemInstance: NotificationInstance = {
   installation_id: null,
   display_name: '团队站内通知',
   status: 'enabled',
+  authorization: null,
   config_json: {},
   configured_secret_fields: [],
   available: true,

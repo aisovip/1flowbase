@@ -177,6 +177,17 @@ function NotificationChannelsPage() {
               loading={statusPending && statusVariables?.id === item.id}
               onChange={() => changeStatus(item)}
             />
+            {item.authorization && (
+              <Typography.Text type="secondary">
+                {item.authorization.status === 'authorized'
+                  ? t('authorization_authorized')
+                  : item.authorization.status === 'pending'
+                    ? t('authorization_pending')
+                    : item.authorization.status === 'invalid'
+                      ? t('authorization_invalid')
+                      : t('authorization_unauthorized')}
+              </Typography.Text>
+            )}
             {availability(item) && (
               <Typography.Text type="secondary">
                 {availability(item)}
@@ -337,8 +348,8 @@ function NotificationChannelsPage() {
           instance={editing.instance}
           type={editing.type}
           onClose={() => setEditing(undefined)}
-          onSaved={() => {
-            setEditing(undefined);
+          onSaved={(options) => {
+            if (!options?.keepOpen) setEditing(undefined);
             void refresh();
           }}
         />

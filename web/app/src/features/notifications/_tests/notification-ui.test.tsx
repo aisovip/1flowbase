@@ -67,6 +67,7 @@ const initialInstance: NotificationInstance = {
   installation_id: null,
   display_name: '系统站内通知',
   status: 'enabled',
+  authorization: null,
   config_json: {},
   configured_secret_fields: ['token'],
   available: true,

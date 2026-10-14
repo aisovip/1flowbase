@@ -174,7 +174,9 @@ fn installation_category(installation: &domain::PluginInstallationRecord) -> &st
     if is_host_extension_installation(installation) {
         return "host-extensions";
     }
-    if is_model_provider_installation(installation) {
+    if installation.category == domain::ExtensionCategory::RuntimeExtensions
+        || is_model_provider_installation(installation)
+    {
         return "runtime-extensions";
     }
     match installation
@@ -183,7 +185,9 @@ fn installation_category(installation: &domain::PluginInstallationRecord) -> &st
         .and_then(serde_json::Value::as_str)
         .unwrap_or("capability_plugin")
     {
-        "data_source" | "model_provider" | "network_egress_provider" => "runtime-extensions",
+        "runtime_extension" | "data_source" | "model_provider" | "network_egress_provider" => {
+            "runtime-extensions"
+        }
         "host_extension" => "host-extensions",
         _ => "capability-plugins",
     }

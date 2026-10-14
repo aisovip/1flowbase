@@ -23,6 +23,10 @@ pub(crate) enum NotificationInput {
     Patch(Uuid, PatchNotificationInstance),
     Delete(Uuid),
     Send(Uuid, Value),
+    Authorize(
+        Uuid,
+        extension_contracts::NotificationAuthorizationOperation,
+    ),
     Messages(control_plane::ports::NotificationMessageListInput),
     UnreadCount,
     Read(Uuid),
@@ -46,7 +50,7 @@ impl InterfaceContract for NotificationInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List(_)=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all",Self::Logs(_)=>"logs",Self::Log(_)=>"log",Self::Channels(_)=>"channels",Self::ReadChannel(_)=>"read_channel",Self::MarkUnread(_)=>"mark_unread"}}),
+            serde_json::json!({"operation":match self {Self::Types=>"types",Self::List(_)=>"list",Self::Get(_)=>"get",Self::Create(_)=>"create",Self::Patch(..)=>"patch",Self::Delete(_)=>"delete",Self::Send(..)=>"send",Self::Authorize(..)=>"authorization",Self::Messages(_)=>"messages",Self::UnreadCount=>"unread_count",Self::Read(_)=>"read",Self::ReadAll=>"read_all",Self::Logs(_)=>"logs",Self::Log(_)=>"log",Self::Channels(_)=>"channels",Self::ReadChannel(_)=>"read_channel",Self::MarkUnread(_)=>"mark_unread"}}),
         )
     }
 }
@@ -94,6 +98,11 @@ impl Adapter {
             NotificationInput::Send(id, input) => serde_json::to_value(
                 self.service
                     .send(actor, domain::NotificationSource::Api, id, input)
+                    .await?,
+            )?,
+            NotificationInput::Authorize(id, operation) => serde_json::to_value(
+                self.service
+                    .authorize_instance(actor, id, operation)
                     .await?,
             )?,
             NotificationInput::Messages(input) => {
@@ -227,6 +236,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.notifications.instances.delete.v1",
         method: "DELETE",
         path: "/api/console/notifications/instances/:instance_id",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "notifications.instances.authorization",
+        binding_id: "http.console.notifications.instances.authorization.v1",
+        method: "POST",
+        path: "/api/console/notifications/instances/:instance_id/authorization",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

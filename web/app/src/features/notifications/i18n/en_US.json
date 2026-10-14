@@ -74,5 +74,22 @@
   "log_id": "Log ID",
   "channel_identifier": "Channel identifier",
   "message": "Message",
-  "system_message_type": "In-app message"
+  "system_message_type": "In-app message",
+  "authorization_status": "Authorization",
+  "authorization_unauthorized": "Not authorized",
+  "authorization_pending": "Awaiting authorization",
+  "authorization_authorized": "Authorized",
+  "authorization_invalid": "Authorization expired or invalid",
+  "authorization_failed": "Could not update authorization. Try again.",
+  "authorization_waiting": "Scan the QR code and confirm authorization on your device.",
+  "authorization_not_delivery": "Authorization does not confirm message delivery.",
+  "authorization_cancel": "Cancel authorization",
+  "authorization_reauthorize": "Authorize again: {{action}}",
+  "authorization_ready": "Authorization complete. This channel can send messages when enabled.",
+  "authorization_session_hint": "If the provider requires a conversation, send a message to the bot to restore it, then try sending again.",
+  "save_and_authorize": "Save and authorize",
+  "failure_authorization_required": "This channel needs authorization before sending",
+  "failure_authorization_invalid": "Channel authorization is invalid. Authorize again",
+  "failure_recipient_not_ready": "The recipient conversation is not ready. Send a message to the bot and try again",
+  "failure_provider_rejected": "The provider rejected the message"
 }

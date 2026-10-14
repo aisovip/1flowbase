@@ -13,6 +13,9 @@ pub const NOTIFICATION_CONTRACT_V1: &str = "1flowbase.notification/v1";
 pub const NOTIFICATION_SEND_PERMISSION: &str = "notification.send";
 pub const SYSTEM_NOTIFICATION_TYPE: &str = "system";
 
+mod managed;
+pub use managed::*;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationTypeDescriptor {
@@ -25,6 +28,9 @@ pub struct NotificationTypeDescriptor {
     pub input_form: PluginFormSchema,
     pub output_schema: Value,
     pub contribution_id: ContributionId,
+    /// Opt-in managed authorization and typed send outcomes; absent preserves legacy sends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization: Option<NotificationAuthorizationDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -50,6 +56,25 @@ impl NotificationTypeDescriptor {
         }
         validate_form("config_form", &self.config_form, &self.config_schema, true)?;
         validate_form("input_form", &self.input_form, &self.input_schema, false)?;
+        if let Some(authorization) = &self.authorization {
+            authorization.validate()?;
+            let properties = self
+                .config_schema
+                .get("properties")
+                .and_then(Value::as_object);
+            if authorization.managed_secret_keys.iter().any(|key| {
+                properties.is_some_and(|fields| fields.contains_key(key))
+                    || self
+                        .config_form
+                        .fields
+                        .iter()
+                        .any(|field| &field.key == key)
+            }) {
+                return Err(invalid(
+                    "managed secret keys cannot be user configuration fields",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -70,6 +95,14 @@ impl NotificationTypeDescriptor {
     }
 
     pub fn validate_config(&self, value: &Value) -> ContractResult {
+        if self.authorization.as_ref().is_some_and(|authorization| {
+            authorization
+                .managed_secret_keys
+                .iter()
+                .any(|key| value.get(key).is_some())
+        }) {
+            return Err(invalid("managed secret keys cannot be user configuration"));
+        }
         validate_value("config_schema", &self.config_schema, value)
     }
 

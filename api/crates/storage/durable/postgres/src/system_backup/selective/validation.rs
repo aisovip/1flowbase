@@ -31,11 +31,17 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
         }
     }
     if table == "notification_instances" {
-        let value = row
-            .get("encrypted_secret_json")
-            .context("notification instance missing secret column")?;
-        // Built-in system channels legitimately have no configured credentials.
-        if !value.is_null() {
+        for column in ["encrypted_secret_json", "encrypted_managed_secret_json"] {
+            // The new managed column is absent in historical archives and null for legacy
+            // instances. Old editable-secret columns retain their existing required shape.
+            let value = match row.get(column) {
+                Some(value) => value,
+                None if column == "encrypted_managed_secret_json" => continue,
+                None => anyhow::bail!("notification instance missing secret column"),
+            };
+            if value.is_null() {
+                continue;
+            }
             let identity = |name| -> Result<uuid::Uuid> {
                 let value = row
                     .get(name)
@@ -43,12 +49,17 @@ pub(super) fn rekey(table: &str, row: &mut Value, source: &str, target: &str) ->
                     .context("notification instance missing identity")?;
                 Ok(uuid::Uuid::parse_str(value)?)
             };
-            let aad =
-                crate::notification_repository::aad(identity("workspace_id")?, identity("id")?);
+            let workspace = identity("workspace_id")?;
+            let instance = identity("id")?;
+            let aad = if column == "encrypted_managed_secret_json" {
+                crate::notification_repository::managed_aad(workspace, instance)
+            } else {
+                crate::notification_repository::aad(workspace, instance)
+            };
             let plain = decrypt_secret_json_with_aad(value, source, &aad)
                 .context("source secret key cannot decrypt notification instance")?;
             if source != target {
-                row["encrypted_secret_json"] = encrypt_secret_json_with_aad(&plain, target, &aad)?;
+                row[column] = encrypt_secret_json_with_aad(&plain, target, &aad)?;
             }
         }
     }

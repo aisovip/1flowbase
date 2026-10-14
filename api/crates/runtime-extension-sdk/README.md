@@ -120,3 +120,99 @@ authority and lifecycle remain outside the plugin.
 输出使用按字节滑动窗口，`event` 排队后即返回，多条输出可同时在途；
 宿主确认下游消费后，按 `event_id` 归还 credit。终态等待输出全部消费，
 输入处理不等待每条输出的网络确认。宿主独占身份、鉴权和进程生命周期。
+
+## Opt-in notification authorization and send outcomes
+
+Legacy `execute_notification` still consumes raw `input_payload` and returns the
+provider's declared output. A notification descriptor opts in by adding
+`authorization`; no new slot, provider type, capability method or worker protocol
+is introduced. All operations use the installed notification contribution's
+existing Capability `execute`, `config_payload`, and managed dispatcher.
+
+```json
+{"authorization":{"actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],"managed_secret_keys":["qr_credential","bot_token","bound_user_id","context_token","cursor"]}}
+```
+
+The canonical `NotificationRuntimeInput` is the Execute `input.input_payload`:
+
+```json
+{"method":"execute","input":{"contribution_code":"send","config_payload":{},"input_payload":{"operation":{"type":"authorize","operation":{"type":"begin","action":"qr"}},"managed_secrets":{}}}}
+```
+
+`NotificationAuthorizationOperation` supports `begin`, `poll`, `cancel`, and
+`maintain`. `begin` requires a declared action code. For sends, use
+`operation: {"type":"send","input_payload":{"text":"hello"}}`; the nested
+payload still validates against the descriptor's original `input_schema`.
+Only the Host injects `managed_secrets` from encrypted instance storage.
+User configuration cannot contain any declared managed key, including when its
+schema permits additional properties.
+
+Capability `result` contains `NotificationRuntimeResult`, rather than the legacy
+provider output. An authorization response example:
+
+```json
+{"ok":true,"result":{"type":"authorization","authorization":{"status":"pending","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/qr","poll_interval_seconds":2,"expires_at":"2026-10-15T01:00:00Z"}},"managed_secret_patch":{"qr_credential":"HOST_ONLY"}}}
+```
+
+`NotificationAuthorizationView` is the canonical public DTO: `status` is
+`unauthorized | pending | authorized | invalid`, with `user_action` required only
+while pending. User action contains only QR display URL, polling interval and
+optional expiry. QR URLs require HTTPS and cannot contain URL credentials.
+Internal polling credentials, tokens, recipient binding and raw provider errors
+have no public field. Clients consume the descriptor's `authorization` and the
+instance's separate `authorization` view using these same field names. Their
+authorization command body uses `NotificationAuthorizationOperation`; the Host
+owns scope/permission enforcement and injects the instance config and secrets.
+
+Send result examples (these are inside Capability `result`):
+
+```json
+{"type":"send","outcome":{"status":"succeeded","result":{"accepted":true}},"authorization":{"status":"authorized"},"managed_secret_patch":{"cursor":"next","context_token":"HOST_ONLY"}}
+{"type":"send","outcome":{"status":"failed","failure_code":"authorization_invalid"},"authorization":{"status":"invalid"},"managed_secret_patch":{"bot_token":null,"context_token":null}}
+{"type":"send","outcome":{"status":"unknown","failure_code":"provider_result_unknown"}}
+```
+
+Confirmed failures use only `authorization_required`, `authorization_invalid`,
+`recipient_not_ready`, or `provider_rejected`. Uncertain provider delivery uses
+`status: unknown` and `provider_result_unknown`; validation rejects putting that
+code in `failed`. The Host maps unknown to the existing unknown notification log
+status. Authorization failures require the corresponding public view update;
+recipient_not_ready preserves account authorization. Optional send authorization
+means no status change when omitted. No recipient-ready boolean or context-token
+prerequisite is imposed: the supplier can attempt sending without inbound context
+and classifies a definite upstream rejection from the actual response.
+
+`managed_secret_patch` appears only in Host/runtime envelopes and accepts declared
+keys only. Omitted keys stay unchanged; null deletes a key. Send can persist new
+inbound cursor/context even when delivery fails. Provider-specific maintenance
+matches only the bound scanned user id; other inbound peers must never rebind or
+replace that user's context. These are supplier/Host ownership requirements, not
+an alternate SDK polling service.
+
+Use `execute_authorizable_notification(..., |config, input| async move { ... })`
+inside the existing `serve`/`serve_duplex` handler. Lower-level
+`prepare_authorizable_notification` and `complete_authorizable_notification`
+are available for authors needing separate await/lifecycle handling. The SDK
+validates before supplier I/O and redacts callback errors. Errors or invalid
+responses after a send become unknown, without exposing unvalidated patches.
+The Host must validate the response again; a worker can bypass SDK helpers.
+
+Host persistence guidance for the next implementation packet: keep administrator
+`enabled`/`disabled` independent of authorization, store public authorization
+state in its own instance projection, and encrypt QR credentials, bot token,
+context token, cursor and recipient binding in separate managed-secret storage.
+Bind pending attempts to a persisted revision/challenge; discard a delayed poll
+response after cancel/re-begin instead of overwriting newer state. Do provider
+I/O outside a database transaction lock. Cancel removes the pending challenge.
+Cache a displayable QR URL as `qr_code_url` and its encoded challenge as
+`qr_credential`. The Host allows those two values only in the exact cached
+`user_action.qr_code_url`; reflection into another output field is rejected.
+This exception never permits bot tokens or other managed secrets in a QR URL.
+Never log config/input/result, QR credentials, tokens or raw provider errors;
+notification logs expose only fixed `failure_code` and terminal delivery status.
+
+The `notification_authorization_worker` example under
+`src/_tests/notification/authorizable_worker.rs` uses the shared multiplex runner
+with deterministic begin/poll/cancel/maintain/send responses and secret patches.
+It is a Host persistence fixture, not evidence of real provider delivery. Contract
+and SDK test execution is deferred to the Root's one assembled QA batch.
