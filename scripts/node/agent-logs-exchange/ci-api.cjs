@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const { spawn, execFileSync } = require('node:child_process');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime');
-const { requireExecutedCargoTests } = require('../verify/cargo-test-results');
+const { parseCargoTestCounts, requireExecutedCargoTests } = require('../verify/cargo-test-results');
 
 const root = path.resolve(__dirname, '../../..');
 const out = path.join(root, 'tmp/test-governance/agent-logs-otlp/ci-api');
@@ -110,25 +110,44 @@ async function main() {
     ['operation-registry', 'console_route_assembly'],
     ['operation-migration', 'console_policy_migration']
   ];
-  for (const [label, selector] of selectors) {
-    const log = await command(label, [...api, selector, '--', '--test-threads', String(budget.cargoTestThreads)], env);
+  const testFailures = [];
+  async function testCommand(label, args) {
+    let log;
+    try {
+      log = await command(label, args, env);
+    } catch (error) {
+      const item = receipt.commands.at(-1);
+      const output = fs.readFileSync(path.join(out, item.log), 'utf8');
+      const counts = parseCargoTestCounts(output);
+      // Collect completed behavior failures across the finite batch. Compile,
+      // signal and resource failures stop immediately; they cannot be treated
+      // as completed test evidence or safely repeated by another selector.
+      if (item.resource_stop || item.signal || counts.failedCount === null) throw error;
+      item.counts = counts;
+      receipt.tests += counts.passedCount;
+      testFailures.push(label);
+      checkpoint();
+      process.stdout.write(JSON.stringify({ label, ...counts }) + '\n');
+      return;
+    }
     const counts = requireExecutedCargoTests(fs.readFileSync(log, 'utf8'));
     receipt.commands.at(-1).counts = counts;
     receipt.tests += counts.passedCount;
     checkpoint();
     process.stdout.write(JSON.stringify({ label, ...counts }) + '\n');
+  }
+  for (const [label, selector] of selectors) {
+    await testCommand(label, [...api, selector, '--', '--test-threads', String(budget.cargoTestThreads)]);
   }
   for (const [label, cargoArgs] of [
     ['independent-grants', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane', '--lib', 'agent_log_exchange_operations_are_independent_and_do_not_inherit_archive_grants']],
     ['pricing', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane-postgres-tests', '--test', 'orchestration_runtime_integration', 'application_logs::agent_logs::pricing']]
   ]) {
-    const log = await command(label, [...cargoArgs, ...profile, '--', '--test-threads', String(budget.cargoTestThreads)], env);
-    const counts = requireExecutedCargoTests(fs.readFileSync(log, 'utf8'));
-    receipt.commands.at(-1).counts = counts;
-    receipt.tests += counts.passedCount;
-    checkpoint();
-    process.stdout.write(JSON.stringify({ label, ...counts }) + '\n');
+    await testCommand(label, [...cargoArgs, ...profile, '--', '--test-threads', String(budget.cargoTestThreads)]);
   }
+  receipt.failed_selectors = testFailures;
+  checkpoint();
+  assert.equal(testFailures.length, 0, `completed test failures: ${testFailures.join(', ')}`);
   await command('runtime-build', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--bin', 'api-server', '--features', 'tikv-jemallocator/stats', ...profile], env);
   const binary = path.join(out, 'api-server');
   fs.copyFileSync(path.join(root, 'api/target/debug/api-server'), binary);
