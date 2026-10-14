@@ -1,14 +1,12 @@
 use super::{legacy_mapping, LegacyGrantMappingSpec};
 
+// Audited legacy settings-feature projection, not the current application operation inventory.
+// New independently granted operations stay in the default-disabled disposition ledger.
 pub(super) const APPLICATION_SIMPLE_OPERATIONS: &[&str] = &[
     "applications.api.set_enabled",
     "applications.create",
     "applications.logs.export",
     "applications.logs.import",
-    "applications.logs.otlp.export",
-    "applications.logs.otlp.import",
-    "applications.logs.langfuse.export",
-    "applications.logs.langfuse.import",
     "applications.orchestration.template.export",
     "applications.orchestration.template.import",
     "applications.orchestration.version.restore",

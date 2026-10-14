@@ -561,6 +561,74 @@ fn ac_010_live_core_crosswalk_disposes_every_current_operation() {
 }
 
 #[test]
+fn agent_logs_exchange_does_not_expand_legacy_application_settings_authority() {
+    let settings = compile_core_settings_feature_registry().unwrap();
+    let registry = compile_core_console_operation_registry(&settings).unwrap();
+    let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
+    let legacy = "settings_feature.access.system.applications";
+    let preview = project_compiled_console_policy_migration_plan(
+        migration.plan(),
+        Uuid::now_v7(),
+        &[legacy.to_string()],
+    )
+    .expect("historic application settings grant remains projectable without new authority");
+
+    for operation in [
+        "applications.logs.otlp.export",
+        "applications.logs.otlp.import",
+        "applications.logs.langfuse.export",
+        "applications.logs.langfuse.import",
+    ] {
+        let disposition = migration.disposition(operation).unwrap();
+        assert!(disposition.is_default_disabled_new_operation());
+        assert!(!disposition.has_legacy_grant(legacy));
+        assert!(preview
+            .effective_after
+            .iter()
+            .all(|entry| entry.operation_id.as_str() != operation));
+        for mapping in migration.legacy_mappings() {
+            if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
+                &mapping.projection
+            {
+                assert!(operations
+                    .iter()
+                    .all(|entry| entry.operation_id().as_str() != operation));
+            }
+        }
+    }
+    for operation in [
+        "applications.create",
+        "applications.logs.export",
+        "applications.logs.import",
+    ] {
+        assert!(migration
+            .disposition(operation)
+            .unwrap()
+            .has_legacy_grant(legacy));
+        assert!(preview
+            .effective_after
+            .iter()
+            .any(|entry| entry.operation_id.as_str() == operation
+                && entry.simple_enabled == Some(true)));
+    }
+    for operation in [
+        "applications.delete",
+        "applications.update",
+        "applications.view",
+    ] {
+        assert!(preview.effective_after.iter().any(|entry| {
+            entry.operation_id.as_str() == operation
+                && entry.same_scope_own == Some(true)
+                && entry.same_scope_other == Some(true)
+                && entry.cross_scope == Some(false)
+        }));
+    }
+    assert!(preview.authorization_delta.added.is_empty());
+    assert!(preview.authorization_delta.removed.is_empty());
+    assert!(preview.effective_delta.is_empty());
+}
+
+#[test]
 fn agent_logs_delete_has_explicit_default_disabled_migration_disposition() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let registry = compile_core_console_operation_registry(&settings).unwrap();
