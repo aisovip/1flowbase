@@ -1022,6 +1022,7 @@
     "network_center_route_edit": "编辑路由规则",
     "network_center_route_github": "GitHub 官方来源",
     "network_center_route_http_node": "HTTP 节点",
+    "network_center_route_agent_logs_exchange": "Agent Logs 日志交换",
     "network_center_route_model_default": "默认模型提供方",
     "network_center_route_model_instance": "模型提供方实例",
     "network_center_route_enabled": "路由已启用",

@@ -139,4 +139,66 @@ describe('NetworkEgressRoutesPanel', () => {
       )
     );
   });
+
+  test('creates and reloads an Agent Logs exchange route with its exact consumer contract', async () => {
+    networkCenterApi.createSettingsNetworkEgressRoute.mockImplementationOnce(
+      async (input) => {
+        const saved = {
+          id: 'route-agent-logs',
+          ...input,
+          failure_policy: 'fail_closed'
+        };
+        networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([
+          saved
+        ]);
+        return saved;
+      }
+    );
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /创建路由规则|Create routing rule/
+      })
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(dialog).getByLabelText(/消费方|Consumer/));
+    fireEvent.click(
+      await screen.findByText(/^(Agent Logs 日志交换|Agent Logs exchange)$/, {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.mouseDown(
+      within(dialog).getByLabelText(/代理映射|Proxy mapping/)
+    );
+    fireEvent.click(await screen.findByText('US proxy'));
+    fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定|OK/ }));
+    await waitFor(() =>
+      expect(
+        networkCenterApi.createSettingsNetworkEgressRoute
+      ).toHaveBeenCalledWith(
+        {
+          consumer_kind: 'agent_logs_exchange',
+          consumer_reference: null,
+          pool_member_ids: ['proxy-us'],
+          enabled: true
+        },
+        'csrf-123'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    const persistedConsumer = await screen.findByText(
+      /^(Agent Logs 日志交换|Agent Logs exchange)$/
+    );
+    const row = persistedConsumer.closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText('US proxy')).toBeInTheDocument();
+    fireEvent.click(within(row!).getByRole('button', { name: /编辑|Edit/ }));
+    const edit = await screen.findByRole('dialog');
+    expect(within(edit).getByLabelText(/消费方|Consumer/)).toBeDisabled();
+    expect(
+      within(edit).getByText(/^(Agent Logs 日志交换|Agent Logs exchange)$/)
+    ).toBeInTheDocument();
+  });
 });
