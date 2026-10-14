@@ -147,18 +147,23 @@ async function run(args) {
     do {
       const observed = new Map();
       for (const traceId of exported.trace_ids) {
-        let page = 1, pages = 1;
+        let cursor;
+        const seenCursors = new Set();
         do {
-          const query = new URLSearchParams({ traceId, limit: '100', page: String(page) });
+          // A small transport page exercises pagination; it does not cap business data.
+          const query = new URLSearchParams({ traceId, limit: '2', fields: 'basic' });
+          if (cursor !== undefined) query.set('cursor', cursor);
           const response = await fetch(`${langfuse.base_url}/api/public/v2/observations?${query}`, { headers: { Authorization: 'Basic ' + Buffer.from(`${langfuse.public_key}:${langfuse.secret_key}`).toString('base64') }, signal: AbortSignal.timeout(10000), redirect: 'error' });
           if (!response.ok) fail(`Langfuse readiness HTTP ${response.status}`);
           const data = await response.json(); assert.ok(Array.isArray(data.data), 'Langfuse v2 observations');
           for (const observation of data.data) if (observation.traceId === traceId) observed.set(observation.id, observation.traceId);
-          pages = data.meta?.totalPages ?? 1;
-          assert.ok(Number.isSafeInteger(pages) && pages >= 0, 'Langfuse pagination contract');
+          cursor = data.meta?.nextCursor ?? undefined;
+          if (cursor !== undefined) {
+            assert.ok(typeof cursor === 'string' && cursor && !seenCursors.has(cursor), 'Langfuse cursor must advance');
+            seenCursors.add(cursor);
+          }
           if (Date.now() >= deadline) fail('Langfuse observations deadline');
-          page++;
-        } while (page <= pages);
+        } while (cursor !== undefined);
       }
       observationsReady = observed.size >= exported.exported_spans && exported.trace_ids.every(id => [...observed.values()].includes(id));
       if (observationsReady) break;
@@ -223,8 +228,31 @@ async function run(args) {
       assert.equal(overview.requested_model_id, messages[index].model);
       assert.equal(overview.input_tokens, messages[index].input_tokens);
       assert.equal(overview.output_tokens, messages[index].output_tokens);
-      assert.ok(overview.messages.some(message => message.content === messages[index].prompt), 'SDK user message');
-      assert.ok(overview.messages.some(message => message.content === messages[index].answer), 'SDK assistant message');
+      const events = []; let cursor;
+      const seenCursors = new Set();
+      do {
+        const query = new URLSearchParams({ limit: cursor === undefined ? '50' : '100' });
+        if (cursor !== undefined) query.set('cursor', String(cursor));
+        const page = await request('GET', `${recordPath(apps[0], record.record_id)}/client-trajectory?${query}`);
+        for (const step of page.items) {
+          assert.equal(step.flow_run_id, null, 'SDK span must not fabricate native run');
+          const section = await request('GET', `${recordPath(apps[0], record.record_id)}/client-trajectory/${step.id}?limit=8&section=raw`);
+          for (const item of section.items) events.push(item.value);
+        }
+        cursor = page.next_cursor ?? undefined;
+        if (cursor !== undefined) {
+          assert.ok(!seenCursors.has(String(cursor)), 'SDK trajectory cursor must advance');
+          seenCursors.add(String(cursor));
+        }
+      } while (cursor !== undefined);
+      assert.ok(events.some(event => event.kind === 'context' && typeof event.content === 'string' && event.content.includes(messages[index].prompt)), 'LLM history prompt retained as Context');
+      assert.ok(events.some(event => event.kind === 'assistant' && event.content === messages[index].answer), 'ordinary SDK output retained as Assistant');
+      assert.ok(events.every(event => event.kind !== 'task_end' && event.phase !== 'final_answer'), 'SDK span without final declaration must not fabricate TaskEnd or final phase');
+      const rawSpans = events.map(event => JSON.stringify(event.raw));
+      const inputMessages = JSON.stringify([{ role: 'user', content: messages[index].prompt }]);
+      const outputMessages = JSON.stringify([{ role: 'assistant', content: messages[index].answer }]);
+      assert.ok(rawSpans.some(raw => raw.includes('gen_ai.input.messages') && raw.includes(JSON.stringify(inputMessages).slice(1, -1))), 'original SDK input message attribute retained in raw span');
+      assert.ok(rawSpans.some(raw => raw.includes('gen_ai.output.messages') && raw.includes(JSON.stringify(outputMessages).slice(1, -1))), 'original SDK output message attribute retained in raw span');
     }
     check(stage, { sdk: summary.sdk, version: summary.version, spans: summary.spans, record_ids: sdkRecords.map(record => record.record_id), message_source: gatewayKey ? 'gateway' : 'synthetic' });
     stage = 'browser screenshots';
