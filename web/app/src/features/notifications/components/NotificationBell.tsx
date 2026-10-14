@@ -8,6 +8,7 @@ import {
   Empty,
   Flex,
   Grid,
+  Menu,
   Space,
   Spin,
   Splitter,
@@ -55,14 +56,30 @@ export function NotificationBell() {
     inbox.write.isError;
   return (
     <>
-      <Badge count={inbox.unread.data?.unread_count} size="small">
-        <Button
-          type="text"
-          icon={<BellOutlined />}
-          aria-label={t('inbox')}
-          onClick={() => setOpen(true)}
-        />
-      </Badge>
+      <Menu
+        className="notification-bell-menu"
+        mode="horizontal"
+        selectedKeys={open ? ['notifications'] : []}
+        disabledOverflow
+        onClick={() => setOpen(true)}
+        items={[
+          {
+            key: 'notifications',
+            'aria-label': t('inbox'),
+            label: (
+              <span className="notification-bell-menu__icon">
+                <Badge
+                  count={inbox.unread.data?.unread_count}
+                  size="small"
+                  style={{ color: 'inherit' }}
+                >
+                  <BellOutlined />
+                </Badge>
+              </span>
+            )
+          }
+        ]}
+      />
       <ResizableDrawer
         title={t('inbox')}
         open={open}

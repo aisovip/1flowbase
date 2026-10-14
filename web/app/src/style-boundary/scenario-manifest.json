@@ -2279,7 +2279,7 @@
     "boundaryNodes": [
       {
         "id": "bell",
-        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "selector": "[data-testid=\"notification-bell-scene\"] [role=\"menuitem\"]",
         "propertyAssertions": []
       },
       {
@@ -2338,7 +2338,7 @@
     "boundaryNodes": [
       {
         "id": "bell",
-        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "selector": "[data-testid=\"notification-bell-scene\"] [role=\"menuitem\"]",
         "propertyAssertions": []
       },
       {
@@ -2593,7 +2593,7 @@
     "boundaryNodes": [
       {
         "id": "bell",
-        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "selector": "[data-testid=\"notification-bell-scene\"] [role=\"menuitem\"]",
         "propertyAssertions": []
       },
       {
@@ -2642,7 +2642,7 @@
     "boundaryNodes": [
       {
         "id": "bell",
-        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "selector": "[data-testid=\"notification-bell-scene\"] [role=\"menuitem\"]",
         "propertyAssertions": []
       },
       {
@@ -2691,7 +2691,7 @@
     "boundaryNodes": [
       {
         "id": "bell",
-        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "selector": "[data-testid=\"notification-bell-scene\"] [role=\"menuitem\"]",
         "propertyAssertions": []
       },
       {
