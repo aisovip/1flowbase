@@ -167,7 +167,7 @@ async fn langfuse_partial_warning_and_malformed_ack_refuse_full_receipt() {
 
 #[tokio::test]
 async fn langfuse_only_capability_404_falls_back_to_paginated_legacy() {
-    let server = server(vec![
+    let capability_server = server(vec![
         (
             StatusCode::NOT_FOUND,
             json!({"message":"Observations v2 API is only available in v4 write mode"}),
@@ -176,17 +176,17 @@ async fn langfuse_only_capability_404_falls_back_to_paginated_legacy() {
         (StatusCode::OK, page("a", json!({"page":2,"totalPages":2}))),
     ])
     .await;
-    let scope = scope().await;
+    let capability_scope = scope().await;
     let result = super::super::remote::observations(
-        scope.http_client(),
-        &server.base,
+        capability_scope.http_client(),
+        &capability_server.base,
         "pk",
         "sk",
         &["a".into()],
     )
     .await;
-    assert_eq!(scope.finish(result).await.unwrap().len(), 2);
-    assert!(server.mock.seen.lock().unwrap()[2]
+    assert_eq!(capability_scope.finish(result).await.unwrap().len(), 2);
+    assert!(capability_server.mock.seen.lock().unwrap()[2]
         .uri
         .contains("/api/public/observations?traceId=a&page=2"));
     for status in [
