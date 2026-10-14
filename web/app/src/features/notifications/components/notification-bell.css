@@ -1,24 +1,25 @@
 .notification-inbox__body {
-  container-type: inline-size;
   width: 100%;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 .notification-inbox__workspace {
-  display: grid;
-  grid-template-columns: 350px minmax(0, 1fr);
-  min-height: min(640px, calc(100dvh - 180px));
+  flex: 1;
+  min-height: 0;
 }
 .notification-inbox__channels {
   min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  border-inline-end: 1px solid var(--border-subtle);
   padding-inline-end: 16px;
 }
 .notification-inbox__messages {
   min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   padding-inline-start: 16px;
@@ -28,7 +29,6 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  max-height: calc(100dvh - 280px);
 }
 .notification-inbox__channel {
   display: flex;
@@ -69,6 +69,9 @@
   min-height: 48px;
   margin-bottom: 16px;
 }
+.notification-inbox__channel-heading {
+  overflow-wrap: anywhere;
+}
 .notification-inbox__message-title {
   padding-inline: 0;
   white-space: normal;
@@ -88,56 +91,23 @@
 .notification-inbox__back {
   display: none;
 }
-@media (max-width: 767px) {
-  .notification-inbox__workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .notification-inbox__channels {
-    padding-inline-end: 0;
-    border-inline-end: 0;
-  }
-  .notification-inbox__messages {
-    display: none;
-    padding-inline-start: 0;
-  }
-  .notification-inbox__workspace--selected .notification-inbox__channels {
-    display: none;
-  }
-  .notification-inbox__workspace--selected .notification-inbox__messages {
-    display: flex;
-  }
-  .notification-inbox__back {
-    display: inline-flex;
-    min-height: 44px;
-  }
-  .notification-inbox__message-title {
-    min-height: 44px;
-  }
+.notification-inbox__workspace--compact .notification-inbox__split-dragger {
+  display: none;
 }
-
-@container (max-width: 640px) {
-  .notification-inbox__workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .notification-inbox__channels {
-    padding-inline-end: 0;
-    border-inline-end: 0;
-  }
-  .notification-inbox__messages {
-    display: none;
-    padding-inline-start: 0;
-  }
-  .notification-inbox__workspace--selected .notification-inbox__channels {
-    display: none;
-  }
-  .notification-inbox__workspace--selected .notification-inbox__messages {
-    display: flex;
-  }
-  .notification-inbox__back {
-    display: inline-flex;
-    min-height: 44px;
-  }
-  .notification-inbox__message-title {
-    min-height: 44px;
-  }
+.notification-inbox__workspace--compact .notification-inbox__channels {
+  padding-inline-end: 0;
+}
+.notification-inbox__workspace--compact .notification-inbox__messages {
+  padding-inline-start: 0;
+}
+.notification-inbox__workspace--compact .notification-inbox__toolbar {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.notification-inbox__workspace--compact .notification-inbox__back {
+  display: flex;
+  min-height: 44px;
+}
+.notification-inbox__workspace--compact .notification-inbox__message-title {
+  min-height: 44px;
 }
