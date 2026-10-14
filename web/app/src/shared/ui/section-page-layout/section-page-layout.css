@@ -97,6 +97,7 @@
   position: static;
   height: 100%;
   min-height: 0;
+  box-sizing: border-box;
 }
 
 .section-page-layout--viewport
@@ -104,6 +105,14 @@
   .ant-layout-sider-children {
   height: 100%;
   min-height: 0;
+}
+
+.section-page-layout--viewport .section-page-layout__nav {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .section-page-layout--viewport .section-page-layout__sidebar-content {

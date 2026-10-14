@@ -87,6 +87,7 @@ export function ResizableDrawer({
     <Drawer
       aria-label={ariaLabel}
       aria-labelledby={titleId}
+      classNames={{ dragger: 'resizable-drawer__drag-handle' }}
       defaultSize={initialWidth}
       destroyOnHidden={destroyOnClose}
       extra={extra}
@@ -103,7 +104,9 @@ export function ResizableDrawer({
       size={width}
       styles={{
         dragger: {
+          backgroundColor: 'transparent',
           left: NATIVE_DRAGGER_OFFSET,
+          opacity: 1,
           width: NATIVE_DRAGGER_HIT_WIDTH
         },
         wrapper: {
