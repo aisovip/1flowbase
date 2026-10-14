@@ -54,16 +54,6 @@ jobs:
             ~/.cargo/git
             api/target
           key: agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-      - name: Set verification budget from this isolated runner
-        run: |
-          node <<'JS'
-          const os = require('node:os');
-          const fs = require('node:fs');
-          const jobs = Math.max(1, os.availableParallelism() - 1);
-          fs.writeFileSync('.1flowbase.verify.local.json', JSON.stringify({backend: {
-            cargoJobs: jobs, cargoTestThreads: jobs, incremental: false
-          }}));
-          JS
       - name: Execute finite API evidence and build the exact runtime artifact
         run: node scripts/node/agent-logs-exchange/ci-api.cjs
       - uses: actions/upload-artifact@v6

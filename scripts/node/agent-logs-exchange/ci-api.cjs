@@ -2,6 +2,7 @@
 // Independent CI only: no local credentials, application history or shared services.
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const { spawn, execFileSync } = require('node:child_process');
@@ -61,6 +62,7 @@ async function command(label, args, env) {
     });
   } finally {
     clearInterval(monitor);
+    if (stopped) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
     clearTimeout(killTimer);
     fs.closeSync(fd);
     checkpoint();
@@ -76,8 +78,14 @@ async function main() {
   assert.equal(sha, process.env.EXPECTED_SOURCE_SHA);
   receipt.source_sha = sha;
   receipt.rustc = execFileSync('rustc', ['--version'], { encoding: 'utf8' }).trim();
-  const budget = loadVerifyRuntimeConfig({ repoRoot: root }).backend;
+  const actualParallelism = os.availableParallelism();
+  // The shared loader deliberately ignores local config on CI; pass the actual
+  // verification CPU budget through its supported capacity argument instead.
+  const budget = loadVerifyRuntimeConfig({ repoRoot: root, availableParallelism: Math.max(1, actualParallelism - 1) }).backend;
+  receipt.resource_budget = { actual_parallelism: actualParallelism, ...budget };
   const env = { ...process.env, CARGO_BUILD_JOBS: String(budget.cargoJobs), CARGO_INCREMENTAL: '0' };
+  // Keep archive decompression/network downloads separate from compilation.
+  await command('fetch', ['fetch', '--locked', '--manifest-path', 'api/Cargo.toml'], env);
   const api = ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--lib', '--features', 'tikv-jemallocator/stats', ...profile];
   // Entire named modules, plus directly affected native ingress/archive/registration routes.
   const selectors = [
