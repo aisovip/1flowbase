@@ -116,7 +116,7 @@ const RESPONSES_PREDECESSOR_WAIT: Duration = Duration::from_secs(240);
 const RESPONSES_PREDECESSOR_POLL_START: Duration = Duration::from_millis(100);
 const RESPONSES_PREDECESSOR_POLL_MAX: Duration = Duration::from_secs(1);
 
-fn is_expired_responses_predecessor(
+fn is_aged_responses_predecessor(
     context: &PublishedCallbackResumeContext,
     attempt: &domain::FlowRunCallbackResumeAttemptRecord,
     command: &ResumePublishedCallbackCommand,
@@ -185,13 +185,20 @@ where
             .repository
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?;
+        let expired_predecessor = match existing.as_ref() {
+            Some(attempt) => {
+                self.is_expired_responses_predecessor(&context, attempt, command)
+                    .await?
+            }
+            None => false,
+        };
         if let Some(processing) = existing.as_ref().filter(|attempt| {
             command.source == PublishedCallbackResumeSource::OpenAiResponses
                 && command.responses_continuation.is_none()
                 && command.native_transport.is_some()
                 && context.callback_task.callback_kind == "llm_tool_calls"
                 && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-                && !is_expired_responses_predecessor(&context, attempt, command)
+                && !expired_predecessor
         }) {
             if context.callback_task.status == domain::CallbackTaskStatus::Completed
                 && self
@@ -217,7 +224,10 @@ where
                 .await?;
         }
         if let Some(existing) = existing {
-            if is_expired_responses_predecessor(&context, &existing, command) {
+            if self
+                .is_expired_responses_predecessor(&context, &existing, command)
+                .await?
+            {
                 if existing.response_payload != command.response_payload {
                     return Err(
                         ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
@@ -331,6 +341,23 @@ where
         Ok(PreparedPublishedCallbackResume::Resume {
             initial_run: Box::new(initial_run),
         })
+    }
+
+    async fn is_expired_responses_predecessor(
+        &self,
+        context: &PublishedCallbackResumeContext,
+        attempt: &domain::FlowRunCallbackResumeAttemptRecord,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<bool> {
+        if !is_aged_responses_predecessor(context, attempt, command) {
+            return Ok(false);
+        }
+        // Attempt age is only an admission grace period. The execution claim's
+        // renewable lease remains the owner truth for a slow provider invocation.
+        Ok(!self
+            .repository
+            .has_active_published_callback_resume_claim(context.callback_task.id)
+            .await?)
     }
 
     async fn is_identical_active_native_retry(

@@ -2173,6 +2173,19 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            "select exists (select 1 from flow_run_resume_claims where callback_task_id = $1 and status = 'processing' and lease_expires_at > now())",
+        )
+        .bind(callback_task_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,

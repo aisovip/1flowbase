@@ -821,6 +821,9 @@ mod semantic_round_lookup;
 #[path = "callback_resume/semantic_runtime.rs"]
 mod semantic_runtime;
 
+#[path = "callback_resume/active_lease.rs"]
+mod active_lease;
+
 // Interrupt the real public consumer at the provider execution port after durable
 // receipt commit, then retry through that same consumer with an expired lease.
 #[tokio::test]

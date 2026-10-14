@@ -857,12 +857,38 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         )
     }
 
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("test repo mutex poisoned")
+            .callback_resume_claim_leases
+            .get(&callback_task_id)
+            .is_some_and(|lease| *lease > OffsetDateTime::now_utc()))
+    }
+
     async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: serde_json::Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
         let mut inner = self.inner.lock().expect("test repo mutex poisoned");
+        let active = inner
+            .callback_resume_attempts
+            .values()
+            .find(|attempt| attempt.id == attempt_id)
+            .and_then(|attempt| {
+                inner
+                    .callback_resume_claim_leases
+                    .get(&attempt.callback_task_id)
+            })
+            .is_some_and(|lease| *lease > OffsetDateTime::now_utc());
+        if active {
+            return Ok(None);
+        }
         let Some(attempt) = inner
             .callback_resume_attempts
             .values_mut()

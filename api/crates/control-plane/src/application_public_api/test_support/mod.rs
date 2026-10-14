@@ -53,6 +53,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     node_runs: HashMap<Uuid, domain::NodeRunRecord>,
     callback_tasks: HashMap<Uuid, domain::CallbackTaskRecord>,
     callback_resume_attempts: HashMap<String, domain::FlowRunCallbackResumeAttemptRecord>,
+    callback_resume_claim_leases: HashMap<Uuid, OffsetDateTime>,
     run_events: HashMap<Uuid, Vec<domain::RunEventRecord>>,
     application_environment_variables: HashMap<Uuid, Vec<domain::ApplicationEnvironmentVariable>>,
     editor_state_read_count: usize,

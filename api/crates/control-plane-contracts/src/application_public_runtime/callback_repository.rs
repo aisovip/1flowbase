@@ -35,6 +35,13 @@ pub trait ApplicationPublishedCallbackAttemptRepository: Send + Sync {
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
 
+    /// Whether this callback has a processing execution claim whose lease is live.
+    /// Uses the same owner predicate as expired-attempt reclamation.
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool>;
+
     /// Re-admit an identical delivery after its execution claim lease expires.
     async fn reclaim_expired_callback_resume_attempt(
         &self,
