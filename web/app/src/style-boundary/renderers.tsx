@@ -1,5 +1,6 @@
 import {
   NotificationInboxStyleBoundaryScene,
+  NotificationLogsStyleBoundaryScene,
   NotificationSettingsStyleBoundaryScene,
   seedStyleBoundaryNotificationFetch,
   seedStyleBoundaryNotificationSettingsFetch
@@ -174,6 +175,18 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'page.notification-logs.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationSettingsFetch();
+    return <NotificationLogsStyleBoundaryScene />;
+  },
+  'page.notification-logs.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationSettingsFetch();
+    return <NotificationLogsStyleBoundaryScene />;
+  },
   'page.settings-notifications.desktop': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();
@@ -185,6 +198,24 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryAuth();
     seedStyleBoundaryNotificationSettingsFetch();
     return <NotificationSettingsStyleBoundaryScene />;
+  },
+  'component.notification-inbox.narrow-desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene width={480} />;
+  },
+  'component.notification-channels.desktop': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene selectChannel={false} />;
+  },
+  'component.notification-channels.mobile': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+    seedStyleBoundaryNotificationFetch();
+    return <NotificationInboxStyleBoundaryScene selectChannel={false} />;
   },
   'component.notification-inbox.desktop': () => {
     seedStyleBoundaryCommonFetch();

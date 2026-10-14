@@ -47,12 +47,21 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
     let sent = service
         .send(
             &actor,
+            domain::NotificationSource::Api,
             id,
             json!({"user_ids":[root.id,member.id,member.id],"title":"Ready","content":"Committed"}),
         )
         .await
         .unwrap();
     assert_eq!(sent.result["recipient_count"], 2);
+    let logs = service.logs(&actor, Default::default()).await.unwrap();
+    assert_eq!(logs.total, 1);
+    assert_eq!(logs.items[0].status, "success");
+    assert_eq!(logs.items[0].recipient_count, Some(2));
+    assert!(service
+        .logs(&member_actor, Default::default())
+        .await
+        .is_err());
     assert_eq!(service.unread_count(&actor).await.unwrap(), 1);
     assert_eq!(service.unread_count(&member_actor).await.unwrap(), 1);
     let root_page = service
@@ -68,6 +77,16 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         .read(&member_actor, root_page.items[0].id)
         .await
         .is_err());
+    assert!(service
+        .unread(&member_actor, root_page.items[0].id)
+        .await
+        .is_err());
+    assert_eq!(service.read_channel(&member_actor, id).await.unwrap(), 1);
+    assert_eq!(service.unread_count(&actor).await.unwrap(), 1);
+    service
+        .unread(&member_actor, member_page.items[0].id)
+        .await
+        .unwrap();
     let read = service
         .read(&member_actor, member_page.items[0].id)
         .await
@@ -83,7 +102,10 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         json!({"user_ids":[Uuid::now_v7()],"title":"t","content":"c"}),
         json!({"user_ids":[root.id],"title":"","content":"c"}),
     ] {
-        assert!(service.send(&actor, id, input).await.is_err());
+        assert!(service
+            .send(&actor, domain::NotificationSource::Api, id, input)
+            .await
+            .is_err());
     }
     assert_eq!(
         service
@@ -108,6 +130,7 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
     assert!(service
         .send(
             &actor,
+            domain::NotificationSource::Api,
             id,
             json!({"user_ids":[root.id],"title":"t","content":"c"})
         )
@@ -136,6 +159,25 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
         .await
         .is_err());
     assert_eq!(service.unread_count(&foreign_actor).await.unwrap(), 0);
+    let failure_logs = service
+        .logs(
+            &actor,
+            control_plane::ports::NotificationLogListInput {
+                status: Some("failure".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(failure_logs.total, 4);
+    assert!(failure_logs
+        .items
+        .iter()
+        .all(|log| log.title.is_none() && log.content.is_none()));
+    assert!(service
+        .log(&foreign_actor, failure_logs.items[0].id)
+        .await
+        .is_err());
     service.delete_instance(&actor, id).await.unwrap();
     assert_eq!(
         service
@@ -149,11 +191,27 @@ async fn committed_inbox_deduplicates_and_enforces_recipient_workspace_and_manag
     assert!(service
         .send(
             &actor,
+            domain::NotificationSource::Api,
             id,
             json!({"user_ids":[root.id],"title":"t","content":"c"})
         )
         .await
         .is_err());
+    let missing = service
+        .logs(
+            &actor,
+            control_plane::ports::NotificationLogListInput {
+                status: Some("failure".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        missing.items[0].failure_code.as_deref(),
+        Some("instance_missing")
+    );
+    assert!(missing.items[0].display_name.is_none());
 }
 
 #[tokio::test]

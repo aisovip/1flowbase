@@ -5,6 +5,7 @@ import type {
   NotificationType
 } from '@1flowbase/api-client';
 import { NotificationBell } from '../../features/notifications/components/NotificationBell';
+import { NotificationLogs } from '../../features/settings/pages/notifications/NotificationLogs';
 import { NotificationsPage } from '../../features/settings/pages/notifications/NotificationsPage';
 
 const notificationType: NotificationType = {
@@ -52,7 +53,31 @@ export function seedStyleBoundaryNotificationSettingsFetch() {
         ? [notificationType]
         : url.pathname === '/api/console/notifications/instances'
           ? [notificationInstance]
-          : undefined;
+          : url.pathname === '/api/console/notifications/logs'
+            ? {
+                items: [
+                  {
+                    id: 'log-1',
+                    workspace_id: 'workspace-1',
+                    actor_user_id: 'user-1',
+                    instance_id: notificationInstance.id,
+                    display_name: notificationInstance.display_name,
+                    type_code: 'system',
+                    source: 'workflow',
+                    status: 'success',
+                    failure_code: null,
+                    title: '工作流运行完成',
+                    content: '工作流已成功运行。',
+                    recipient_count: 2,
+                    created_at: '2026-10-13T00:00:00Z',
+                    completed_at: '2026-10-13T00:01:00Z'
+                  }
+                ],
+                total: 1,
+                page: 1,
+                page_size: 20
+              }
+            : undefined;
     if (payload !== undefined)
       return new Response(JSON.stringify({ data: payload, meta: null }), {
         headers: { 'content-type': 'application/json' }
@@ -63,6 +88,10 @@ export function seedStyleBoundaryNotificationSettingsFetch() {
 
 export function NotificationSettingsStyleBoundaryScene() {
   return <NotificationsPage />;
+}
+
+export function NotificationLogsStyleBoundaryScene() {
+  return <NotificationLogs />;
 }
 
 const messages: NotificationMessage[] = [
@@ -102,9 +131,25 @@ export function seedStyleBoundaryNotificationFetch() {
     const payload =
       url.pathname === '/api/console/notifications/messages/unread-count'
         ? { unread_count: 1 }
-        : url.pathname === '/api/console/notifications/messages'
-          ? { items: messages, next_cursor: null, unread_count: 1 }
-          : undefined;
+        : url.pathname === '/api/console/notifications/channels'
+          ? {
+              items: [
+                {
+                  instance_id: notificationInstance.id,
+                  display_name: notificationInstance.display_name,
+                  type_code: notificationInstance.type_code,
+                  deleted: false,
+                  latest_title: messages[0].title,
+                  latest_content: messages[0].content,
+                  latest_created_at: messages[0].created_at,
+                  unread_count: 1
+                }
+              ],
+              next_cursor: null
+            }
+          : url.pathname === '/api/console/notifications/messages'
+            ? { items: messages, next_cursor: null, unread_count: 1 }
+            : undefined;
     if (payload !== undefined) {
       return new Response(JSON.stringify({ data: payload, meta: null }), {
         status: 200,
@@ -132,17 +177,36 @@ class NotificationSceneEventSource extends EventTarget {
   }
 }
 
-export function NotificationInboxStyleBoundaryScene() {
+export function NotificationInboxStyleBoundaryScene({
+  selectChannel = true,
+  width = 900
+}: { selectChannel?: boolean; width?: number } = {}) {
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const originalEventSource = globalThis.EventSource;
     globalThis.EventSource =
       NotificationSceneEventSource as unknown as typeof EventSource;
+    localStorage.setItem(
+      `resizable-drawer:width:${window.location.pathname}`,
+      String(width)
+    );
     root.current?.querySelector('button')?.click();
+    const observer = new MutationObserver(() => {
+      const channel = document.querySelector<HTMLButtonElement>(
+        '.notification-inbox__channel'
+      );
+      if (selectChannel && channel) {
+        channel.click();
+        observer.disconnect();
+      }
+    });
+    if (selectChannel)
+      observer.observe(document.body, { childList: true, subtree: true });
     return () => {
+      observer.disconnect();
       globalThis.EventSource = originalEventSource;
     };
-  }, []);
+  }, [selectChannel, width]);
   return (
     <div ref={root} data-testid="notification-bell-scene">
       <NotificationBell />

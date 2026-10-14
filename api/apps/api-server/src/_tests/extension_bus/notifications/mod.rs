@@ -146,7 +146,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(instance.record.config_json.get("token").is_none());
     assert_eq!(instance.record.configured_secret_fields, ["token"]);
     let output = service
-        .send(&actor, id, json!({"text":"hello"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"hello"}),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -156,6 +161,36 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(!serde_json::to_string(&output)
         .unwrap()
         .contains("private-notification-token"));
+    // A provider can accept externally while the final durable log update fails. The caller
+    // receives an error, but the invocation must remain pending rather than become failure.
+    sqlx::query("CREATE FUNCTION reject_notification_log_finalize() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture finalize unavailable'; END $$").execute(state.store.pool()).await.unwrap();
+    sqlx::query("CREATE TRIGGER notification_log_finalize_fixture BEFORE UPDATE ON notification_send_logs FOR EACH ROW EXECUTE FUNCTION reject_notification_log_finalize()").execute(state.store.pool()).await.unwrap();
+    assert!(service
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"accepted-log-write-fails"})
+        )
+        .await
+        .is_err());
+    sqlx::query("DROP TRIGGER notification_log_finalize_fixture ON notification_send_logs")
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    let pending = service
+        .logs(
+            &actor,
+            control_plane::ports::NotificationLogListInput {
+                status: Some("pending".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(pending.total, 1);
+    assert!(pending.items[0].failure_code.is_none());
+    assert!(pending.items[0].completed_at.is_none());
     let changed = service
         .patch_instance(
             &actor,
@@ -170,7 +205,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert_eq!(changed.record.configured_secret_fields, ["token"]);
     assert_eq!(
         service
-            .send(&actor, id, json!({"text":"saved"}))
+            .send(
+                &actor,
+                domain::NotificationSource::Api,
+                id,
+                json!({"text":"saved"})
+            )
             .await
             .unwrap()
             .result["delivery_id"],
@@ -182,13 +222,21 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         json!({"text":"fixture-secret-output"}),
         json!({"text":"fixture-provider-error"}),
     ] {
-        let error = service.send(&actor, id, input).await.unwrap_err();
+        let error = service
+            .send(&actor, domain::NotificationSource::Api, id, input)
+            .await
+            .unwrap_err();
         assert!(!error.to_string().contains("private-notification-token"));
     }
     let mut foreign = actor.clone();
     foreign.current_workspace_id = Uuid::now_v7();
     assert!(service
-        .send(&foreign, id, json!({"text":"foreign"}))
+        .send(
+            &foreign,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"foreign"})
+        )
         .await
         .is_err());
     service
@@ -203,7 +251,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         .await
         .unwrap();
     assert!(service
-        .send(&actor, id, json!({"text":"disabled"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"disabled"})
+        )
         .await
         .is_err());
     service
@@ -228,7 +281,12 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     assert!(!retained.available);
     assert_eq!(retained.record.config_json["channel"], "alerts");
     assert!(service
-        .send(&actor, id, json!({"text":"unavailable"}))
+        .send(
+            &actor,
+            domain::NotificationSource::Api,
+            id,
+            json!({"text":"unavailable"})
+        )
         .await
         .is_err());
     let count: i64 = sqlx::query_scalar(
@@ -241,4 +299,33 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
     .unwrap();
     assert_eq!(count, 1);
     runtime.host.stop().await.unwrap();
+    let logs = service.logs(&actor, Default::default()).await.unwrap();
+    assert_eq!(
+        logs.items.iter().filter(|l| l.status == "success").count(),
+        2
+    );
+    assert_eq!(
+        logs.items.iter().filter(|l| l.status == "unknown").count(),
+        3
+    );
+    assert_eq!(
+        logs.items
+            .iter()
+            .filter(|l| l.failure_code.as_deref() == Some("provider_output_invalid"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        logs.items
+            .iter()
+            .filter(|l| l.failure_code.as_deref() == Some("provider_result_unknown"))
+            .count(),
+        1
+    );
+    let safe_json = serde_json::to_string(&logs).unwrap();
+    assert!(!safe_json.contains("private-notification-token"));
+    assert!(logs
+        .items
+        .iter()
+        .all(|log| log.title.is_none() && log.content.is_none()));
 }

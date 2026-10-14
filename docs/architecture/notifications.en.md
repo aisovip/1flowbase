@@ -35,3 +35,13 @@ Published and resumed runs retain their frozen actor/workspace even if the user'
 `/api/console/notifications` owns type discovery, instance CRUD/send, recipient messages, unread counts, read/read-all, and refresh events. Settings methods have independent console operations; authenticated types and recipient inbox APIs do not require member-management permission. Business HTTP enters the Canonical Interface and typed Handler. Events is a read-only protocol control entry.
 
 Real package intake, PostgreSQL, independent grants and SDK binary fixtures cover sends, schema failures, secret redaction and retained unavailable instances. Actual acceptance evidence is recorded under the task's `tmp/test-governance/`; examples and source fixtures alone do not constitute a test pass.
+
+## Send logs and personal channels
+
+Every authorized workspace send persists one pending `notification_send_logs` fact before validation or execution. The shared `NotificationSenderPort` receives a trusted `api` or `workflow` source from its caller; HTTP bodies cannot select it. Instance and actor UUIDs have no foreign keys and historical sends are not backfilled. Missing instance names/types are nullable. Log list/get have independent workspace-scoped settings operations.
+
+System messages and log success commit in one transaction, recording only safe system title/content and deduplicated recipient count. Plugin config, input, result and raw errors are never logged. Pre-send instance/type/plugin/input/config/recipient rejection has a fixed failure code. Provider errors may follow an external effect and become unknown/provider_result_unknown. Unsafe or schema-invalid provider output becomes unknown/provider_output_invalid. Failed finalization leaves pending rather than asserting definite failure.
+
+The channels endpoint aggregates only the current workspace and authenticated recipient. It applies all/unread/read before choosing each channel's latest message, orders by that latest time, and independently counts all unread messages per channel. Cursor pages are bounded to 100. Messages support instance_id/read_status; explicit read_status takes precedence over the retained unread_only parameter. LEFT JOIN preserves deleted-instance history with deleted=true, display_name='Deleted notification channel', type_code='system', because the inbox table contains only system messages.
+
+Message unread clears only the recipient's read_at. Channel read-all changes only that recipient/channel, including deleted-channel history. Both publish recipient/workspace refresh signals. Existing global read-all remains available.

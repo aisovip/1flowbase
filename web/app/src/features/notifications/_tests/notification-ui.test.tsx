@@ -80,6 +80,9 @@ let filteredInstances: NotificationInstance[] | undefined;
 let read_at: string | null;
 let rejectRead: boolean;
 let rejectStatus: boolean;
+let secondReadAt: string | null;
+let serverPagination: boolean;
+let rejectSnapshots: boolean;
 let statusRequest: Promise<void> | undefined;
 let calls: Array<{
   url: string;
@@ -102,6 +105,9 @@ beforeEach(() => {
   read_at = null;
   rejectRead = false;
   rejectStatus = false;
+  secondReadAt = null;
+  serverPagination = false;
+  rejectSnapshots = false;
   statusRequest = undefined;
   calls = [];
   SignalStream.instances = [];
@@ -123,14 +129,30 @@ beforeEach(() => {
         ? (JSON.parse(String(init.body)) as Record<string, unknown>)
         : undefined;
       calls.push({ url, method, body });
+      if (
+        rejectSnapshots &&
+        (url.includes('/channels?') || url.includes('/messages?'))
+      )
+        return new Response(
+          JSON.stringify({
+            error: { code: 'unavailable', message: 'Unavailable' }
+          }),
+          { status: 503, headers: { 'content-type': 'application/json' } }
+        );
+      const params = new URL(url, 'http://localhost').searchParams;
+      const second = params.get('instance_id') === 'instance-2';
       const message = {
-        id: 'message-1',
+        id: second ? 'message-2' : 'message-1',
         workspace_id: 'workspace-1',
-        instance_id: instance.id,
+        instance_id: second ? 'instance-2' : instance.id,
         recipient_user_id: 'user-1',
-        title: '发布完成',
+        title: second
+          ? '另一渠道消息'
+          : params.get('cursor')
+            ? '第二页消息'
+            : '发布完成',
         content: '流程运行成功',
-        read_at,
+        read_at: second ? secondReadAt : read_at,
         created_at: instance.created_at
       };
       let data: unknown;
@@ -161,7 +183,46 @@ beforeEach(() => {
         data = instance;
       } else if (url.endsWith('/unread-count'))
         data = { unread_count: read_at ? 0 : 1 };
-      else if (url.endsWith('/read') || url.endsWith('/read-all')) {
+      else if (url.includes('/channels?')) {
+        const items = [
+          {
+            instance_id: instance.id,
+            display_name: instance.display_name,
+            type_code: 'system',
+            deleted: false,
+            latest_title: '最新消息摘要',
+            latest_content: '渠道一内容',
+            latest_created_at: instance.created_at,
+            unread_count: read_at ? 0 : 1
+          },
+          {
+            instance_id: 'instance-2',
+            display_name: '另一渠道',
+            type_code: 'system',
+            deleted: true,
+            latest_title: '另一消息摘要',
+            latest_content: '渠道二内容',
+            latest_created_at: instance.created_at,
+            unread_count: secondReadAt ? 0 : 1
+          }
+        ].filter((item) =>
+          params.get('read_status') === 'unread'
+            ? item.unread_count > 0
+            : params.get('read_status') === 'read'
+              ? item.unread_count === 0
+              : true
+        );
+        data = {
+          items: serverPagination
+            ? items.slice(
+                params.get('cursor') ? 1 : 0,
+                params.get('cursor') ? 2 : 1
+              )
+            : items,
+          next_cursor:
+            serverPagination && !params.get('cursor') ? 'channel-next' : null
+        };
+      } else if (url.endsWith('/unread')) {
         if (rejectRead)
           return new Response(
             JSON.stringify({
@@ -169,15 +230,32 @@ beforeEach(() => {
             }),
             { status: 403, headers: { 'content-type': 'application/json' } }
           );
-        read_at = '2026-10-13T01:00:00Z';
+        read_at = null;
+        data = { ...message, read_at };
+      } else if (url.endsWith('/read') || url.endsWith('/read-all')) {
+        if (rejectRead)
+          return new Response(
+            JSON.stringify({
+              error: { code: 'forbidden', message: 'Forbidden' }
+            }),
+            { status: 403, headers: { 'content-type': 'application/json' } }
+          );
+        if (url.includes('/channels/instance-2/'))
+          secondReadAt = '2026-10-13T01:00:00Z';
+        else read_at = '2026-10-13T01:00:00Z';
         data = url.endsWith('/read-all')
           ? { updated_count: 1 }
           : { ...message, read_at };
       } else if (url.includes('/messages?'))
         data = {
-          items: [message],
-          next_cursor: null,
-          unread_count: read_at ? 0 : 1
+          items:
+            (params.get('read_status') === 'read' && !message.read_at) ||
+            (params.get('read_status') === 'unread' && message.read_at)
+              ? []
+              : [message],
+          next_cursor:
+            serverPagination && !params.get('cursor') ? 'message-next' : null,
+          unread_count: message.read_at ? 0 : 1
         };
       else throw new Error(`Unexpected route ${url}`);
       return new Response(JSON.stringify({ data, meta: null }), {
@@ -353,9 +431,15 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   test('marks messages read through HTTP and refetches after both a signal and reconnect', async () => {
     const view = renderUI(<NotificationBell />);
     fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
     await screen.findByText('发布完成');
     fireEvent.click(screen.getByRole('button', { name: '标为已读' }));
-    await screen.findByText('已读', { exact: true });
+    await screen.findByText('已读', {
+      exact: true,
+      selector: '.ant-badge-status-text'
+    });
     const source = SignalStream.instances[0];
     expect(source.options).toEqual({ withCredentials: true });
     const before = calls.filter((call) =>
@@ -381,7 +465,12 @@ describe('notification management and inbox AC-001/003/004/006', () => {
         calls.filter((call) => call.url.includes('/messages?')).length
       ).toBeGreaterThan(after)
     );
-    expect(screen.getByText('已读', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText('已读', {
+        exact: true,
+        selector: '.ant-badge-status-text'
+      })
+    ).toBeInTheDocument();
     view.unmount();
     expect(source.close).toHaveBeenCalledOnce();
   });
@@ -389,9 +478,17 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     rejectRead = true;
     renderUI(<NotificationBell />);
     fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
     fireEvent.click(await screen.findByRole('button', { name: '标为已读' }));
     await screen.findByText('消息操作失败，请刷新后重试。');
-    expect(screen.getByText('未读', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText('未读', {
+        exact: true,
+        selector: '.ant-badge-status-text'
+      })
+    ).toBeInTheDocument();
     expect(read_at).toBeNull();
     expect(calls.filter((call) => call.method === 'POST')[0].url).toContain(
       '/messages/message-1/read'
@@ -400,9 +497,15 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   test('marks all read and closes the previous actor connection when session scope changes', async () => {
     renderUI(<NotificationBell />);
     fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+    );
     await screen.findByText('发布完成');
     fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
-    await screen.findByText('已读', { exact: true });
+    await screen.findByText('已读', {
+      exact: true,
+      selector: '.ant-badge-status-text'
+    });
     const source = SignalStream.instances[0];
     act(() =>
       useAuthStore.setState({
@@ -412,4 +515,122 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     await waitFor(() => expect(source.close).toHaveBeenCalledOnce());
     expect(SignalStream.instances).toHaveLength(2);
   });
+});
+
+test('selects channels without writes, confines all-read to the selected channel and permits marking unread', async () => {
+  renderUI(<NotificationBell />);
+  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ })
+  );
+  await screen.findByRole('button', { name: '另一渠道消息' });
+  expect(calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
+  await waitFor(() =>
+    expect(calls.find((call) => call.method === 'POST')?.url).toContain(
+      '/channels/instance-2/read-all'
+    )
+  );
+  expect(read_at).toBeNull();
+  expect(calls.some((call) => call.url.endsWith('/messages/read-all'))).toBe(
+    false
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+  );
+  fireEvent.click(await screen.findByRole('button', { name: '发布完成' }));
+  await screen.findByRole('button', { name: '标为未读' });
+  fireEvent.click(screen.getByRole('button', { name: '标为未读' }));
+  await screen.findByRole('button', { name: '标为已读' });
+  expect(read_at).toBeNull();
+  expect(
+    calls.some((call) => call.url.endsWith('/messages/message-1/unread'))
+  ).toBe(true);
+});
+test('filters both backend lists and resets both cursor pages', async () => {
+  serverPagination = true;
+  renderUI(<NotificationBell />);
+  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+  );
+  await screen.findByRole('button', { name: '发布完成' });
+  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[1]);
+  await screen.findByRole('button', { name: '第二页消息' });
+  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[0]);
+  await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ });
+  fireEvent.click(screen.getByRole('tab', { name: '未读' }));
+  await waitFor(() => {
+    for (const path of ['/channels?', '/messages?']) {
+      const call = calls.filter((call) => call.url.includes(path)).at(-1)!;
+      const params = new URL(call.url, 'http://localhost').searchParams;
+      expect(params.get('read_status')).toBe('unread');
+      expect(params.has('cursor')).toBe(false);
+    }
+  });
+  expect(
+    await screen.findByRole('button', { name: '发布完成' })
+  ).toBeInTheDocument();
+});
+test('clears the previous workspace selection before requesting scoped snapshots', async () => {
+  renderUI(<NotificationBell />);
+  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+  );
+  await screen.findByRole('button', { name: '发布完成' });
+  const count = calls.length;
+  act(() =>
+    useAuthStore.setState({
+      actor: {
+        ...useAuthStore.getState().actor!,
+        current_workspace_id: 'workspace-2'
+      }
+    })
+  );
+  await screen.findByText('请选择通知渠道');
+  await waitFor(() => expect(SignalStream.instances).toHaveLength(2));
+  expect(
+    calls.slice(count).some((call) => call.url.includes('/messages?'))
+  ).toBe(false);
+  expect(
+    screen.queryByRole('button', { name: '发布完成' })
+  ).not.toBeInTheDocument();
+});
+
+test('preserves the HTTP snapshot after a failed page fetch and does not falsify failed channel or unread writes', async () => {
+  serverPagination = true;
+  renderUI(<NotificationBell />);
+  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+  );
+  await screen.findByRole('button', { name: '发布完成' });
+  rejectRead = true;
+  fireEvent.click(screen.getByRole('button', { name: '全部已读' }));
+  await screen.findByText('消息操作失败，请刷新后重试。');
+  expect(read_at).toBeNull();
+  expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
+  rejectRead = false;
+  fireEvent.click(screen.getByRole('button', { name: '发布完成' }));
+  await screen.findByRole('button', { name: '标为未读' });
+  rejectRead = true;
+  fireEvent.click(screen.getByRole('button', { name: '标为未读' }));
+  await screen.findByText('消息操作失败，请刷新后重试。');
+  expect(read_at).not.toBeNull();
+  expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();
+  rejectSnapshots = true;
+  fireEvent.click(screen.getAllByRole('button', { name: '下一页' })[1]);
+  await waitFor(() =>
+    expect(calls.some((call) => call.url.includes('cursor=message-next'))).toBe(
+      true
+    )
+  );
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('button', { name: '下一页' })[1]
+    ).not.toBeDisabled()
+  );
+  expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();
 });

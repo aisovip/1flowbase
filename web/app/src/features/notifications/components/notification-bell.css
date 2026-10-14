@@ -1,8 +1,143 @@
 .notification-inbox__body {
+  container-type: inline-size;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.notification-inbox__workspace {
+  display: grid;
+  grid-template-columns: 350px minmax(0, 1fr);
+  min-height: min(640px, calc(100dvh - 180px));
+}
+.notification-inbox__channels {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-inline-end: 1px solid var(--border-subtle);
+  padding-inline-end: 16px;
+}
+.notification-inbox__messages {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: 16px;
+}
+.notification-inbox__channel-list,
+.notification-inbox__message-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  max-height: calc(100dvh - 280px);
+}
+.notification-inbox__channel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+}
+.notification-inbox__channel[aria-pressed='true'] {
+  background: var(--bg-selected);
+}
+.notification-inbox__channel:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.notification-inbox__channel-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.notification-inbox__summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.notification-inbox__muted {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.notification-inbox__toolbar {
+  min-height: 48px;
+  margin-bottom: 16px;
+}
+.notification-inbox__message-title {
+  padding-inline: 0;
+  white-space: normal;
+  height: auto;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font-weight: 600;
 }
 .notification-inbox__content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin-top: 12px;
+}
+.notification-inbox__pagination {
+  padding-top: 12px;
+}
+.notification-inbox__back {
+  display: none;
+}
+@media (max-width: 767px) {
+  .notification-inbox__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notification-inbox__channels {
+    padding-inline-end: 0;
+    border-inline-end: 0;
+  }
+  .notification-inbox__messages {
+    display: none;
+    padding-inline-start: 0;
+  }
+  .notification-inbox__workspace--selected .notification-inbox__channels {
+    display: none;
+  }
+  .notification-inbox__workspace--selected .notification-inbox__messages {
+    display: flex;
+  }
+  .notification-inbox__back {
+    display: inline-flex;
+    min-height: 44px;
+  }
+  .notification-inbox__message-title {
+    min-height: 44px;
+  }
+}
+
+@container (max-width: 640px) {
+  .notification-inbox__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notification-inbox__channels {
+    padding-inline-end: 0;
+    border-inline-end: 0;
+  }
+  .notification-inbox__messages {
+    display: none;
+    padding-inline-start: 0;
+  }
+  .notification-inbox__workspace--selected .notification-inbox__channels {
+    display: none;
+  }
+  .notification-inbox__workspace--selected .notification-inbox__messages {
+    display: flex;
+  }
+  .notification-inbox__back {
+    display: inline-flex;
+    min-height: 44px;
+  }
+  .notification-inbox__message-title {
+    min-height: 44px;
+  }
 }

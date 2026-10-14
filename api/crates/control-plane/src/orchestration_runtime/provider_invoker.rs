@@ -2364,7 +2364,7 @@ where
             .filter(|input| input.is_object())
             .ok_or_else(|| anyhow!("notification bindings.input must resolve to an object"))?;
         match sender
-            .send(&context.data_model.actor, instance_id, input.clone())
+            .send(&context.data_model.actor, crate::notifications::NotificationSource::Workflow, instance_id, input.clone())
             .await
         {
             Ok(result) => Ok(

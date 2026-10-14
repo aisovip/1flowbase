@@ -24,6 +24,26 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()
         .route(
+            "/notifications/channels",
+            console_get(channels, Op("notifications.channels.list".into())),
+        )
+        .route(
+            "/notifications/channels/:instance_id/read-all",
+            console_post(read_channel, Op("notifications.channels.read_all".into())),
+        )
+        .route(
+            "/notifications/messages/:notification_id/unread",
+            console_post(mark_unread, Op("notifications.messages.unread".into())),
+        )
+        .route(
+            "/notifications/logs",
+            console_get(logs, Op("notifications.logs.list".into())),
+        )
+        .route(
+            "/notifications/logs/:log_id",
+            console_get(log, Op("notifications.logs.get".into())),
+        )
+        .route(
             "/notifications/types",
             console_get(types, Op("notifications.types.list".into())),
         )
@@ -71,7 +91,14 @@ async fn invoke(
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
     let credential = match &input {
-        Input::Types | Input::List(_) | Input::Get(_) | Input::Messages(_) | Input::UnreadCount => {
+        Input::Types
+        | Input::List(_)
+        | Input::Get(_)
+        | Input::Messages(_)
+        | Input::UnreadCount
+        | Input::Logs(_)
+        | Input::Log(_)
+        | Input::Channels(_) => {
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
         }
         Input::Create(_)
@@ -79,7 +106,9 @@ async fn invoke(
         | Input::Delete(_)
         | Input::Send(..)
         | Input::Read(_)
-        | Input::ReadAll => {
+        | Input::ReadAll
+        | Input::ReadChannel(_)
+        | Input::MarkUnread(_) => {
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
                 state,
                 headers,
@@ -181,6 +210,8 @@ pub struct MessageQuery {
     pub cursor: Option<String>,
     pub page_size: Option<u32>,
     pub unread_only: Option<bool>,
+    pub instance_id: Option<Uuid>,
+    pub read_status: Option<domain::NotificationReadStatus>,
 }
 pub async fn messages(
     State(state): State<Arc<ApiState>>,
@@ -195,7 +226,46 @@ pub async fn messages(
             cursor: query.cursor,
             page_size: query.page_size,
             unread_only: query.unread_only.unwrap_or(false),
+            instance_id: query.instance_id,
+            read_status: query.read_status,
         }),
     )
     .await
+}
+
+pub async fn logs(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<control_plane::ports::NotificationLogListInput>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "logs.list", Input::Logs(query)).await
+}
+pub async fn log(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "logs.get", Input::Log(id)).await
+}
+
+pub async fn channels(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<control_plane::ports::NotificationChannelListInput>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "channels.list", Input::Channels(query)).await
+}
+pub async fn read_channel(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "channels.read_all", Input::ReadChannel(id)).await
+}
+pub async fn mark_unread(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(state, headers, "messages.unread", Input::MarkUnread(id)).await
 }

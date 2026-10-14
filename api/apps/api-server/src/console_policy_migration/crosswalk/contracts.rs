@@ -11,6 +11,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "core.authenticated",
         &[
             "notifications.events.subscribe",
+            "notifications.channels.list",
+            "notifications.channels.read_all",
+            "notifications.messages.unread",
             "notifications.messages.list",
             "notifications.messages.read",
             "notifications.messages.read_all",
@@ -99,6 +102,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.instances.get",
             "notifications.instances.list",
             "notifications.instances.send",
+            "notifications.logs.list",
+            "notifications.logs.get",
             "notifications.instances.update",
         ],
     ),
@@ -470,6 +475,8 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "notifications.instances.get",
     "notifications.instances.list",
     "notifications.instances.send",
+    "notifications.logs.list",
+    "notifications.logs.get",
     "notifications.instances.update",
     // Log deletion is new destructive authority, never inferred from legacy application grants.
     "applications.logs.delete",

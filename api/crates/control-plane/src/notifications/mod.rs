@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, sync::Arc};
 use uuid::Uuid;
 
-pub use domain::NotificationSendResult;
+pub use domain::{NotificationSendResult, NotificationSource};
 pub const NOTIFICATIONS_SETTINGS_FEATURE: &str = "system.notifications";
 
 #[async_trait]
@@ -27,6 +27,7 @@ pub trait NotificationSenderPort: Send + Sync {
     async fn send(
         &self,
         actor: &ActorContext,
+        source: NotificationSource,
         instance_id: Uuid,
         input: Value,
     ) -> Result<NotificationSendResult>;
@@ -418,6 +419,52 @@ where
         }
         Ok(())
     }
+    pub async fn logs(
+        &self,
+        actor: &ActorContext,
+        input: crate::ports::NotificationLogListInput,
+    ) -> Result<domain::NotificationSendLogPage> {
+        self.manage(actor, "notifications.logs.list").await?;
+        self.repository
+            .list_notification_send_logs(actor.current_workspace_id, input)
+            .await
+    }
+    pub async fn log(&self, actor: &ActorContext, id: Uuid) -> Result<domain::NotificationSendLog> {
+        self.manage(actor, "notifications.logs.get").await?;
+        self.repository
+            .get_notification_send_log(actor.current_workspace_id, id)
+            .await?
+            .ok_or_else(|| Error::NotFound("notification_send_log").into())
+    }
+    pub async fn channels(
+        &self,
+        actor: &ActorContext,
+        input: crate::ports::NotificationChannelListInput,
+    ) -> Result<domain::NotificationChannelPage> {
+        self.ensure_actor(actor).await?;
+        self.repository
+            .list_notification_channels(actor.current_workspace_id, actor.user_id, input)
+            .await
+    }
+    pub async fn unread(&self, actor: &ActorContext, id: Uuid) -> Result<SystemNotificationRecord> {
+        self.ensure_actor(actor).await?;
+        let record = self
+            .repository
+            .mark_system_notification_unread(actor.current_workspace_id, actor.user_id, id)
+            .await?
+            .ok_or(Error::NotFound("notification_message"))?;
+        self.publish(actor.current_workspace_id, &[actor.user_id]);
+        Ok(record)
+    }
+    pub async fn read_channel(&self, actor: &ActorContext, instance_id: Uuid) -> Result<u64> {
+        self.ensure_actor(actor).await?;
+        let count = self
+            .repository
+            .mark_notification_channel_read(actor.current_workspace_id, actor.user_id, instance_id)
+            .await?;
+        self.publish(actor.current_workspace_id, &[actor.user_id]);
+        Ok(count)
+    }
     pub async fn messages(
         &self,
         actor: &ActorContext,
@@ -468,11 +515,89 @@ where
     async fn send(
         &self,
         actor: &ActorContext,
+        source: NotificationSource,
         instance_id: Uuid,
         input: Value,
     ) -> Result<NotificationSendResult> {
         self.ensure_actor(actor).await?;
-        let instance = self.record(actor, instance_id).await?;
+        let log_id = Uuid::now_v7();
+        // Snapshot only public instance identity. Never persist raw invocation/provider data.
+        let instance = self
+            .repository
+            .get_notification_instance(actor.current_workspace_id, instance_id)
+            .await?;
+        self.repository
+            .create_notification_send_log(domain::NotificationSendLog {
+                id: log_id,
+                workspace_id: actor.current_workspace_id,
+                actor_user_id: actor.user_id,
+                instance_id,
+                display_name: instance.as_ref().map(|r| r.display_name.clone()),
+                type_code: instance.as_ref().map(|r| r.type_code.clone()),
+                source,
+                status: "pending".into(),
+                failure_code: None,
+                title: None,
+                content: None,
+                recipient_count: None,
+                created_at: time::OffsetDateTime::now_utc(),
+                completed_at: None,
+            })
+            .await?;
+        let outcome = self
+            .send_logged(actor, instance_id, instance, input, log_id)
+            .await;
+        if let Err(error) = &outcome {
+            let terminal = error.downcast_ref::<Error>().and_then(|error| match error {
+                Error::NotFound("notification_instance") => Some(("failure", "instance_missing")),
+                Error::Conflict("instance_disabled") => Some(("failure", "instance_disabled")),
+                Error::Conflict("type_unavailable") => Some(("failure", "type_unavailable")),
+                Error::Conflict("plugin_unavailable") => Some(("failure", "plugin_unavailable")),
+                Error::InvalidInput("notification_input_schema" | "notification_recipients") => {
+                    Some(("failure", "input_invalid"))
+                }
+                Error::Conflict("notification_config")
+                | Error::InvalidInput("notification_config_schema") => {
+                    Some(("failure", "config_invalid"))
+                }
+                Error::UpstreamUnavailable("notification_provider_failed") => {
+                    Some(("unknown", "provider_result_unknown"))
+                }
+                Error::UpstreamUnavailable("notification_provider_unsafe_output")
+                | Error::Conflict("notification_output_schema") => {
+                    Some(("unknown", "provider_output_invalid"))
+                }
+                _ => None,
+            });
+            if let Some((status, code)) = terminal {
+                // Failure to finalize cannot erase a durable pending invocation.
+                let _ = self
+                    .repository
+                    .complete_notification_send_log(
+                        actor.current_workspace_id,
+                        log_id,
+                        status,
+                        Some(code),
+                    )
+                    .await;
+            }
+        }
+        outcome
+    }
+}
+impl<R> NotificationService<R>
+where
+    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
+{
+    async fn send_logged(
+        &self,
+        actor: &ActorContext,
+        instance_id: Uuid,
+        instance: Option<NotificationInstanceRecord>,
+        input: Value,
+        log_id: Uuid,
+    ) -> Result<NotificationSendResult> {
+        let instance = instance.ok_or(Error::NotFound("notification_instance"))?;
         if instance.status != NotificationInstanceStatus::Enabled {
             return Err(Error::Conflict("instance_disabled").into());
         }
@@ -507,6 +632,7 @@ where
                     actor.current_workspace_id,
                     instance_id,
                     &users,
+                    log_id,
                     &input.title,
                     &input.content,
                 )
@@ -571,6 +697,11 @@ where
             .descriptor
             .validate_output(&result)
             .map_err(|_| Error::Conflict("notification_output_schema"))?;
+        if instance.type_code != "system" {
+            self.repository
+                .complete_notification_send_log(actor.current_workspace_id, log_id, "success", None)
+                .await?;
+        }
         Ok(NotificationSendResult {
             instance_id,
             type_code: instance.type_code,

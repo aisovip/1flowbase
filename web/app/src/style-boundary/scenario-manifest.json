@@ -2311,7 +2311,7 @@
       {
         "id": "drawer-visible",
         "type": "fully_visible",
-        "subjectSelector": ".notification-inbox"
+        "subjectSelector": ".notification-inbox .ant-drawer-content-wrapper"
       },
       {
         "id": "content-within-drawer",
@@ -2370,7 +2370,7 @@
       {
         "id": "drawer-visible",
         "type": "fully_visible",
-        "subjectSelector": ".notification-inbox"
+        "subjectSelector": ".notification-inbox .ant-drawer-content-wrapper"
       },
       {
         "id": "content-within-drawer",
@@ -2479,6 +2479,267 @@
         "id": "toolbar-visible",
         "type": "fully_visible",
         "subjectSelector": ".notifications-page__table .data-table__toolbar"
+      }
+    ]
+  },
+  {
+    "id": "page.notification-logs.desktop",
+    "kind": "page",
+    "title": "Notification logs desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
+      "web/app/src/features/settings/pages/notifications/notifications-page.css",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "page",
+        "selector": ".notifications-page",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "table",
+        "selector": ".notifications-page__table",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "table-contained",
+        "type": "within_container",
+        "subjectSelector": ".notifications-page__table",
+        "containerSelector": ".notifications-page"
+      }
+    ]
+  },
+  {
+    "id": "page.notification-logs.mobile",
+    "kind": "page",
+    "title": "Notification logs mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/pages/notifications/NotificationsPage.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceDrawer.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationInstanceFilters.tsx",
+      "web/app/src/features/settings/pages/notifications/notifications-page.css",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx",
+      "web/app/src/features/settings/pages/notifications/NotificationLogs.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "page",
+        "selector": ".notifications-page",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "table",
+        "selector": ".notifications-page__table",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "table-contained",
+        "type": "within_container",
+        "subjectSelector": ".notifications-page__table",
+        "containerSelector": ".notifications-page"
+      }
+    ]
+  },
+  {
+    "id": "component.notification-channels.desktop",
+    "kind": "component",
+    "title": "Notification channel list desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "web/app/src/features/notifications/components/notification-bell.css",
+      "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "bell",
+        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "propertyAssertions": []
+      },
+      {
+        "id": "inbox-body",
+        "selector": ".notification-inbox .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "channel-list",
+        "selector": ".notification-inbox__channel",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notification-inbox .ant-drawer-content-wrapper"
+      }
+    ]
+  },
+  {
+    "id": "component.notification-channels.mobile",
+    "kind": "component",
+    "title": "Notification channel list mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "web/app/src/features/notifications/components/notification-bell.css",
+      "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "bell",
+        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "propertyAssertions": []
+      },
+      {
+        "id": "inbox-body",
+        "selector": ".notification-inbox .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "channel-list",
+        "selector": ".notification-inbox__channel",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notification-inbox .ant-drawer-content-wrapper"
+      }
+    ]
+  },
+  {
+    "id": "component.notification-inbox.narrow-desktop",
+    "kind": "component",
+    "title": "Notification inbox at minimum drawer width",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/notifications/components/NotificationBell.tsx",
+      "web/app/src/features/notifications/components/notification-bell.css",
+      "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "web/app/src/style-boundary/scene-fixtures/notifications.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "bell",
+        "selector": "[data-testid=\"notification-bell-scene\"] button",
+        "propertyAssertions": []
+      },
+      {
+        "id": "inbox-body",
+        "selector": ".notification-inbox .ant-drawer-body",
+        "propertyAssertions": [
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      },
+      {
+        "id": "message-content",
+        "selector": ".notification-inbox__content",
+        "propertyAssertions": [
+          {
+            "property": "white-space",
+            "expected": "pre-wrap"
+          },
+          {
+            "property": "overflow-wrap",
+            "expected": "anywhere"
+          }
+        ]
+      },
+      {
+        "id": "back-to-channels",
+        "selector": ".notification-inbox__back",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "drawer-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".notification-inbox .ant-drawer-content-wrapper"
+      },
+      {
+        "id": "content-within-drawer",
+        "type": "within_container",
+        "subjectSelector": ".notification-inbox__content",
+        "containerSelector": ".notification-inbox .ant-drawer-body"
       }
     ]
   }
