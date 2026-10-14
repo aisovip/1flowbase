@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[OTLP / Langfuse 交换与 OpenLIT SDK 教程](otlp-exchange.zh-CN.md)
+
 新建日志应用默认启用“日志接收”，创建 API Key 并配置采集器后即可上传。可在应用管理或 API 页面随时停用接收。
 
 采集器分两步安装：先从远程扩展目录**安装到 1flowbase**，再打开“下载采集 CLI”详情，在运行 Codex 的本机执行命令。安装器、原生包、校验文件和文档均从当前 1flowbase 的版本固定 URL 下载；远程仓库不可用时，已安装版本仍可下载。“平台已安装”表示分发包已留存在平台，不表示用户本机已安装或在线。
