@@ -125,6 +125,12 @@ async function run(args) {
     stage = 'OTLP export and file import';
     const otlp = await request('POST', `/api/console/applications/${apps[0]}/logs/otlp/export`, { record_ids: ingested.record_ids });
     assert.ok(Array.isArray(otlp.resourceSpans), 'actual OTLP JSON resourceSpans');
+    const otlpSpans = otlp.resourceSpans.flatMap(resource => resource.scopeSpans.flatMap(scope => scope.spans));
+    assert.equal(otlpSpans.length, batch.events.length, 'all source events exported as spans');
+    assert.ok(otlpSpans.every(span => typeof span.traceId === 'string' && span.traceId), 'OTLP span Trace IDs');
+    const otlpTraceIds = [...new Set(otlpSpans.map(span => span.traceId))].sort();
+    const expectedTraceCount = new Set(batch.events.map(event => event.source_session_id)).size;
+    assert.equal(otlpTraceIds.length, expectedTraceCount, 'one trace per source session, task hierarchy retained as spans');
     const file = path.join(args.outDir, 'synthetic-otlp.json'); fs.writeFileSync(file, JSON.stringify(otlp, null, 2));
     const fromFile = JSON.parse(fs.readFileSync(file, 'utf8'));
     const imported = await request('POST', `/api/console/applications/${apps[1]}/logs/otlp/import`, { otlp: fromFile });
@@ -139,7 +145,9 @@ async function run(args) {
     const exported = await request('POST', `/api/console/applications/${apps[0]}/logs/langfuse/export`, { record_ids: ingested.record_ids, ...lfCredentials });
     assert.equal(exported.exported_records, 3);
     assert.equal(exported.exported_spans, batch.events.length);
-    assert.equal(exported.trace_ids.length, 3); receipt.trace_ids = exported.trace_ids;
+    assert.equal(exported.trace_ids.length, expectedTraceCount, 'Langfuse traces match source sessions');
+    assert.deepEqual([...new Set(exported.trace_ids)].sort(), otlpTraceIds, 'Langfuse and downloaded OTLP expose identical Trace IDs');
+    receipt.trace_ids = exported.trace_ids;
     check(stage, exported);
     stage = 'Langfuse worker persisted observations';
     const deadline = Date.now() + args.deadlineMs;
