@@ -1,8 +1,15 @@
-import { useMemo, useState, type HTMLAttributes } from 'react';
+import { useCallback, useMemo, useState, type HTMLAttributes } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Space, Table, Tag } from 'antd';
+import { App, Button, Flex, Space, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
+
+import {
+  DataTable,
+  DataTableColumnSettings,
+  type DataTableColumn
+} from '../../../../shared/ui/data-table/DataTable';
+import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
@@ -151,40 +158,238 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
       }
     });
   };
-  const openOfficial = (row: OfficialRow, mode: 'view' | 'copy') =>
-    setStudio({
-      mode,
-      templateId: null,
-      initialValue: {
-        provider_code: row.provider_code,
-        contribution_code: row.contribution_code,
-        name:
-          mode === 'copy'
-            ? `${row.title} - ${t('copy_name_suffix')}`
-            : row.title,
-        source: row.source,
-        language: row.language
+  const openOfficial = useCallback(
+    (row: OfficialRow, mode: 'view' | 'copy') =>
+      setStudio({
+        mode,
+        templateId: null,
+        initialValue: {
+          provider_code: row.provider_code,
+          contribution_code: row.contribution_code,
+          name:
+            mode === 'copy'
+              ? `${row.title} - ${t('copy_name_suffix')}`
+              : row.title,
+          source: row.source,
+          language: row.language
+        }
+      }),
+    [t]
+  );
+  const openManaged = useCallback(
+    (row: ManagedRow, mode: 'edit' | 'copy') =>
+      setStudio({
+        mode,
+        templateId: mode === 'edit' ? row.id : null,
+        managedTemplate: mode === 'edit' ? row : undefined,
+        initialValue: {
+          provider_code: row.provider_code,
+          contribution_code: row.contribution_code,
+          name:
+            mode === 'copy'
+              ? `${row.name} - ${t('copy_name_suffix')}`
+              : row.name,
+          source: row.latest_revision.source,
+          language: row.latest_revision.language
+        }
+      }),
+    [t]
+  );
+
+  const {
+    mutate: runAction,
+    mutateAsync: runActionAsync,
+    isPending: actionPending
+  } = action;
+  const columns = useMemo<Array<DataTableColumn<TemplateRow>>>(
+    () => [
+      {
+        key: 'name',
+        title: t('name'),
+        dataIndex: 'name',
+        width: 240,
+        minWidth: 180,
+        sizing: 'fill',
+        ellipsis: true,
+        mobileRole: 'title'
+      },
+      {
+        key: 'contribution',
+        title: t('contribution'),
+        width: 300,
+        ellipsis: true,
+        render: (_, row) => `${row.provider_code}/${row.contribution_code}`
+      },
+      {
+        key: 'source',
+        title: t('source'),
+        width: 110,
+        render: (_, row) => (
+          <Tag>{row.kind === 'official' ? t('official') : t('managed')}</Tag>
+        )
+      },
+      {
+        key: 'revision',
+        title: t('revision'),
+        dataIndex: 'revision',
+        width: 100,
+        minWidth: 80
+      },
+      {
+        key: 'status',
+        title: t('status'),
+        width: 170,
+        render: (_, row) => (
+          <Space>
+            <Tag color={row.status === 'published' ? 'green' : 'default'}>
+              {t(row.status)}
+            </Tag>
+            {row.is_default ? <Tag color="blue">{t('default')}</Tag> : null}
+          </Space>
+        )
+      },
+      {
+        key: 'actions',
+        title: t('actions'),
+        width: 340,
+        minWidth: 340,
+        mobileRole: 'actions',
+        render: (_, row) => (
+          <Space size={2}>
+            {row.kind === 'official' ? (
+              <Button
+                type="text"
+                size="small"
+                onClick={() => openOfficial(row, 'view')}
+              >
+                {t('view')}
+              </Button>
+            ) : (
+              <Button
+                type="text"
+                size="small"
+                disabled={!canManage}
+                onClick={() => openManaged(row, 'edit')}
+              >
+                {t('edit')}
+              </Button>
+            )}
+            <Button
+              type="text"
+              size="small"
+              disabled={!canManage}
+              onClick={() =>
+                row.kind === 'official'
+                  ? openOfficial(row, 'copy')
+                  : openManaged(row, 'copy')
+              }
+            >
+              {t('copy')}
+            </Button>
+            {row.kind === 'managed' ? (
+              <Button
+                type="text"
+                size="small"
+                disabled={!canManage || row.latest_revision.is_published}
+                onClick={() =>
+                  runAction(() =>
+                    publishSettingsUiTemplate(
+                      row.id,
+                      row.latest_revision.revision,
+                      requireToken(csrfToken)
+                    )
+                  )
+                }
+              >
+                {t('publish')}
+              </Button>
+            ) : null}
+            <Button
+              type="text"
+              size="small"
+              disabled={
+                !canManage ||
+                row.is_default ||
+                (row.kind === 'managed' && !row.published_revision)
+              }
+              onClick={() =>
+                runAction(() =>
+                  row.kind === 'official'
+                    ? resetSettingsUiTemplateDefault(
+                        {
+                          provider_code: row.provider_code,
+                          contribution_code: row.contribution_code
+                        },
+                        requireToken(csrfToken)
+                      )
+                    : setSettingsUiTemplateDefault(
+                        row.id,
+                        requireToken(csrfToken)
+                      )
+                )
+              }
+            >
+              {t('set_default')}
+            </Button>
+            {row.kind === 'managed' ? (
+              <Button
+                type="text"
+                size="small"
+                danger
+                disabled={!canManage || !csrfToken || actionPending}
+                onClick={async () => {
+                  await modal.confirm({
+                    title: t('delete_template_title'),
+                    content: t('delete_template_description', {
+                      name: row.name
+                    }),
+                    okText: t('delete'),
+                    cancelText: t('cancel'),
+                    okButtonProps: { danger: true },
+                    onOk: () =>
+                      runActionAsync(() =>
+                        deleteSettingsUiTemplate(
+                          row.id,
+                          requireToken(csrfToken)
+                        )
+                      )
+                  });
+                }}
+              >
+                {t('delete')}
+              </Button>
+            ) : null}
+          </Space>
+        )
       }
-    });
-  const openManaged = (row: ManagedRow, mode: 'edit' | 'copy') =>
-    setStudio({
-      mode,
-      templateId: mode === 'edit' ? row.id : null,
-      managedTemplate: mode === 'edit' ? row : undefined,
-      initialValue: {
-        provider_code: row.provider_code,
-        contribution_code: row.contribution_code,
-        name:
-          mode === 'copy' ? `${row.name} - ${t('copy_name_suffix')}` : row.name,
-        source: row.latest_revision.source,
-        language: row.latest_revision.language
-      }
-    });
+    ],
+    [
+      t,
+      canManage,
+      csrfToken,
+      modal,
+      runAction,
+      runActionAsync,
+      actionPending,
+      openOfficial,
+      openManaged
+    ]
+  );
+  const tableConfiguration = usePersistedDataTableConfiguration({
+    columns,
+    storageKey: 'settings.ui_management.code_templates'
+  });
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(rows.length / pageSize))
+  );
 
   return (
     <SettingsSectionSurface
       toolbar={
-        <Space wrap>
+        <Flex justify="space-between" align="center" gap={8} wrap>
           <Button
             type="primary"
             disabled={!canManage || !query.data?.default_template}
@@ -192,10 +397,20 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
           >
             {t('new_template')}
           </Button>
-        </Space>
+          <DataTableColumnSettings
+            columns={columns}
+            configuration={tableConfiguration}
+          />
+        </Flex>
       }
     >
-      <Table<TemplateRow>
+      <DataTable<TemplateRow>
+        columns={columns}
+        configuration={tableConfiguration}
+        page={currentPage}
+        pageSize={pageSize}
+        total={rows.length}
+        onPageChange={setPage}
         loading={query.isLoading}
         rowKey="key"
         onRow={(row) =>
@@ -203,140 +418,10 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
             'data-template-id': row.kind === 'managed' ? row.id : undefined
           }) as HTMLAttributes<HTMLTableRowElement>
         }
-        scroll={{ x: 980 }}
-        dataSource={rows}
-        columns={[
-          { title: t('name'), dataIndex: 'name' },
-          {
-            title: t('contribution'),
-            render: (_, row) => `${row.provider_code}/${row.contribution_code}`
-          },
-          {
-            title: t('source'),
-            render: (_, row) => (
-              <Tag>
-                {row.kind === 'official' ? t('official') : t('managed')}
-              </Tag>
-            )
-          },
-          { title: t('revision'), dataIndex: 'revision' },
-          {
-            title: t('status'),
-            render: (_, row) => (
-              <Space>
-                <Tag color={row.status === 'published' ? 'green' : 'default'}>
-                  {t(row.status)}
-                </Tag>
-                {row.is_default ? <Tag color="blue">{t('default')}</Tag> : null}
-              </Space>
-            )
-          },
-          {
-            title: t('actions'),
-            fixed: 'right',
-            render: (_, row) => (
-              <Space wrap>
-                {row.kind === 'official' ? (
-                  <Button
-                    size="small"
-                    onClick={() => openOfficial(row, 'view')}
-                  >
-                    {t('view')}
-                  </Button>
-                ) : (
-                  <Button
-                    size="small"
-                    disabled={!canManage}
-                    onClick={() => openManaged(row, 'edit')}
-                  >
-                    {t('edit')}
-                  </Button>
-                )}
-                <Button
-                  size="small"
-                  disabled={!canManage}
-                  onClick={() =>
-                    row.kind === 'official'
-                      ? openOfficial(row, 'copy')
-                      : openManaged(row, 'copy')
-                  }
-                >
-                  {t('copy')}
-                </Button>
-                {row.kind === 'managed' ? (
-                  <Button
-                    size="small"
-                    disabled={!canManage || row.latest_revision.is_published}
-                    onClick={() =>
-                      action.mutate(() =>
-                        publishSettingsUiTemplate(
-                          row.id,
-                          row.latest_revision.revision,
-                          requireToken(csrfToken)
-                        )
-                      )
-                    }
-                  >
-                    {t('publish')}
-                  </Button>
-                ) : null}
-                <Button
-                  size="small"
-                  disabled={
-                    !canManage ||
-                    row.is_default ||
-                    (row.kind === 'managed' && !row.published_revision)
-                  }
-                  onClick={() =>
-                    action.mutate(() =>
-                      row.kind === 'official'
-                        ? resetSettingsUiTemplateDefault(
-                            {
-                              provider_code: row.provider_code,
-                              contribution_code: row.contribution_code
-                            },
-                            requireToken(csrfToken)
-                          )
-                        : setSettingsUiTemplateDefault(
-                            row.id,
-                            requireToken(csrfToken)
-                          )
-                    )
-                  }
-                >
-                  {t('set_default')}
-                </Button>
-                {row.kind === 'managed' ? (
-                  <Button
-                    size="small"
-                    danger
-                    disabled={!canManage || !csrfToken || action.isPending}
-                    onClick={async () => {
-                      await modal.confirm({
-                        title: t('delete_template_title'),
-                        content: t('delete_template_description', {
-                          name: row.name
-                        }),
-                        okText: t('delete'),
-                        cancelText: t('cancel'),
-                        okButtonProps: { danger: true },
-                        onOk: () =>
-                          action.mutateAsync(() =>
-                            deleteSettingsUiTemplate(
-                              row.id,
-                              requireToken(csrfToken)
-                            )
-                          )
-                      });
-                    }}
-                  >
-                    {t('delete')}
-                  </Button>
-                ) : null}
-              </Space>
-            )
-          }
-        ]}
+        dataSource={rows.slice(
+          (currentPage - 1) * pageSize,
+          currentPage * pageSize
+        )}
       />
       {studio ? (
         <UiCodeTemplateStudio

@@ -430,7 +430,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('marks messages read through HTTP and refetches after both a signal and reconnect', async () => {
     const view = renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
     fireEvent.click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
@@ -477,7 +477,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   test('surfaces backend refusal without pretending the recipient read state changed', async () => {
     rejectRead = true;
     renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
     fireEvent.click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
@@ -496,7 +496,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
   });
   test('marks all read and closes the previous actor connection when session scope changes', async () => {
     renderUI(<NotificationBell />);
-    fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
     fireEvent.click(
       await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
     );
@@ -519,7 +519,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
 
 test('selects channels without writes, confines all-read to the selected channel and permits marking unread', async () => {
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /另一渠道.*另一消息摘要/ })
   );
@@ -550,7 +550,7 @@ test('selects channels without writes, confines all-read to the selected channel
 test('filters both backend lists and resets both cursor pages', async () => {
   serverPagination = true;
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
@@ -574,7 +574,7 @@ test('filters both backend lists and resets both cursor pages', async () => {
 });
 test('clears the previous workspace selection before requesting scoped snapshots', async () => {
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );
@@ -601,7 +601,7 @@ test('clears the previous workspace selection before requesting scoped snapshots
 test('preserves the HTTP snapshot after a failed page fetch and does not falsify failed channel or unread writes', async () => {
   serverPagination = true;
   renderUI(<NotificationBell />);
-  fireEvent.click(screen.getByRole('button', { name: '通知消息' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '通知消息' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
   );

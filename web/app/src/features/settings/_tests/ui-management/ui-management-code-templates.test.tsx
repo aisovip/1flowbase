@@ -1,3 +1,5 @@
+import '../../../../test/fixtures/rc-util-unique-ids';
+
 import { App } from 'antd';
 import {
   fireEvent,
@@ -333,7 +335,7 @@ describe('UiManagementPanel code templates', () => {
     expect(officialRow).not.toBeNull();
     expect(officialRow).toHaveTextContent(/查\s*看/);
     expect(officialRow).toHaveTextContent(/复\s*制/);
-    expect(officialRow).toHaveTextContent('设为默认');
+    expect(officialRow).toHaveTextContent('默认');
     expect(
       within(officialRow!).queryByRole('button', { name: /删\s*除/ })
     ).not.toBeInTheDocument();
@@ -628,7 +630,7 @@ describe('UiManagementPanel code templates', () => {
     const view = renderPanel();
     await screen.findByText('官方区块');
 
-    const defaultButtons = screen.getAllByRole('button', { name: '设为默认' });
+    const defaultButtons = screen.getAllByRole('button', { name: '默认' });
     expect(defaultButtons[0]).toBeDisabled();
     fireEvent.click(defaultButtons[1]!);
     await waitFor(() =>
@@ -675,7 +677,7 @@ describe('UiManagementPanel code templates', () => {
     });
     renderPanel();
     await screen.findByText('官方区块');
-    fireEvent.click(screen.getAllByRole('button', { name: '设为默认' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: '默认' })[0]!);
     await waitFor(() =>
       expect(
         uiManagementApi.resetSettingsUiTemplateDefault

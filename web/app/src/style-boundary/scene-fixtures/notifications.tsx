@@ -190,7 +190,9 @@ export function NotificationInboxStyleBoundaryScene({
       `resizable-drawer:width:${window.location.pathname}`,
       String(width)
     );
-    root.current?.querySelector('button')?.click();
+    root.current
+      ?.querySelector<HTMLElement>('.notification-bell-menu [role="menuitem"]')
+      ?.click();
     const observer = new MutationObserver(() => {
       const channel = document.querySelector<HTMLButtonElement>(
         '.notification-inbox__channel'

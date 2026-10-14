@@ -80,6 +80,7 @@ function AppShellFrameContent({
                 pageKey={pathname}
               />
             </span>
+            <NotificationBell />
             {secondaryActions.map((route) => (
               <span key={route.id}>
                 {route.id === 'settings' ? (
@@ -100,7 +101,6 @@ function AppShellFrameContent({
             <HelpChromeMenu />
             <LanguageChromeMenu />
           </span>
-          <NotificationBell />
           <AccountMenu useRouterNavigation={useRouterLinks} />
         </Space>
       }
