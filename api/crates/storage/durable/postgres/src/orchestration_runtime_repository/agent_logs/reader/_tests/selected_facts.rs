@@ -73,7 +73,7 @@ async fn ingest(
         .ingest_agent_logs(
             app,
             scope,
-            Uuid::now_v7(),
+            Some(Uuid::now_v7()),
             &AgentLogsBatch {
                 schema_version: AGENT_LOGS_SCHEMA_VERSION.into(),
                 source_id: source.into(),

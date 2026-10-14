@@ -194,7 +194,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
         scope_id: Uuid,
-        api_key_id: Uuid,
+        api_key_id: Option<Uuid>,
         batch: &control_plane_contracts::ports::AgentLogsBatch,
         costs: &[Option<String>],
     ) -> Result<control_plane_contracts::ports::AgentLogsReceipt> {

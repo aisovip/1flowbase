@@ -79,7 +79,7 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         _application_id: Uuid,
         _scope_id: Uuid,
-        _api_key_id: Uuid,
+        _api_key_id: Option<Uuid>,
         _batch: &AgentLogsBatch,
         _costs: &[Option<String>],
     ) -> anyhow::Result<AgentLogsReceipt> {

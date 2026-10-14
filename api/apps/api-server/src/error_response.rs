@@ -52,6 +52,18 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let Some(error) = self
             .0
+            .downcast_ref::<control_plane::agent_logs::AgentLogsPartialImportError>()
+        {
+            return (StatusCode::CONFLICT, Json(ErrorBody {
+                status: StatusCode::CONFLICT.as_u16(),
+                code: "agent_logs_partial_import".to_owned(),
+                message: "Earlier source batches persisted. Retry unchanged source facts to finish the import safely.".to_owned(),
+                inventory: None,
+                details: Some(serde_json::json!({"accepted_events":error.accepted_events,"duplicate_events":error.duplicate_events,"committed_records":error.committed_records})),
+            })).into_response();
+        }
+        if let Some(error) = self
+            .0
             .downcast_ref::<crate::managed_services::ManagedServiceFailure>()
         {
             return (

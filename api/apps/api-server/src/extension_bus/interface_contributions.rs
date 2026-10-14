@@ -880,6 +880,12 @@ pub(crate) fn production_interface_contributions(
             crate::routes::application_runtime::logs_delete::jobs::compile_preview_registry(state.store.clone())?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-log-exchange",
+            crate::routes::application_runtime::log_exchange::OPERATIONS,
+            &["api-server.console-application-log-exchange"],
+            crate::routes::application_runtime::log_exchange::compile_registry(state.store.clone(), state.network_egress_http_clients())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-logs-delete",
             &["applications.logs.delete"],
             &["api-server.console-application-logs-delete"],

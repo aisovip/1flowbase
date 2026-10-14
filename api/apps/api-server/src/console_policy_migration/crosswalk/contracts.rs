@@ -128,6 +128,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "applications.logs.delete.jobs.stop",
             "applications.logs.export",
             "applications.logs.import",
+            "applications.logs.otlp.export",
+            "applications.logs.otlp.import",
+            "applications.logs.langfuse.export",
+            "applications.logs.langfuse.import",
             "applications.orchestration.template.export",
             "applications.orchestration.template.import",
             "applications.orchestration.version.restore",
@@ -485,6 +489,11 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "applications.logs.delete.jobs.get",
     "applications.logs.delete.jobs.latest",
     "applications.logs.delete.jobs.stop",
+    // Source exchange is independently granted, never inferred from historic CRUD/archive grants.
+    "applications.logs.otlp.export",
+    "applications.logs.otlp.import",
+    "applications.logs.langfuse.export",
+    "applications.logs.langfuse.import",
     // Organization grants are new authority, never inferred from historical user-management grants.
     "departments.list",
     "departments.create",

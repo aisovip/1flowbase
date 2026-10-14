@@ -1008,3 +1008,72 @@ async fn delete_application_removes_visible_record_and_writes_audit_log() {
         .audit_events()
         .contains(&"application.deleted".to_string()));
 }
+
+#[tokio::test]
+async fn agent_log_exchange_operations_are_independent_and_do_not_inherit_archive_grants() {
+    let operations = [
+        (
+            ApplicationNonCrudConsoleOperation::LogsOtlpExport,
+            access_control::APPLICATIONS_LOGS_OTLP_EXPORT_OPERATION_ID,
+        ),
+        (
+            ApplicationNonCrudConsoleOperation::LogsOtlpImport,
+            access_control::APPLICATIONS_LOGS_OTLP_IMPORT_OPERATION_ID,
+        ),
+        (
+            ApplicationNonCrudConsoleOperation::LogsLangfuseExport,
+            access_control::APPLICATIONS_LOGS_LANGFUSE_EXPORT_OPERATION_ID,
+        ),
+        (
+            ApplicationNonCrudConsoleOperation::LogsLangfuseImport,
+            access_control::APPLICATIONS_LOGS_LANGFUSE_IMPORT_OPERATION_ID,
+        ),
+    ];
+    let actor = Uuid::now_v7();
+    for (selected, selected_id) in operations {
+        let service = ApplicationService::for_tests_with_console_policies(
+            Vec::new(),
+            vec![custom_policy(vec![domain::ConsoleOperationPolicy::simple(
+                operation_id(selected_id),
+                true,
+            )])],
+        );
+        let application = service.seed_foreign_application("same workspace peer");
+        let foreign =
+            service.seed_application_in_workspace(Uuid::now_v7(), actor, "another workspace");
+        for (operation, _) in operations {
+            let result = service
+                .load_application_for_non_crud_console_operation(actor, application.id, operation)
+                .await;
+            assert_eq!(
+                result.is_ok(),
+                operation == selected,
+                "grant must authorize exactly one exchange operation"
+            );
+        }
+        assert!(service
+            .load_application_for_non_crud_console_operation(actor, foreign.id, selected)
+            .await
+            .is_err());
+    }
+    let legacy = ApplicationService::for_tests_with_console_policies(
+        Vec::new(),
+        vec![custom_policy(vec![
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_LOGS_EXPORT_OPERATION_ID),
+                true,
+            ),
+            domain::ConsoleOperationPolicy::simple(
+                operation_id(access_control::APPLICATIONS_LOGS_IMPORT_OPERATION_ID),
+                true,
+            ),
+        ])],
+    );
+    let application = legacy.seed_application_for_actor(actor, "legacy archive grant");
+    for (operation, _) in operations {
+        assert!(legacy
+            .load_application_for_non_crud_console_operation(actor, application.id, operation)
+            .await
+            .is_err());
+    }
+}

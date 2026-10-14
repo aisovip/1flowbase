@@ -10,6 +10,10 @@ pub enum ApplicationNonCrudConsoleOperation {
     Run,
     LogsExport,
     LogsImport,
+    LogsOtlpExport,
+    LogsOtlpImport,
+    LogsLangfuseExport,
+    LogsLangfuseImport,
     LogsDelete,
     LogsDeletePreview,
     LogsDeleteJobCreate,
@@ -29,6 +33,14 @@ impl ApplicationNonCrudConsoleOperation {
             Self::Run => access_control::APPLICATIONS_RUN_OPERATION_ID,
             Self::LogsExport => access_control::APPLICATIONS_LOGS_EXPORT_OPERATION_ID,
             Self::LogsImport => access_control::APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
+            Self::LogsOtlpExport => access_control::APPLICATIONS_LOGS_OTLP_EXPORT_OPERATION_ID,
+            Self::LogsOtlpImport => access_control::APPLICATIONS_LOGS_OTLP_IMPORT_OPERATION_ID,
+            Self::LogsLangfuseExport => {
+                access_control::APPLICATIONS_LOGS_LANGFUSE_EXPORT_OPERATION_ID
+            }
+            Self::LogsLangfuseImport => {
+                access_control::APPLICATIONS_LOGS_LANGFUSE_IMPORT_OPERATION_ID
+            }
             Self::LogsDelete => access_control::APPLICATIONS_LOGS_DELETE_OPERATION_ID,
             Self::LogsDeletePreview => "applications.logs.delete.preview",
             Self::LogsDeleteJobCreate => "applications.logs.delete.jobs.create",
