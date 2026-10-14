@@ -140,6 +140,8 @@ async function main() {
     await testCommand(label, [...api, selector, '--', '--test-threads', String(budget.cargoTestThreads)]);
   }
   for (const [label, cargoArgs] of [
+    ['source-contracts', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane-contracts', '--lib', 'agent_logs_contract_tests']],
+    ['selected-source-snapshot', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'storage-durable-postgres', '--lib', 'agent_logs::reader::selected_facts']],
     ['independent-grants', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane', '--lib', 'agent_log_exchange_operations_are_independent_and_do_not_inherit_archive_grants']],
     ['pricing', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane-postgres-tests', '--test', 'orchestration_runtime_integration', 'application_logs::agent_logs::pricing']]
   ]) {
