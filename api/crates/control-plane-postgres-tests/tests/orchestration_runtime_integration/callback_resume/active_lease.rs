@@ -37,9 +37,10 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
     let original = json!({"model":"fixture","input":[{"role":"user","content":"Read files"}]});
     let output =
         vec![json!({"type":"function_call","call_id":"call-1-0","name":"Bash","arguments":"{}"})];
-    // Frozen v1 evidence for the user message and function-call prefix below.
-    // Use the persisted contract directly, without calling a private builder.
-    let history = json!({"version":1,"item_count":2,"digest":"237772f0d588aa8203de9d7d4dc02d669eb4efb8cd1f869d4dcbbb6387503160"});
+    // Frozen v3 evidence for the user message and function-call prefix below.
+    // Generated from history.rs canonical JSON + length-delimited SHA-256 chain;
+    // v1 cannot attest full-context retries. The real service validates this proof.
+    let history = json!({"version":3,"item_count":2,"digest":"80fd1237d37a782b3cf5a940e1163e372c6875248002141fbb70c64facd3aaa6"});
     let transport = ProviderTransportPayload::openai_responses(original.clone()).unwrap();
     let mut request_payload = callback.request_payload.clone();
     request_payload["provider_metadata"] = json!({"native_response":{
