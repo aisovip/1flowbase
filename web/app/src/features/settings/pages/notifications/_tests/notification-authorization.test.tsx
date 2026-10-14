@@ -82,6 +82,17 @@ function respond(data: unknown) {
   });
 }
 beforeEach(() => {
+  // Keep Antd's real QRCodeCanvas path; the shared jsdom context omits fillRect.
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+    function (this: HTMLCanvasElement, contextId: string, options?: unknown) {
+      const context = getContext.call(this, contextId, options);
+      if (contextId === '2d' && context) {
+        Object.assign(context, { fillRect: vi.fn() });
+      }
+      return context;
+    }
+  );
   commands = [];
   poll = async () => ({ status: 'authorized' });
   begin = pending;
@@ -111,6 +122,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   resetAuthStore();
   vi.unstubAllGlobals();
