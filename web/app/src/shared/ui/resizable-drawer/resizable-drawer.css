@@ -1,3 +1,19 @@
+.resizable-drawer__drag-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  content: "";
+  background: var(--border-default);
+  transition: background-color 160ms ease;
+}
+
+.resizable-drawer__drag-handle:hover::after,
+.resizable-drawer__drag-handle.ant-drawer-resizable-dragger-dragging::after {
+  background: var(--border-focus);
+}
+
 .resizable-drawer__body {
   position: relative;
   min-height: 100%;
@@ -17,8 +33,8 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 7px;
-  width: 2px;
+  left: 8px;
+  width: 1px;
   content: "";
   background: transparent;
   transition: background-color 160ms ease;

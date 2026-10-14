@@ -325,6 +325,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   'component.schema-form-drawer': () => (
     <SchemaFormDrawer
       open
+      resizable
       title="Password 配置"
       schema={{
         schema_version: '1.0.0',
