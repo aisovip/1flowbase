@@ -197,11 +197,12 @@ export function CollectorInstallation({
               <div className="application-collector__command">
                 <pre>{previewCommand}</pre>
                 <Button
+                  type="text"
+                  aria-label={t('agent_logs.copy_command')}
+                  title={t('agent_logs.copy_command')}
                   icon={<CopyOutlined aria-hidden="true" />}
                   onClick={copyCommand}
-                >
-                  {t('agent_logs.copy_command')}
-                </Button>
+                />
               </div>
             ) : (
               <Alert
@@ -255,11 +256,12 @@ export function CollectorInstallation({
               <div className="application-collector__command">
                 <pre>{uninstallCommand}</pre>
                 <Button
+                  type="text"
+                  aria-label={t('agent_logs.copy_remove_command')}
+                  title={t('agent_logs.copy_remove_command')}
                   icon={<CopyOutlined aria-hidden="true" />}
                   onClick={copyUninstallCommand}
-                >
-                  {t('agent_logs.copy_remove_command')}
-                </Button>
+                />
               </div>
             ) : (
               <Alert
