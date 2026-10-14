@@ -25,7 +25,7 @@ node scripts/node/agent-logs-exchange/scenario.cjs \
   --deadline-ms 120000
 ```
 
-The gateway-key flag is optional. When present it must contain exactly one `sk-` token on a single line. The scenario makes exactly two short requests to the existing gateway at `http://127.0.0.1:7800/v1/chat/completions`, with `gpt6-luna` and `reasoning_effort: max`; returned answer text and actual token usage become SDK span attributes. It does not request reasoning text or change gateway configuration. Without this flag, the two SDK spans carry explicitly synthetic messages and token counts. `message_source` in the receipt distinguishes the two modes. Both modes use the actual OpenLIT SDK exporter.
+The gateway-key flag is optional. When present it must contain exactly one `sk-` token on a single line. The scenario makes exactly two short requests to the existing gateway at `http://127.0.0.1:7800/v1/chat/completions`, with `gpt-6-luna` and `reasoning_effort: max`; returned answer text and actual token usage become SDK span attributes. It does not request reasoning text or change gateway configuration. Without this flag, the two SDK spans carry explicitly synthetic messages and token counts. `message_source` in the receipt distinguishes the two modes. Both modes use the actual OpenLIT SDK exporter.
 
 The browser fixture selects the two visible canonical rows from the three imported tasks, executes real Langfuse export on desktop and mobile, and asserts all three records, 21 spans and the API-verified two Trace IDs. It then repeats the Langfuse import through the UI and checks zero accepted events, 21 duplicates and all three retained record IDs. Business locators determine readiness; notification streams do not need to become idle.
 

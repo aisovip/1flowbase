@@ -209,14 +209,14 @@ async function run(args) {
     for (const [index, prompt] of prompts.entries()) {
       if (!gatewayKey) messages.push({ prompt, answer: `Synthetic OpenLIT SDK answer ${index + 1}.`, model: 'synthetic-fixture-model', input_tokens: 5, output_tokens: 4, source: 'synthetic' });
       else {
-        const response = await fetch('http://127.0.0.1:7800/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${gatewayKey}` }, body: JSON.stringify({ model: 'gpt6-luna', reasoning_effort: 'max', messages: [{ role: 'user', content: prompt }] }), signal: AbortSignal.timeout(120000), redirect: 'error' });
+        const response = await fetch('http://127.0.0.1:7800/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${gatewayKey}` }, body: JSON.stringify({ model: 'gpt-6-luna', reasoning_effort: 'max', messages: [{ role: 'user', content: prompt }] }), signal: AbortSignal.timeout(120000), redirect: 'error' });
         if (!response.ok) fail(`gateway HTTP ${response.status}`);
         const completion = await response.json();
         const answer = completion.choices?.[0]?.message?.content;
         assert.ok(typeof answer === 'string' && answer.trim(), 'gateway textual answer');
         const input_tokens = completion.usage?.prompt_tokens, output_tokens = completion.usage?.completion_tokens;
         assert.ok(Number.isSafeInteger(input_tokens) && Number.isSafeInteger(output_tokens), 'gateway real token usage');
-        messages.push({ prompt, answer, model: 'gpt6-luna', input_tokens, output_tokens, source: 'gateway' });
+        messages.push({ prompt, answer, model: 'gpt-6-luna', input_tokens, output_tokens, source: 'gateway' });
       }
     }
     const sessionIds = [crypto.randomUUID(), crypto.randomUUID()];
