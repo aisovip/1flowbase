@@ -54,7 +54,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             api/target
-          key: agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          key: agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-${{ env.EXPECTED_SOURCE_SHA }}
+          restore-keys: |
+            agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}-
+            agent-logs-otlp-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
       - name: Execute finite API evidence and build the exact runtime artifact
         run: node scripts/node/agent-logs-exchange/ci-api.cjs
       - uses: actions/cache/save@v5
