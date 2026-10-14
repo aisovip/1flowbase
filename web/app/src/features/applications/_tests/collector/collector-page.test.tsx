@@ -1,3 +1,4 @@
+import '../../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
   fireEvent,
@@ -126,7 +127,13 @@ test('fourth step copies removal commands without a key and follows the operatin
   fireEvent.change(screen.getByLabelText('API 密钥'), {
     target: { value: 'private-install-key' }
   });
-  fireEvent.click(screen.getByRole('radio', { name: 'Windows (PowerShell)' }));
+  fireEvent.click(
+    within(removal).getByRole('radio', { name: 'Windows (PowerShell)' })
+  );
+  const installation = screen.getByRole('region', { name: '复制安装命令' });
+  expect(
+    within(installation).getByRole('radio', { name: 'Windows (PowerShell)' })
+  ).toBeChecked();
   const command = removal.querySelector('pre')!.textContent!;
   expect(command).toContain(`${assetBase}/install.ps1`);
   expect(command).toContain(`-Uninstall -InstallationId '${applicationId}'`);
@@ -137,6 +144,13 @@ test('fourth step copies removal commands without a key and follows the operatin
   await waitFor(() =>
     expect(clipboard.copyTextToClipboard).toHaveBeenLastCalledWith(command)
   );
+  fireEvent.click(
+    within(installation).getByRole('radio', { name: 'macOS / Linux (Shell)' })
+  );
+  expect(
+    within(removal).getByRole('radio', { name: 'macOS / Linux (Shell)' })
+  ).toBeChecked();
+  expect(removal.querySelector('pre')).toHaveTextContent('--uninstall');
 });
 
 test('failed removal copy offers a manual fallback without asking for a key', async () => {
@@ -420,7 +434,10 @@ test.each([
     );
     expect(command).toContain(`--release-base '${resolvedBase}${assetBase}'`);
     fireEvent.click(
-      screen.getByRole('radio', { name: 'Windows (PowerShell)' })
+      within(screen.getByRole('region', { name: '复制安装命令' })).getByRole(
+        'radio',
+        { name: 'Windows (PowerShell)' }
+      )
     );
     const ps = document.querySelector('pre')!.textContent!;
     expect(ps).toContain(`-ReleaseBase '${resolvedBase}${assetBase}'`);
@@ -477,7 +494,12 @@ test('entered key stays in the detail only and is copied through installer envir
   expect(publicApi.createApplicationApiKey).not.toHaveBeenCalled();
   expect(storage).not.toHaveBeenCalled();
   storage.mockRestore();
-  fireEvent.click(screen.getByRole('radio', { name: 'Windows (PowerShell)' }));
+  fireEvent.click(
+    within(screen.getByRole('region', { name: '复制安装命令' })).getByRole(
+      'radio',
+      { name: 'Windows (PowerShell)' }
+    )
+  );
   expect(screen.getByLabelText('API 密钥')).toHaveValue("proof-key'o$()");
   fireEvent.click(screen.getByRole('button', { name: '复制命令' }));
   await waitFor(() =>

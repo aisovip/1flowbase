@@ -167,7 +167,10 @@ export function CollectorInstallation({
             )}
           </div>
         </section>
-        <section className="application-collector__step">
+        <section
+          className="application-collector__step"
+          aria-label={t('agent_logs.install_command')}
+        >
           <span className="application-collector__number" aria-hidden="true">
             2
           </span>
@@ -236,6 +239,18 @@ export function CollectorInstallation({
             <Typography.Paragraph>
               {t('agent_logs.remove_collector_description')}
             </Typography.Paragraph>
+            <Radio.Group
+              value={operatingSystem}
+              onChange={(event) => setOperatingSystem(event.target.value)}
+              optionType="button"
+              buttonStyle="solid"
+              aria-label={t('agent_logs.operating_system')}
+            >
+              <Radio.Button value="shell">macOS / Linux (Shell)</Radio.Button>
+              <Radio.Button value="powershell">
+                Windows (PowerShell)
+              </Radio.Button>
+            </Radio.Group>
             {uninstallCommand ? (
               <div className="application-collector__command">
                 <pre>{uninstallCommand}</pre>
