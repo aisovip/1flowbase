@@ -109,6 +109,54 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         })
         .await
         .unwrap();
+    // Startup reconciles enabled installations before it knows the complete interface catalogue.
+    let restarted = RuntimeFixture::new(&state);
+    restarted
+        .composition
+        .rebuild_installation(installation_id)
+        .await
+        .unwrap();
+    let before = restarted
+        .composition
+        .snapshot(actor.current_workspace_id)
+        .await
+        .unwrap();
+    let interfaces = [
+        "notifications.instances.list",
+        "console.identity.session.delete",
+    ];
+    let module =
+        plugin_framework::extension_bus::compile_managed_interface_module(interfaces).unwrap();
+    assert!(module.extension_points.iter().all(|declared| before
+        .graph
+        .points()
+        .iter()
+        .all(|point| point.descriptor().point_id != declared.point_id)));
+    restarted
+        .composition
+        .attach_interface_module(module.clone())
+        .unwrap();
+    restarted
+        .composition
+        .refresh_boot_snapshots()
+        .await
+        .unwrap();
+    let refreshed = restarted
+        .composition
+        .snapshot(actor.current_workspace_id)
+        .await
+        .unwrap();
+    assert_eq!(module.extension_points.len(), interfaces.len() * 6);
+    assert!(module.extension_points.iter().all(|declared| refreshed
+        .graph
+        .points()
+        .iter()
+        .any(|point| point.descriptor() == declared)));
+    assert_eq!(before.bindings.len(), refreshed.bindings.len());
+    for (id, binding) in &before.bindings {
+        assert_eq!(refreshed.bindings[id].handle, binding.handle);
+    }
+    restarted.host.stop().await.unwrap();
     let service = NotificationService::new(
         runtime.store.clone(),
         state.provider_secret_master_key.clone(),
