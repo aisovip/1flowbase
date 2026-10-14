@@ -79,10 +79,19 @@ async function main() {
   receipt.source_sha = sha;
   receipt.rustc = execFileSync('rustc', ['--version'], { encoding: 'utf8' }).trim();
   const actualParallelism = os.availableParallelism();
-  // The shared loader deliberately ignores local config on CI; pass the actual
-  // verification CPU budget through its supported capacity argument instead.
-  const budget = loadVerifyRuntimeConfig({ repoRoot: root, availableParallelism: Math.max(1, actualParallelism - 1) }).backend;
-  receipt.resource_budget = { actual_parallelism: actualParallelism, ...budget };
+  const allowed = fs.readFileSync('/proc/self/status', 'utf8').match(/^Cpus_allowed_list:\s*(.+)$/m);
+  assert.ok(allowed, 'Linux CPU affinity must be available');
+  const cpuIds = allowed[1].trim().split(',').flatMap(part => {
+    const [first, last = first] = part.split('-').map(Number);
+    return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+  });
+  // Route fixtures also start Tokio/background/database work. Reserve CPU for
+  // those owners using Linux affinity, inherited by our Cargo/test children.
+  const verifyCapacity = Math.max(1, Math.floor(Math.min(actualParallelism, cpuIds.length) / 2));
+  const affinity = cpuIds.slice(0, verifyCapacity).join(',');
+  execFileSync('taskset', ['-pc', affinity, String(process.pid)], { stdio: 'pipe' });
+  const budget = loadVerifyRuntimeConfig({ repoRoot: root, availableParallelism: verifyCapacity }).backend;
+  receipt.resource_budget = { actual_parallelism: actualParallelism, cpu_affinity: affinity, ...budget };
   const env = { ...process.env, CARGO_BUILD_JOBS: String(budget.cargoJobs), CARGO_INCREMENTAL: '0' };
   // Keep archive decompression/network downloads separate from compilation.
   await command('fetch', ['fetch', '--locked', '--manifest-path', 'api/Cargo.toml'], env);
