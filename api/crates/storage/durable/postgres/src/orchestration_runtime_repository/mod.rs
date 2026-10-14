@@ -200,6 +200,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::AgentLogsReceipt> {
         agent_logs::ingest(self, application_id, scope_id, api_key_id, batch, costs).await
     }
+    async fn read_imported_agent_logs(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        record_ids: &[Uuid],
+    ) -> Result<Vec<control_plane_contracts::ports::AgentLogsBatch>> {
+        agent_logs::reader::read(self, application_id, scope_id, record_ids).await
+    }
     async fn query_application_log_records(
         &self,
         scope_id: Uuid,

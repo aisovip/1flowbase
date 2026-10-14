@@ -1,5 +1,6 @@
 pub(super) mod deletion_jobs;
 use super::*;
+pub(super) mod reader;
 pub(super) mod reprice;
 use control_plane_contracts::ports::*;
 use std::collections::{BTreeMap, BTreeSet};

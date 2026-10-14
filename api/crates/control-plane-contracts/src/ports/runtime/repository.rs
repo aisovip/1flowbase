@@ -85,6 +85,20 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<AgentLogsReceipt> {
         anyhow::bail!("ingest_agent_logs not implemented")
     }
+    /// Read original imported facts after the caller has authorized the actor.
+    /// Every selected record must belong to this scope/application and be imported;
+    /// an invalid selection fails as a whole. Duplicate record IDs select once.
+    /// Batches are grouped by source identity, ordered by source_id/source_client;
+    /// events retain source sequence order, with event_id as the stable tie-breaker.
+    /// Only the selected records are loaded, including inherited and raw facts.
+    async fn read_imported_agent_logs(
+        &self,
+        _application_id: Uuid,
+        _scope_id: Uuid,
+        _record_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<AgentLogsBatch>> {
+        anyhow::bail!("read_imported_agent_logs not implemented")
+    }
     async fn query_application_log_records(
         &self,
         _scope_id: Uuid,
