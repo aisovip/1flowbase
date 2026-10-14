@@ -188,9 +188,9 @@ describe('NetworkEgressRoutesPanel', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     );
-    const persistedConsumer = await screen.findByText(
-      /^(Agent Logs 日志交换|Agent Logs exchange)$/
-    );
+    const persistedConsumer = await screen.findByRole('cell', {
+      name: /^(Agent Logs 日志交换|Agent Logs exchange)$/
+    });
     const row = persistedConsumer.closest('tr');
     expect(row).not.toBeNull();
     expect(within(row!).getByText('US proxy')).toBeInTheDocument();
