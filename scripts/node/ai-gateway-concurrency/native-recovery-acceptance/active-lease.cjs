@@ -44,10 +44,14 @@ function assertCallbackRoundIdentity(identity) {
 async function run() {
   const artifactRoot = path.resolve(process.env.NRA_ARTIFACT_DIR || 'tmp/test-governance/callback-active-lease');
   fs.mkdirSync(artifactRoot, { recursive: true });
-  const mock = await createActiveLeaseMock();
+  const legacyMode = process.env.NRA_LEGACY_CALLBACK_FIXTURE || '';
+  assert.ok(['', 'output-replay', 'expired-no-output'].includes(legacyMode), 'Unknown explicit legacy fixture case');
+  const mock = await createActiveLeaseMock({ allowRecovery: legacyMode === 'expired-no-output' });
   let gateway, socket, watchdog, outputTimer, releaseError, sql;
-  const evidence = { controlledMock: true, model: 'gpt-6-luna', effort: 'max',
-    ageInjection: 'Only isolated fixture admission timestamp is aged by 6 minutes; execution lease remains live.' };
+  const evidence = { controlledMock: true, legacyMode, model: 'gpt-6-luna', effort: 'max',
+    ageInjection: legacyMode === 'expired-no-output'
+      ? 'Owned gateway is stopped; isolated admission is aged by 6 minutes and execution claim is expired without output.'
+      : 'Only isolated fixture admission timestamp is aged by 6 minutes; original execution lease stays live until controlled completion.' };
   const save = () => fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));
   try {
     gateway = await createOwnedGateway({ upstreamBaseUrl: mock.baseUrl, artifactRoot: path.join(artifactRoot, 'service'),
@@ -84,6 +88,13 @@ async function run() {
     onEvent = undefined;
     const followup = { ...body, previous_response_id: completed.response.id,
       input: [{ type: 'function_call_output', call_id: call.call_id, output: 'fixture-result-once' }] };
+    const continuationCompleted = new Promise((resolve, reject) => {
+      onEvent = event => {
+        if (event.type === 'response.completed') resolve(event);
+        else if (['error', 'response.failed'].includes(event.type)) reject(new Error(JSON.stringify(event)));
+      };
+    });
+    continuationCompleted.catch(() => {});
     socket.send(JSON.stringify({ ...followup, type: 'response.create' }));
     await bounded(mock.continuing, 'Continuation did not start');
     sql = query => cp.execFileSync('docker', ['exec', 'docker-db-1', 'psql', '-U', 'postgres',
@@ -100,34 +111,65 @@ async function run() {
       if (evidence.roundIdentityBefore.markers.length || Date.now() >= identityDeadline) break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
+    if (legacyMode === 'output-replay') {
+      mock.release();
+      await bounded(continuationCompleted, 'Original continuation did not finish before legacy replay fixture');
+    }
     save();
     socket.terminate();
     await new Promise(resolve => socket.readyState === WebSocket.CLOSED ? resolve() : socket.once('close', resolve));
     assert.equal(socketError, undefined);
+    if (legacyMode) {
+      if (legacyMode === 'expired-no-output') await gateway.restart();
+      // Recreate only the observed historical omission, never insert a fake
+      // marker. This database and its stopped/original run belong to the fixture.
+      evidence.originalRoundIdentity = evidence.roundIdentityBefore;
+      sql(`delete from runtime_events e using flow_run_callback_resume_attempts a
+        where e.flow_run_id=a.flow_run_id and e.event_type='flow_started'
+          and runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id)->>'response_round_id'=a.callback_task_id::text;`);
+      if (legacyMode === 'expired-no-output') {
+        evidence.legacyOutputCount = Number(sql(`select count(*) from runtime_events e join flow_run_callback_resume_attempts a on a.flow_run_id=e.flow_run_id
+          where e.event_type='provider_output_item_done'
+            and runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id)->>'response_round_id'=a.callback_task_id::text;`));
+        assert.equal(evidence.legacyOutputCount, 0, 'Expired fixture must have no attributable callback output');
+        sql(`update flow_run_callback_resume_attempts set status='processing', updated_at=now()-interval '6 minutes', completed_at=null;
+          update flow_run_resume_claims set status='processing', lease_expires_at=now()-interval '1 second';
+          update flow_runs r set status='waiting_callback', error_payload=null, finished_at=null
+            from flow_run_callback_resume_attempts a where a.flow_run_id=r.id;`);
+      }
+      evidence.roundIdentityBefore = callbackRoundIdentity(sql);
+      assert.equal(evidence.roundIdentityBefore.markers.length, 0, 'Controlled historical callback must lack its marker');
+      save();
+    }
     // An attached response follows the durable round terminal. Keep the
     // provider live while the retry is in flight, then finish the original
     // invocation; waiting for retry headers before this would deadlock the fixture.
-    outputTimer = setTimeout(() => {
-      try {
-        evidence.during = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'claim_status',c.status,'lease_live',c.lease_expires_at>now()) from flow_run_callback_resume_attempts a join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
-        assert.equal(evidence.during.attempt_status, 'processing');
-        assert.equal(evidence.during.claim_status, 'processing');
-        assert.equal(evidence.during.lease_live, true);
-      } catch (error) { releaseError = error; }
-      mock.release();
-      evidence.providerReleasedUtc = new Date().toISOString();
-      save();
-    }, 2000);
+    if (legacyMode !== 'output-replay') {
+      outputTimer = setTimeout(() => {
+        (async () => {
+          try {
+            if (legacyMode === 'expired-no-output') await bounded(mock.recovering, 'Controlled recovery did not start');
+            evidence.during = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'claim_status',c.status,'lease_live',c.lease_expires_at>now()) from flow_run_callback_resume_attempts a join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
+            assert.equal(evidence.during.attempt_status, 'processing');
+            assert.equal(evidence.during.claim_status, 'processing');
+            assert.equal(evidence.during.lease_live, true);
+          } catch (error) { releaseError = error; }
+          mock.release();
+          evidence.providerReleasedUtc = new Date().toISOString();
+          save();
+        })().catch(error => { releaseError = error; });
+      }, 2000);
+    }
     const retry = await fetch(gateway.target.gateway.responses_url, {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: gateway.target.gateway.authorization,
         'session-id': session }, body: JSON.stringify(followup), signal: AbortSignal.timeout(45_000),
     });
     evidence.httpStatus = retry.status;
     if (retry.status !== 200) { evidence.body = await retry.text(); save(); }
-    assert.equal(retry.status, 200, 'Live callback lease must attach, even when admission is older than five minutes');
+    assert.equal(retry.status, 200, 'Retry must recover the same callback under the selected live, settled, or expired ownership case');
     // Positive results still require the real identity to have existed before
     // disconnect; a marker created by the retry cannot satisfy this snapshot.
-    assertCallbackRoundIdentity(evidence.roundIdentityBefore);
+    if (!legacyMode) assertCallbackRoundIdentity(evidence.roundIdentityBefore);
     const reader = retry.body.getReader();
     const chunks = [];
     let raw = '';
@@ -143,7 +185,7 @@ async function run() {
       }
     } finally { await reader.cancel().catch(() => {}); }
     if (releaseError) throw releaseError;
-    assert.ok(evidence.during, 'The original invocation must remain live until controlled release');
+    if (legacyMode !== 'output-replay') assert.ok(evidence.during, 'The invocation must remain live until controlled release');
     evidence.events = decodeSseChunks([Buffer.from(raw)]).filter(record => !record.done).map(record => record.data);
     assert.equal(evidence.events.filter(event => event.type === 'response.completed').length, 1);
     assert.ok(!evidence.events.some(event => ['error', 'response.failed'].includes(event.type)));
@@ -155,11 +197,23 @@ async function run() {
     assert.equal(outputItems.filter(event => event.item?.id === 'item_lease_active').length, 1,
       'Original provider output must be delivered exactly once');
     evidence.roundIdentityAfter = callbackRoundIdentity(sql);
-    assertCallbackRoundIdentity(evidence.roundIdentityAfter);
-    assert.deepEqual(evidence.roundIdentityAfter, evidence.roundIdentityBefore,
-      'HTTP attachment must reuse the original WS round and generation');
+    if (legacyMode === 'expired-no-output') {
+      assertCallbackRoundIdentity(evidence.roundIdentityAfter);
+      assert.ok(!evidence.roundIdentityBefore.anchor_generations.includes(evidence.roundIdentityAfter.markers[0].generation),
+        'Acquired recovery must establish its own new generation');
+    } else {
+      if (!legacyMode) assertCallbackRoundIdentity(evidence.roundIdentityAfter);
+      else assert.equal(evidence.roundIdentityAfter.markers.length, 0, 'Legacy replay must not synthesize a durable marker or execute a producer');
+      assert.deepEqual(evidence.roundIdentityAfter, evidence.roundIdentityBefore,
+        'Replay must retain the original round and generation facts');
+    }
     evidence.upstream = mock.trace;
-    assert.equal(mock.trace.length, 2, 'Seed and exactly one continuation; retry must not invoke provider again');
+    assert.equal(mock.trace.length, legacyMode === 'expired-no-output' ? 3 : 2,
+      'Seed, original continuation, and only an explicitly acquired recovery may invoke the provider');
+    if (legacyMode === 'expired-no-output') {
+      assert.equal(mock.trace[1].released, undefined, 'Abandoned original invocation never produced callback output');
+      assert.equal(mock.trace[2].released, true, 'Exactly one new owned execution completed');
+    }
     evidence.after = JSON.parse(sql("select jsonb_build_object('attempts',(select count(*) from flow_run_callback_resume_attempts),'claims',(select count(*) from flow_run_resume_claims),'completed_callbacks',(select count(*) from flow_run_callback_tasks where status='completed'));"));
     assert.equal(evidence.after.attempts, 1);
     assert.equal(evidence.after.claims, 1);

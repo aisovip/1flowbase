@@ -380,10 +380,15 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         observation_context: None,
         reserved_attempt_id: None,
     };
-    let mut attached =
-        start_compatible_typed_resume_stream_for_actor(dependencies.clone(), run, command, actor)
-            .await
-            .unwrap();
+    let mut attached = start_compatible_typed_resume_stream_for_actor(
+        dependencies.clone(),
+        run,
+        command,
+        actor,
+        None,
+    )
+    .await
+    .unwrap();
     let mut events = Vec::new();
     if live_enabled {
         for _ in 0..if live_mode == 2 { 4 } else { 1 } {
@@ -2511,3 +2516,6 @@ mod snapshot_ownership;
 
 #[path = "forwarding/_tests/cold_replay.rs"]
 mod cold_replay;
+
+#[path = "forwarding/_tests/reservation_lifecycle.rs"]
+mod reservation_lifecycle;

@@ -102,6 +102,7 @@ pub(crate) enum CompatibilityInvocationCommand {
         initial_run: NativeRunResult,
         command:
             control_plane::application_public_api::callback_resume::ResumePublishedCallbackCommand,
+        reservation: Option<super::compat_sse::CompatibleCallbackReservation>,
     },
 }
 
@@ -299,11 +300,16 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     protocol,
                     provider_transport,
                 } => (request, protocol, provider_transport),
-                CompatibilityInvocationCommand::Resume { command, .. } => {
+                CompatibilityInvocationCommand::Resume {
+                    command,
+                    reservation,
+                    ..
+                } => {
                     return crate::routes::application_public_api::compat_sse::execute_compatible_resume_for_actor(
                         dependencies,
                         actor,
                         command,
+                        reservation,
                     )
                     .await
                     .map(CompatibilityBlockingOutput)
@@ -445,11 +451,13 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 CompatibilityInvocationCommand::Resume {
                     initial_run,
                     command,
+                    reservation,
                 } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_actor(
                     dependencies,
                     initial_run,
                     command,
                     actor,
+                    reservation,
                 )
                 .await
                 .map_err(CompatibilityBlockingTargetError)?,
@@ -888,6 +896,29 @@ pub(crate) async fn invoke_typed_stream_with_principal(
     principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
 ) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
+    let release = match &input.command {
+        CompatibilityInvocationCommand::Resume {
+            reservation: Some(reservation),
+            ..
+        } => reservation.release_ticket(),
+        _ => None,
+    };
+    let result =
+        invoke_typed_stream_with_principal_inner(state, binding_id, principal, input).await;
+    if result.is_err() {
+        if let Some(release) = release {
+            release.release().await;
+        }
+    }
+    result
+}
+
+async fn invoke_typed_stream_with_principal_inner(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
     let principal = principal.into();
     let snapshot = match principal.snapshot() {
         Some(snapshot) => snapshot,
@@ -1119,6 +1150,28 @@ pub(crate) async fn invoke_blocking(
 }
 
 pub(crate) async fn invoke_blocking_with_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<NativeRunResult, NativeApiError> {
+    let release = match &input.command {
+        CompatibilityInvocationCommand::Resume {
+            reservation: Some(reservation),
+            ..
+        } => reservation.release_ticket(),
+        _ => None,
+    };
+    let result = invoke_blocking_with_principal_inner(state, binding_id, principal, input).await;
+    if result.is_err() {
+        if let Some(release) = release {
+            release.release().await;
+        }
+    }
+    result
+}
+
+async fn invoke_blocking_with_principal_inner(
     state: Arc<ApiState>,
     binding_id: &'static str,
     principal: impl Into<ApplicationInvocationAuthentication>,

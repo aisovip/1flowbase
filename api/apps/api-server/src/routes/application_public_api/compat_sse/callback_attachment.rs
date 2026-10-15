@@ -317,16 +317,45 @@ pub(super) async fn follow_missing_compatible_round_events(
             let runtime_service =
                 native::native_runtime_service(&dependencies.native, invoker.clone())
                     .with_runtime_event_stream(dependencies.native.runtime_event_stream.clone());
-            let service = ApplicationPublishedCallbackResumeService::new(
-                dependencies.native.store.clone(),
-                runtime_service,
-            )
-            .with_last_used_cache(dependencies.native.cache_store.clone());
+            let service = Arc::new(
+                ApplicationPublishedCallbackResumeService::new(
+                    dependencies.native.store.clone(),
+                    runtime_service,
+                )
+                .with_last_used_cache(dependencies.native.cache_store.clone()),
+            );
             match service
-                .reserve_native_callback_for_actor(actor.clone(), &command)
+                .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
                 .await
             {
-                Ok(reclaimed_id) if reclaimed_id == attempt.id => {
+                Ok(acquired) if acquired.attempt_id() == attempt.id => {
+                    let mut reservation =
+                        CompatibleCallbackReservation::new(acquired, Arc::clone(&service));
+                    reservation
+                        .capture_previous_generation(
+                            dependencies.native.runtime_event_stream.as_ref(),
+                            initial_run.id,
+                        )
+                        .await;
+                    let reclaimed_id = reservation.attempt_id();
+                    if !reservation.is_acquired() {
+                        let mut settled_run = initial_run;
+                        settled_run.metadata["active_callback_attach"] = json!(false);
+                        let mut settled = start_compatible_typed_resume_stream_for_actor(
+                            dependencies,
+                            settled_run,
+                            command,
+                            actor,
+                            Some(reservation),
+                        )
+                        .await?;
+                        while let Some(event) = settled.events.recv().await {
+                            if sender.send(event).await.is_err() {
+                                return Ok(());
+                            }
+                        }
+                        return Ok(());
+                    }
                     let current = dependencies
                         .native
                         .store
@@ -338,6 +367,7 @@ pub(super) async fn follow_missing_compatible_round_events(
                             && current.status
                                 == domain::FlowRunCallbackResumeAttemptStatus::Processing
                     }) {
+                        reservation.release().await;
                         continue;
                     }
                     command.reserved_attempt_id = Some(reclaimed_id);
@@ -346,7 +376,11 @@ pub(super) async fn follow_missing_compatible_round_events(
                     let opened = open_compatible_turn_with_invoker(
                         dependencies.clone(),
                         recovered_run,
-                        CompatibleTurnAction::ResumeForActor { command, actor },
+                        CompatibleTurnAction::ResumeForActor {
+                            command,
+                            actor,
+                            reservation: Some(reservation),
+                        },
                         None,
                         invoker,
                     )

@@ -266,6 +266,7 @@ async fn dispatch_message(
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
+                            reservation: plan.reservation,
                         },
                     },
                     Some(recorder.clone()),
@@ -283,6 +284,7 @@ async fn dispatch_message(
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
+                            reservation: plan.reservation,
                         },
                     },
                 )

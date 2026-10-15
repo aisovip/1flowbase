@@ -58,7 +58,7 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
     const port = await reserveLoopbackPort();
     if (port === 7600) throw new Error('Refusing shared API port');
     const baseUrl = `http://127.0.0.1:${port}`;
-    service = spawnOwned(API_BINARY, {
+    const serviceEnvironment = {
       OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '',
       API_ENV: 'development', API_SERVER_ADDR: `127.0.0.1:${port}`,
       API_DATABASE_URL: database.url, API_DATABASE_POOL_MAX_CONNECTIONS: '5',
@@ -71,7 +71,10 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
       BOOTSTRAP_ROOT_ACCOUNT: account, BOOTSTRAP_ROOT_EMAIL: `${account}@example.invalid`,
       BOOTSTRAP_ROOT_PASSWORD: password, BOOTSTRAP_ROOT_NAME: 'Native409 fixture',
       BOOTSTRAP_ROOT_NICKNAME: 'Native409 fixture', RUST_LOG: 'info',
-    }, { cwd: scratch, parentEnv: { PATH: process.env.PATH, LANG: 'C.UTF-8' } });
+    };
+    const startService = () => spawnOwned(API_BINARY, serviceEnvironment,
+      { cwd: scratch, parentEnv: { PATH: process.env.PATH, LANG: 'C.UTF-8' } });
+    service = startService();
     await waitForHealth(baseUrl, 'api-server', { processHandle: service, timeoutMs: 60000 });
     session = await openTemporaryOwnerSession({ apiBaseUrl: baseUrl, account, password });
     const client = new OwnerHttpClient(baseUrl);
@@ -105,7 +108,23 @@ async function createOwnedGateway({ upstreamBaseUrl, artifactRoot,
         headers: { authorization: `Bearer ${published.api_key}` } } },
     };
     return { baseUrl, target, targets: { openai: target }, ownerClient: client,
-      gatewayPid: service.child.pid, databaseName: database.name, close };
+      get gatewayPid() { return service.child.pid; }, databaseName: database.name, close,
+      async restart() {
+        if (closed) throw new Error('Cannot restart a closed owned gateway');
+        const priorSessionSecrets = [session?.cookie, session?.csrfToken].filter(Boolean);
+        await session?.dispose();
+        session = undefined;
+        persistServiceLogs({ artifactRoot: path.join(artifactRoot, 'before-restart'), services: { 'api-server': service },
+          secrets: [password, masterKey, database.url, published.api_key, upstreamApiKey, ...priorSessionSecrets].filter(Boolean) });
+        await stopOwned(service);
+        if (service.child.exitCode === null && service.child.signalCode === null) {
+          await new Promise(resolve => service.child.once('exit', resolve));
+        }
+        service = startService();
+        await waitForHealth(baseUrl, 'api-server', { processHandle: service, timeoutMs: 60000 });
+        session = await openTemporaryOwnerSession({ apiBaseUrl: baseUrl, account, password });
+        client.attachSession(session.cookie, session.csrfToken);
+      } };
   } catch (error) {
     try { await close(); } catch (cleanupError) {
       throw new Error(`${error.message}; ${cleanupError.message}`);

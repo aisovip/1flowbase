@@ -3,11 +3,13 @@ const http = require('node:http');
 const { acceptWebSocket, createFrameReader, sendJson } = require('../mock-upstream/websocket');
 const { responsesEvents } = require('../mock-upstream/protocol-events');
 
-async function createActiveLeaseMock() {
+async function createActiveLeaseMock({ allowRecovery = false } = {}) {
   const trace = [];
   const sockets = new Set();
   let release;
   let ready;
+  let recoveryReady;
+  const recovering = new Promise(resolve => { recoveryReady = resolve; });
   const continuing = new Promise(resolve => { ready = resolve; });
   const server = http.createServer((req, res) => {
     if (req.url === '/v1/models') {
@@ -39,7 +41,7 @@ async function createActiveLeaseMock() {
         emit({ type: 'response.output_item.done', output_index: 0, item: { ...item, status: 'completed' } });
         emit({ type: 'response.completed', response: { id: responseId, status: 'completed', output: [item],
           usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } });
-      } else if (ordinal === 2) {
+      } else if (ordinal === 2 || (allowRecovery && ordinal === 3)) {
         const response = responsesEvents('lease_active', 'LEASE_', 'COMPLETED');
         response.chunks[0].response.model = body.model;
         response.terminal.response.model = body.model;
@@ -49,7 +51,8 @@ async function createActiveLeaseMock() {
           for (const event of response.chunks.slice(1)) emit(event);
           emit(response.terminal);
         };
-        ready();
+        if (ordinal === 2) ready();
+        else recoveryReady();
       } else {
         emit({ type: 'error', error: { code: 'duplicate_execution', message: 'Callback was executed twice' } });
       }
@@ -57,7 +60,7 @@ async function createActiveLeaseMock() {
     if (head.length) socket.emit('data', head);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  return { baseUrl: `http://127.0.0.1:${server.address().port}`, trace, continuing,
+  return { baseUrl: `http://127.0.0.1:${server.address().port}`, trace, continuing, recovering,
     release() { if (!release) throw new Error('Continuation has not started'); release(); },
     async close() { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); } };
 }

@@ -258,6 +258,7 @@ async fn dispatch_chat_completion(
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
+                            reservation: plan.reservation,
                         },
                     },
                     Some(recorder.clone()),
@@ -280,6 +281,7 @@ async fn dispatch_chat_completion(
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
                             command: plan.command,
+                            reservation: plan.reservation,
                         },
                     },
                 )
@@ -874,17 +876,24 @@ async fn dispatch_response_for_endpoint(
             )
             .await
             {
-                Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
+                Ok(compat_sse::CompatibleResumeAdmission::Resume(mut plan)) => {
                     if responses_resume_requires_previous_response_match(
                         correlated_from_native_state
                             || plan.command.responses_continuation.is_some(),
                     ) {
-                        ensure_openai_responses_resume_matches_previous_response(
-                            state.as_ref(),
-                            previous_response_id.as_deref(),
-                            resume.callback_task_id,
-                        )
-                        .await?;
+                        if let Err(error) =
+                            ensure_openai_responses_resume_matches_previous_response(
+                                state.as_ref(),
+                                previous_response_id.as_deref(),
+                                resume.callback_task_id,
+                            )
+                            .await
+                        {
+                            if let Some(reservation) = plan.reservation.as_mut() {
+                                reservation.release().await;
+                            }
+                            return Err(error.into());
+                        }
                     }
                     if response_mode.as_deref() == Some("streaming") {
                         let input = compatibility_interface::CompatibilityBlockingInput {
@@ -892,6 +901,7 @@ async fn dispatch_response_for_endpoint(
                                 compatibility_interface::CompatibilityInvocationCommand::Resume {
                                     initial_run: plan.initial_run,
                                     command: plan.command,
+                                    reservation: plan.reservation,
                                 },
                         };
                         return match delivery {
@@ -947,6 +957,7 @@ async fn dispatch_response_for_endpoint(
                                 compatibility_interface::CompatibilityInvocationCommand::Resume {
                                     initial_run: plan.initial_run,
                                     command: plan.command,
+                                    reservation: plan.reservation,
                                 },
                         },
                     )
