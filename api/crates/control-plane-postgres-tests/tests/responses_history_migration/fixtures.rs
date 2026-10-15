@@ -12,7 +12,7 @@ pub(super) struct Fixture {
     pub snapshot: ResponsesHistoryFlowSnapshot,
 }
 
-async fn seed() -> (PgControlPlaneStore, ResponsesHistoryFlowKey) {
+pub(super) async fn seed() -> (PgControlPlaneStore, ResponsesHistoryFlowKey) {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let schema = postgres_test_support::PostgresTestSchema::create(&url)
@@ -279,16 +279,18 @@ pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture 
     // The existing span append contract writes PostgreSQL JSONB directly.
     // Keep NUL coverage in the lossless document/context/capsule owners above.
     let span=store.append_runtime_span(&AppendRuntimeSpanInput {flow_run_id:flow.flow_run_id,node_run_id:Some(node.id),parent_span_id:None,kind:domain::RuntimeSpanKind::LlmTurn,name:"proof metadata".into(),status:domain::RuntimeSpanStatus::Succeeded,capability_id:None,input_ref:None,output_ref:None,error_payload:None,metadata:json!({"native_response":{"history":old},"user":{"history":old,"raw":"span\nraw"}}),started_at:OffsetDateTime::now_utc(),finished_at:Some(OffsetDateTime::now_utc())}).await.unwrap();
-    store
-        .bind_invocation_context(&BindInvocationContextInput {
-            invocation_span_id: span.id,
-            scope_id: flow.scope_id,
-            application_id: flow.application_id,
-            flow_run_id: flow.flow_run_id,
-            context_version_id: delta.id,
-        })
-        .await
-        .unwrap();
+    // Provider observation ownership is established by its real writer, separate
+    // from checkpoint snapshot/delta ancestry. Keep an opaque predecessor too.
+    let first_observation=store.append_provider_invocation_context(&AppendProviderInvocationContextInput {
+        scope_id:flow.scope_id,application_id:flow.application_id,flow_run_id:flow.flow_run_id,invocation_span_id:span.id,
+        actual_context:json!({"effective_system":["provider observed system"],"provider_messages":[{"role":"user","content":"provider\0original","history":old}],"sys":{"responses_input_history":old}}),
+        context_epoch:json!({"declaration":"unknown"}),
+    }).await.unwrap();
+    let latest_observation=provider_observation(&store,&flow,Some(node.id),json!({"effective_system":["provider observed system"],"provider_messages":[{"role":"user","content":"provider\0original","history":old},{"role":"assistant","content":"provider reply"}],"sys":{"responses_input_history":old},"native_response":{"history":old}})).await;
+    assert_eq!(
+        latest_observation.parent_context_version_id,
+        Some(first_observation.id)
+    );
     store
         .append_recovery_history(&AppendRecoveryHistoryInput {
             scope_id: flow.scope_id,
@@ -384,7 +386,11 @@ pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture 
     assert_eq!(verified[0].replacement().current(), current);
     assert_eq!(verified[0].source().flow_run_id, flow.flow_run_id);
     let snapshot = store.load_responses_history_flow(&flow, KEY).await.unwrap();
-    assert_eq!(snapshot.contexts.len(), 2);
+    assert_eq!(snapshot.contexts.len(), 4);
+    assert_eq!(
+        snapshot.latest_context_version_id,
+        Some(latest_observation.id)
+    );
     assert_eq!(snapshot.checkpoints[0].checkpoint_id, inline.id);
     Fixture {
         store,
@@ -484,4 +490,41 @@ pub(super) async fn assert_apply_refused_unchanged(
         before,
         "rejection must leave all owners and audit rows unchanged"
     );
+}
+
+pub(super) async fn provider_observation(
+    store: &PgControlPlaneStore,
+    flow: &ResponsesHistoryFlowKey,
+    node_run_id: Option<Uuid>,
+    actual_context: Value,
+) -> domain::ContextVersionRecord {
+    let span = store
+        .append_runtime_span(&AppendRuntimeSpanInput {
+            flow_run_id: flow.flow_run_id,
+            node_run_id,
+            parent_span_id: None,
+            kind: domain::RuntimeSpanKind::LlmTurn,
+            name: "opaque provider observation".into(),
+            status: domain::RuntimeSpanStatus::Succeeded,
+            capability_id: None,
+            input_ref: None,
+            output_ref: None,
+            error_payload: None,
+            metadata: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+            finished_at: Some(OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+    store
+        .append_provider_invocation_context(&AppendProviderInvocationContextInput {
+            scope_id: flow.scope_id,
+            application_id: flow.application_id,
+            flow_run_id: flow.flow_run_id,
+            invocation_span_id: span.id,
+            actual_context,
+            context_epoch: json!({"declaration":"unknown"}),
+        })
+        .await
+        .unwrap()
 }

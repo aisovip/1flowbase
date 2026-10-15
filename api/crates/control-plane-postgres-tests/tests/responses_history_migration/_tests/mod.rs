@@ -22,7 +22,22 @@ async fn verified_v1_v2_migration_is_atomic_lossless_and_reversible_across_all_o
         );
         let plan = migration::build_plan(&f.snapshot, &f.verified).unwrap();
         assert_eq!(plan.documents.len(), 5);
-        assert_eq!(plan.contexts.len(), 2, "shared delta DAG is copied once");
+        assert_eq!(
+            plan.contexts.len(),
+            3,
+            "shared CP DAG is copied once and opaque provider latest is anchored"
+        );
+        let provider_head = f.snapshot.contexts.last().unwrap();
+        assert!(provider_head.content.get("format").is_none());
+        assert_eq!(
+            plan.contexts.last().unwrap().before.identity,
+            provider_head.identity
+        );
+        assert_eq!(
+            plan.contexts.last().unwrap().after_content,
+            provider_head.content,
+            "provider payload must be copied byte-for-byte"
+        );
         assert_eq!(plan.checkpoints.len(), 3);
         assert_eq!(plan.continuations.len(), 3);
         assert_eq!(
@@ -40,7 +55,13 @@ async fn verified_v1_v2_migration_is_atomic_lossless_and_reversible_across_all_o
         let receipt = migration::apply_verified_flow(&f.store, &f.snapshot, &f.verified, KEY)
             .await
             .unwrap();
-        assert_eq!(receipt.contexts.len(), 2);
+        assert_eq!(receipt.contexts.len(), 3);
+        let provider_anchor = receipt.contexts.last().unwrap();
+        assert_eq!(provider_anchor.before, provider_head.identity);
+        assert_eq!(
+            provider_anchor.after_previous_projection_id, provider_head.previous_projection_id,
+            "provider parent is not a checkpoint reference"
+        );
         let after = f
             .store
             .load_responses_history_flow(&f.flow, KEY)
@@ -55,6 +76,16 @@ async fn verified_v1_v2_migration_is_atomic_lossless_and_reversible_across_all_o
             .public_rounds
             .iter()
             .all(|round| round.history == f.current));
+        let new_head = after.contexts.last().unwrap();
+        assert_eq!(new_head.content, provider_head.content);
+        assert_eq!(
+            new_head.previous_projection_id,
+            provider_head.previous_projection_id
+        );
+        assert_eq!(
+            new_head.content["sys"]["responses_input_history"], f.old,
+            "opaque provider proof-looking payload is not a recovery proof owner"
+        );
         let old_index: std::collections::HashMap<_, _> = f
             .snapshot
             .checkpoints
@@ -685,4 +716,99 @@ async fn same_application_colliding_legacy_proof_without_owned_sources_cannot_bo
         migration::collect_proofs(&unchanged_b).unwrap(),
         vec![f.old.clone()]
     );
+}
+
+#[tokio::test]
+async fn provider_only_context_is_opaque_to_host_document_migration() {
+    let (store, flow) = seed().await;
+    let original = json!({"effective_system":["observed provider system"],"provider_messages":[{"role":"user","content":"observed\0opaque"}],"sys":{"responses_input_history":{"opaque":"not a proof"}},"native_response":{"history":{"format":"user extension"}}});
+    let observation = provider_observation(&store, &flow, None, original.clone()).await;
+    let mut accumulator = migration::MigrationAccumulator::new(2).unwrap();
+    let user = json!({"role":"user","content":"actual host request"});
+    accumulator.append(&user).unwrap();
+    let old = accumulator.snapshot().old();
+    store
+        .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+            flow_run_id: flow.flow_run_id,
+            input_payload: json!({"sys":{"responses_input_history":old},"user":"host document"}),
+            output_payload: json!({}),
+            error_payload: None,
+        })
+        .await
+        .unwrap();
+    let before = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+    assert!(before.checkpoints.is_empty());
+    assert_eq!(before.contexts.len(), 1);
+    assert_eq!(
+        migration::collect_proofs(&before).unwrap(),
+        vec![old.clone()],
+        "provider JSON must not be parsed as a recovery snapshot"
+    );
+    let inspection = migration::inspect_flow(&before).unwrap();
+    assert!(inspection.public_rounds.is_empty());
+    let mut graph = migration::HistorySourceGraph::new(&[migration::ScopedHistoryTarget {
+        flow_run_id: flow.flow_run_id,
+        proof: old.clone(),
+    }])
+    .unwrap();
+    let frame = json!({"encoding":"utf8","frame_kind":"request","body":json!({"input":[user]}).to_string()});
+    let round = domain::orchestration::ResponsesRoundEvidence {
+        response_id: "host-only-response".into(),
+        history: old,
+        output: vec![],
+    };
+    graph
+        .push_public(flow.flow_run_id, Uuid::now_v7(), &frame, &round)
+        .unwrap();
+    let resolution = graph.resolve().unwrap();
+    assert!(resolution.unresolved_targets.is_empty() && resolution.unresolved_sources.is_empty());
+    let plan = migration::build_plan(&before, &resolution.verified).unwrap();
+    assert_eq!(plan.documents.len(), 1);
+    assert!(
+        plan.contexts.is_empty(),
+        "doc-only proof change does not clone or normalize opaque provider roots"
+    );
+    assert!(plan.checkpoints.is_empty());
+    let bindings_before:Value=sqlx::query_scalar("select jsonb_agg(to_jsonb(b) order by b.invocation_span_id) from runtime_invocation_context_bindings b where b.flow_run_id=$1").bind(flow.flow_run_id).fetch_one(store.pool()).await.unwrap();
+    let receipt = migration::apply_verified_flow(&store, &before, &resolution.verified, KEY)
+        .await
+        .unwrap();
+    assert!(receipt.contexts.is_empty());
+    let after = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+    assert_eq!(
+        migration::collect_proofs(&after).unwrap(),
+        vec![resolution.verified[0].replacement().current()]
+    );
+    assert_eq!(after.latest_context_version_id, Some(observation.id));
+    assert_eq!(after.contexts, before.contexts);
+    assert_eq!(after.contexts[0].content, original);
+    store
+        .rollback_responses_history_migration(&receipt, KEY)
+        .await
+        .unwrap();
+    let restored = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+    assert_eq!(restored.documents, before.documents);
+    assert_eq!(restored.contexts, before.contexts);
+    let bindings_after:Value=sqlx::query_scalar("select jsonb_agg(to_jsonb(b) order by b.invocation_span_id) from runtime_invocation_context_bindings b where b.flow_run_id=$1").bind(flow.flow_run_id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(bindings_after, bindings_before);
+    // The same shape is invalid when a checkpoint actually owns it. Ownership
+    // separation must not become a general skip for malformed recovery contexts.
+    store.create_checkpoint(&CreateCheckpointInput {
+        flow_run_id:flow.flow_run_id,node_run_id:None,status:"paused".into(),reason:"controlled wrong checkpoint owner".into(),
+        locator_payload:json!({"context_version_id":observation.id}),variable_snapshot:json!({"__runtime_recovery_context":{"context_version_id":observation.id,"sequence":observation.sequence}}),external_ref_payload:None,
+    }).await.unwrap();
+    let invalid = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+    assert!(
+        migration::inspect_flow(&invalid).is_err(),
+        "checkpoint-owned plain provider data remains unsupported as a recovery snapshot"
+    );
+    assert!(
+        migration::apply_verified_flow(&store, &invalid, &resolution.verified, KEY)
+            .await
+            .is_err()
+    );
+    let untouched = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+    assert_eq!(untouched.documents, invalid.documents);
+    assert_eq!(untouched.contexts, invalid.contexts);
+    assert_eq!(untouched.checkpoints, invalid.checkpoints);
 }
