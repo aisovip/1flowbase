@@ -1,3 +1,5 @@
+import { extensionOperationErrorText } from '../../lib/extension-operation-error';
+import { extensionRiskWarningText } from '../../lib/extension-risk-warning';
 import {
   Suspense,
   lazy,
@@ -9,7 +11,6 @@ import {
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ApiClientError } from '@1flowbase/api-client';
 import {
   Alert,
   Badge,
@@ -72,6 +73,7 @@ import {
 } from '../../api/ui-management';
 import type { ExtensionApplicationTarget } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { InstalledExtensionVersionSwitch } from '../../components/extension-center/InstalledExtensionVersionSwitch';
 import { ExtensionUploadModal } from '../../components/extension-center/ExtensionUploadModal';
 const PricingCatalogPanel = lazy(() =>
   import('../../components/billing/PricingCatalogPanel').then((module) => ({
@@ -196,47 +198,6 @@ function mcpTemplateWorkspaceStatusLabel(
 
 function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
-}
-
-function extensionOperationErrorKey(error: unknown) {
-  if (!(error instanceof ApiClientError))
-    return 'auto.extension_operation_failed';
-  switch (error.code) {
-    case 'extension_artifact_not_published':
-      return 'auto.extension_artifact_not_published';
-    case 'extension_artifact_network_unavailable':
-    case 'extension_artifact_upstream_rejected':
-    case 'extension_artifact_download_unavailable':
-      return 'auto.extension_artifact_download_failed';
-    case 'extension_artifact_checksum_mismatch':
-      return 'auto.extension_artifact_checksum_failed';
-    case 'extension_artifact_signature_invalid':
-      return 'auto.extension_artifact_signature_failed';
-    default:
-      return 'auto.extension_operation_failed';
-  }
-}
-
-function extensionRiskWarningKey(code: string) {
-  switch (code) {
-    case 'checksum_missing':
-      return 'auto.extension_warning_checksum_missing';
-    case 'signature_missing':
-      return 'auto.extension_warning_signature_missing';
-    case 'signing_key_unknown':
-      return 'auto.extension_warning_signing_key_unknown';
-    default:
-      return null;
-  }
-}
-
-function extensionRiskWarningText(
-  code: string,
-  message: string,
-  t: (key: string) => string
-) {
-  const key = extensionRiskWarningKey(code);
-  return key ? t(key) : message;
 }
 
 const ApplicationTemplateCatalogPanel = lazy(() =>
@@ -642,7 +603,7 @@ function GenericExtensionCenterSection({
     },
     onError: (error) => {
       setActiveOperationKey(null);
-      message.error(t(extensionOperationErrorKey(error)));
+      message.error(extensionOperationErrorText(error, t));
     }
   });
   const deleteInstalledExtensionMutation = useMutation({
@@ -655,7 +616,7 @@ function GenericExtensionCenterSection({
       message.success(t('auto.extension_operation_completed'));
       await invalidateExtensionApplicationState();
     },
-    onError: () => message.error(t('auto.extension_operation_failed'))
+    onError: (error) => message.error(extensionOperationErrorText(error, t))
   });
   const activationMutation = useMutation({
     mutationFn: async ({
@@ -674,7 +635,7 @@ function GenericExtensionCenterSection({
       message.success(t('auto.extension_operation_completed'));
       await invalidateExtensionApplicationState();
     },
-    onError: () => message.error(t('auto.extension_operation_failed'))
+    onError: (error) => message.error(extensionOperationErrorText(error, t))
   });
   const deleteInstalledExtension = deleteInstalledExtensionMutation.mutate;
   const deleteInstalledExtensionAsync =
@@ -1349,8 +1310,13 @@ function GenericExtensionCenterSection({
                     >
                       <div className="structured-list__content">
                         <Descriptions column={1} size="small">
-                          <Descriptions.Item label={t('auto.current_version')}>
-                            {installedVersion.version}
+                          <Descriptions.Item label={t('auto.version')}>
+                            <Space>
+                              {installedVersion.version}
+                              {installedVersion.is_current && (
+                                <Tag>{t('auto.current')}</Tag>
+                              )}
+                            </Space>
                           </Descriptions.Item>
                           <Descriptions.Item label={t('auto.source')}>
                             {installedVersion.source_kind}
@@ -1375,6 +1341,18 @@ function GenericExtensionCenterSection({
                           </Descriptions.Item>
                         </Descriptions>
                       </div>
+                      {supportsFamilyUninstall(selected.category) &&
+                      csrfToken ? (
+                        <InstalledExtensionVersionSwitch
+                          installation={selected}
+                          version={installedVersion}
+                          csrfToken={csrfToken}
+                          onChanged={async () => {
+                            setSelected(null);
+                            await invalidateExtensionApplicationState();
+                          }}
+                        />
+                      ) : null}
                       {!supportsFamilyUninstall(selected.category) ? (
                         <div className="structured-list__actions">
                           {selected.category === 'host-extensions' ? (

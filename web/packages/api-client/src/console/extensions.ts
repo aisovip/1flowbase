@@ -67,6 +67,7 @@ export interface ConsoleExtensionRiskChallenge {
 }
 
 export interface ConsoleInstalledExtension {
+  contract_version: string | null;
   id: string;
   category: ConsoleExtensionCategory;
   catalog_id: string;

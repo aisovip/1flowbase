@@ -41,6 +41,7 @@ describe('extension center client contract', () => {
       next_cursor: null,
       entries: [
         {
+          contract_version: null,
           id: 'installation-current',
           catalog_id: 'runtime-extensions:taichuy/anthropic',
           category: 'runtime-extensions',

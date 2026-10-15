@@ -40,6 +40,7 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
+  switchSettingsPluginFamilyVersion: vi.fn(),
   uploadSettingsExtension: vi.fn(),
   enableSettingsInstalledExtension: vi.fn(),
   disableSettingsInstalledExtension: vi.fn(),
@@ -82,6 +83,10 @@ const mcpManagementApi = vi.hoisted(() => ({
 const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
 
 vi.mock('../api/extensions', () => extensionsApi);
+vi.mock('../api/plugins', () => ({
+  switchSettingsPluginFamilyVersion:
+    extensionsApi.switchSettingsPluginFamilyVersion
+}));
 vi.mock('../api/i18n-catalog', () => i18nCatalogApi);
 vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => mcpManagementApi);
@@ -94,6 +99,7 @@ import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { SettingsExtensionCenterSection } from '../pages/settings-page/SettingsExtensionCenterSection';
 
 const installedEntry = {
+  contract_version: null,
   id: 'extension-installation-1',
   category: 'runtime-extensions' as const,
   catalog_id: 'runtime-extensions:taichuy/openai',
@@ -714,6 +720,74 @@ describe('SettingsExtensionCenterSection', () => {
     ).not.toBeInTheDocument();
   });
 
+  test('switches an installed runtime version from the details drawer', async () => {
+    extensionsApi.switchSettingsPluginFamilyVersion.mockResolvedValue(
+      installedEntry
+    );
+    renderSection();
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    const drawer = await screen.findByRole('dialog');
+    const buttons = within(drawer).getAllByRole('button', {
+      name: '切换版本并重启插件'
+    });
+    expect(buttons[0]).toBeDisabled();
+    fireEvent.click(buttons[1]);
+    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await waitFor(() =>
+      expect(
+        extensionsApi.switchSettingsPluginFamilyVersion
+      ).toHaveBeenCalledWith('openai', 'extension-installation-0', 'csrf-123')
+    );
+  });
+
+  test('activates a selected managed version when the service is disabled', async () => {
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          ...installedEntry,
+          contract_version: '1flowbase.extension-bus/v1',
+          desired_state: 'disabled'
+        }
+      ]
+    });
+    renderSection();
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(drawer).getAllByRole('button', { name: '切换版本并重启插件' })[1]
+    );
+    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await waitFor(() =>
+      expect(
+        extensionsApi.enableSettingsInstalledExtension
+      ).toHaveBeenCalledWith('extension-installation-0', 'csrf-123')
+    );
+    expect(
+      extensionsApi.switchSettingsPluginFamilyVersion
+    ).not.toHaveBeenCalled();
+  });
+
+  test('shows backend activation errors instead of a generic failure', async () => {
+    extensionsApi.disableSettingsInstalledExtension.mockRejectedValueOnce(
+      new ApiClientError({
+        status: 409,
+        code: 'managed_conflict',
+        message: 'Plugin has in-progress operations'
+      })
+    );
+    renderSection();
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('switch'));
+    expect(
+      await screen.findByText('Plugin has in-progress operations')
+    ).toBeInTheDocument();
+  });
+
   test('AC-001 exposes direct uninstall for a capability plugin', async () => {
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValueOnce({
       limit: 20,
@@ -1169,9 +1243,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
-    expect(
-      await screen.findByRole('dialog')
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).not.toBeNull();
     view.unmount();
   });

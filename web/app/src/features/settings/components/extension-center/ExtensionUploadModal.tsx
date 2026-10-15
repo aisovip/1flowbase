@@ -1,4 +1,6 @@
+import { extensionRiskWarningText } from '../../lib/extension-risk-warning';
 import { useRef, useState } from 'react';
+import { extensionOperationErrorText } from '../../lib/extension-operation-error';
 import {
   Alert,
   Button,
@@ -35,6 +37,7 @@ interface UploadItem {
   phase: Phase;
   progress: ProgressValue;
   challenge: Challenge | null;
+  error: string | null;
 }
 
 function fileSize(bytes: number) {
@@ -105,7 +108,11 @@ export function ExtensionUploadModal({
                 : {})
             }
           : {};
-        patch(item.id, { phase: 'uploading', progress: { loaded: 0 } });
+        patch(item.id, {
+          phase: 'uploading',
+          progress: { loaded: 0 },
+          error: null
+        });
         try {
           await uploadSettingsExtension(
             item.file,
@@ -125,7 +132,8 @@ export function ExtensionUploadModal({
           const nextChallenge = getSettingsExtensionRiskChallenge(error);
           patch(item.id, {
             phase: nextChallenge ? 'confirming' : 'error',
-            challenge: nextChallenge
+            challenge: nextChallenge,
+            error: !nextChallenge ? extensionOperationErrorText(error, t) : null
           });
           if (nextChallenge) break;
         }
@@ -177,17 +185,22 @@ export function ExtensionUploadModal({
       error: t('auto.extension_upload_failed')
     }[item.phase];
     return (
-      <Typography.Text
-        type={
-          item.phase === 'error'
-            ? 'danger'
-            : item.phase === 'success'
-              ? 'success'
-              : undefined
-        }
-      >
-        {label}
-      </Typography.Text>
+      <Flex vertical gap={4}>
+        <Typography.Text
+          type={
+            item.phase === 'error'
+              ? 'danger'
+              : item.phase === 'success'
+                ? 'success'
+                : undefined
+          }
+        >
+          {label}
+        </Typography.Text>
+        {item.error && (
+          <Typography.Text type="danger">{item.error}</Typography.Text>
+        )}
+      </Flex>
     );
   }
 
@@ -233,7 +246,8 @@ export function ExtensionUploadModal({
                   file,
                   phase: 'ready',
                   progress: { loaded: 0 },
-                  challenge: null
+                  challenge: null,
+                  error: null
                 }
               ]);
               return Upload.LIST_IGNORE;
@@ -309,7 +323,7 @@ export function ExtensionUploadModal({
                 <Typography.Text>{confirming.file.name}</Typography.Text>
                 {confirming.challenge.warnings.map((warning) => (
                   <Typography.Text key={warning.code}>
-                    {warning.message}
+                    {extensionRiskWarningText(warning.code, warning.message, t)}
                   </Typography.Text>
                 ))}
                 {confirming.challenge.compatibility && (

@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { App } from 'antd';
+import { ApiClientError } from '@1flowbase/api-client';
 import { AppI18nProvider } from '../../../../../app/AppI18nProvider';
 import { ExtensionUploadModal } from '../ExtensionUploadModal';
 
@@ -83,7 +84,7 @@ test('backend risk requires a second explicit action and transmits exact overrid
   api.getSettingsExtensionRiskChallenge.mockReturnValue(challenge);
   const { onInstalled } = await mount();
   fireEvent.click(screen.getByRole('button', { name: '开始上传' }));
-  await screen.findByText('Missing signature');
+  await screen.findByText('该扩展包没有可验证的发布者签名。');
   expect(api.uploadSettingsExtension).toHaveBeenCalledOnce();
   expect(onInstalled).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '确认风险并安装' }));
@@ -173,4 +174,23 @@ test('uploads the file list sequentially and never reuploads successful rows', a
   expect(
     api.uploadSettingsExtension.mock.calls.map((args) => args[0].name)
   ).toEqual(['ssh.1flowbasepkg', 'second.1flowbasepkg', 'third.1flowbasepkg']);
+});
+
+test('keeps the backend installation failure reason visible', async () => {
+  api.uploadSettingsExtension.mockRejectedValue(
+    new ApiClientError({
+      status: 400,
+      code: 'plugin_runtime_target_mismatch',
+      message:
+        'plugin runtime target linux-arm64 is incompatible with host linux-amd64'
+    })
+  );
+  const { onInstalled } = await mount();
+  fireEvent.click(screen.getByRole('button', { name: '开始上传' }));
+  expect(
+    await screen.findByText(
+      'plugin runtime target linux-arm64 is incompatible with host linux-amd64'
+    )
+  ).toBeInTheDocument();
+  expect(onInstalled).not.toHaveBeenCalled();
 });
