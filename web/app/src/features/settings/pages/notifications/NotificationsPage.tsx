@@ -167,8 +167,8 @@ function NotificationChannelsPage() {
       },
       {
         key: 'status',
-        width: 180,
-        title: t('status'),
+        width: 120,
+        title: t('enable_status'),
         render: (_, item) => (
           <Space orientation="vertical" size="small">
             <Switch
@@ -178,23 +178,6 @@ function NotificationChannelsPage() {
               loading={statusPending && statusVariables?.id === item.id}
               onChange={() => changeStatus(item)}
             />
-            {item.authorization && (
-              <Typography.Text type="secondary">
-                {item.authorization.status === 'authorized'
-                  ? t('authorization_authorized')
-                  : item.authorization.status === 'pending'
-                    ? t('authorization_pending')
-                    : item.authorization.status === 'invalid'
-                      ? t('authorization_invalid')
-                      : t('authorization_unauthorized')}
-              </Typography.Text>
-            )}
-            {item.authorization?.delivery_window && (
-              <NotificationDeliveryWindow
-                delivery_window={item.authorization.delivery_window}
-                compact
-              />
-            )}
             {availability(item) && (
               <Typography.Text type="secondary">
                 {availability(item)}
@@ -202,6 +185,39 @@ function NotificationChannelsPage() {
             )}
           </Space>
         )
+      },
+      {
+        key: 'authorization.status',
+        width: 140,
+        title: t('authorization_status'),
+        render: (_, item) =>
+          item.authorization ? (
+            <Typography.Text type="secondary">
+              {item.authorization.status === 'authorized'
+                ? t('authorization_authorized')
+                : item.authorization.status === 'pending'
+                  ? t('authorization_pending')
+                  : item.authorization.status === 'invalid'
+                    ? t('authorization_invalid')
+                    : t('authorization_unauthorized')}
+            </Typography.Text>
+          ) : (
+            '—'
+          )
+      },
+      {
+        key: 'authorization.delivery_window',
+        width: 200,
+        title: t('delivery_window_status'),
+        render: (_, item) =>
+          item.authorization?.delivery_window ? (
+            <NotificationDeliveryWindow
+              delivery_window={item.authorization.delivery_window}
+              compact
+            />
+          ) : (
+            '—'
+          )
       },
       {
         key: 'actions',

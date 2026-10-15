@@ -3,6 +3,7 @@
   "display_name": "渠道名称",
   "type": "通知类型",
   "status": "状态",
+  "enable_status": "启用状态",
   "actions": "操作",
   "create_instance": "新增通知渠道",
   "edit_instance": "编辑通知渠道",
