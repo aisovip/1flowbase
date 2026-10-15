@@ -12,6 +12,7 @@ import type {
   NotificationInstance,
   NotificationType
 } from '@1flowbase/api-client';
+import { appI18n } from '../../../shared/i18n/app-i18n';
 import { useAuthStore, resetAuthStore } from '../../../state/auth-store';
 import { NotificationsPage } from '../../settings/pages/notifications/NotificationsPage';
 import { NotificationBell } from '../components/NotificationBell';
@@ -75,6 +76,98 @@ const initialInstance: NotificationInstance = {
   created_at: '2026-10-13T00:00:00Z',
   updated_at: '2026-10-13T00:00:00Z'
 };
+
+test('switches plugin metadata while an edit drawer is open and preserves user names, draft values and canonical writes', async () => {
+  const plugin: NotificationType = {
+    ...type,
+    type_code: 'vendor/notice/private',
+    installation_id: 'plugin-installation',
+    display_name: 'Raw plugin name',
+    config_schema: {
+      type: 'object',
+      properties: { endpoint: { type: 'string' } }
+    },
+    config_form: {
+      schema_version: '1.0.0',
+      fields: [
+        {
+          key: 'endpoint',
+          label: 'Raw endpoint',
+          type: 'string',
+          options: [],
+          visible_when: [],
+          disabled_when: []
+        }
+      ]
+    },
+    authorization: {
+      actions: [{ code: 'qr', kind: 'qr_code', label: 'Raw scan' }],
+      managed_secret_keys: ['bot_token']
+    },
+    i18n: {
+      zh_Hans: {
+        display_name: '插件通知',
+        config_form: { fields: { endpoint: { label: '插件服务地址' } } },
+        authorization: { actions: { qr: { label: '插件扫码' } } }
+      },
+      en_US: {
+        display_name: 'Plugin notification',
+        config_form: { fields: { endpoint: { label: 'Plugin endpoint' } } },
+        authorization: { actions: { qr: { label: 'Plugin scan' } } }
+      }
+    }
+  };
+  catalog = [type, plugin];
+  instance = {
+    ...initialInstance,
+    type_code: plugin.type_code,
+    installation_id: plugin.installation_id,
+    display_name: 'User supplied 渠道',
+    config_json: { endpoint: 'https://old.example' },
+    configured_secret_fields: [],
+    authorization: { status: 'authorized' }
+  };
+  renderUI(<NotificationsPage />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'User supplied 渠道' })
+  );
+  expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+    '插件通知'
+  );
+  fireEvent.change(screen.getByRole('textbox', { name: '插件服务地址' }), {
+    target: { value: 'https://draft.example' }
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+    target: { value: 'User supplied 新名称' }
+  });
+  const reads = calls.filter((call) => call.url.endsWith('/types')).length;
+  await act(async () => {
+    await appI18n.changeLanguage('en_US');
+  });
+  expect(
+    screen.getByRole('textbox', { name: 'Notification type' })
+  ).toHaveValue('Plugin notification');
+  expect(screen.getByRole('textbox', { name: 'Plugin endpoint' })).toHaveValue(
+    'https://draft.example'
+  );
+  expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue(
+    'User supplied 新名称'
+  );
+  expect(
+    screen.getByRole('button', { name: /Plugin scan/ })
+  ).toBeInTheDocument();
+  expect(calls.filter((call) => call.url.endsWith('/types'))).toHaveLength(
+    reads
+  );
+  expect(plugin.display_name).toBe('Raw plugin name');
+  fireEvent.click(screen.getByRole('button', { name: 'Submit', exact: true }));
+  await waitFor(() =>
+    expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
+      display_name: 'User supplied 新名称',
+      config_json: { endpoint: 'https://draft.example' }
+    })
+  );
+});
 let instance: NotificationInstance;
 let catalog: NotificationType[];
 let filteredInstances: NotificationInstance[] | undefined;
@@ -265,7 +358,8 @@ beforeEach(() => {
     })
   );
 });
-afterEach(() => {
+afterEach(async () => {
+  await appI18n.changeLanguage('zh_Hans');
   client?.clear();
   resetAuthStore();
   vi.unstubAllGlobals();

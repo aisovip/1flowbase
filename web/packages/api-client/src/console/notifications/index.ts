@@ -27,6 +27,29 @@ export type NotificationAuthorizationOperation =
   | { type: 'cancel' }
   | { type: 'maintain' };
 
+export interface NotificationFieldLocale {
+  label?: string;
+  description?: string;
+  placeholder?: string;
+}
+export interface NotificationFormLocale {
+  title?: string;
+  description?: string;
+  fields?: Record<string, NotificationFieldLocale>;
+}
+export interface NotificationAuthorizationActionLocale {
+  label: string;
+}
+export interface NotificationAuthorizationLocale {
+  actions?: Record<string, NotificationAuthorizationActionLocale>;
+}
+export interface NotificationTypeLocale {
+  display_name?: string;
+  description?: string;
+  config_form?: NotificationFormLocale;
+  input_form?: NotificationFormLocale;
+  authorization?: NotificationAuthorizationLocale;
+}
 export interface NotificationType {
   type_code: string;
   display_name: string;
@@ -37,6 +60,7 @@ export interface NotificationType {
   input_form: ConsolePluginFormSchema;
   output_schema: Record<string, unknown>;
   authorization?: NotificationAuthorizationDescriptor | null;
+  i18n?: Partial<Record<'zh_Hans' | 'en_US', NotificationTypeLocale>>;
   contribution_id: string;
   installation_id: string | null;
   available: boolean;

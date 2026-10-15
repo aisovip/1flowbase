@@ -98,7 +98,11 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
     'readonly'
   );
   expect(screen.getByText('channel-1')).toBeInTheDocument();
-  expect(screen.getByText('站内信')).toBeInTheDocument();
+  expect(
+    within(
+      document.querySelector('.notification-log-detail') as HTMLElement
+    ).getByText('系统通知')
+  ).toBeInTheDocument();
   expect(screen.getByText('<script>raw text</script>')).toBeInTheDocument();
   expect(document.querySelector('.notification-log-detail script')).toBeNull();
   expect(screen.getAllByText('消息输入或收件人无效').length).toBeGreaterThan(0);

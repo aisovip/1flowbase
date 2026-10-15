@@ -18,9 +18,11 @@ import {
 import { getNamedBindingExpression } from '../../../../lib/named-binding-expressions';
 import type { FlowSelectorOption } from '../../../../lib/selector-options';
 import { NotificationInputField } from './NotificationInputField';
+import { useNotificationTypeLocalization } from '../../../../../notifications/hooks/use-notification-type-localization';
 
 export function NotificationField({ adapter }: SchemaFieldRendererProps) {
   const { t } = useTranslation('agentFlow');
+  const localizeType = useNotificationTypeLocalization();
   const scope = useAuthStore(selectNavigationQueryScope);
   const instances = useQuery(notificationInstancesOptions(scope));
   const types = useQuery(notificationTypesOptions(scope));
@@ -28,11 +30,12 @@ export function NotificationField({ adapter }: SchemaFieldRendererProps) {
   const instance_id =
     typeof node.config.instance_id === 'string' ? node.config.instance_id : '';
   const instance = instances.data?.find((item) => item.id === instance_id);
-  const type = types.data?.find(
+  const sourceType = types.data?.find(
     (item) =>
       item.type_code === instance?.type_code &&
       item.installation_id === instance?.installation_id
   );
+  const type = sourceType && localizeType(sourceType);
   const binding = adapter.getValue('bindings.input') as FlowBinding | undefined;
   const entries = binding?.kind === 'named_bindings' ? binding.value : [];
   const options = adapter.getDerived('selectorOptions') as FlowSelectorOption[];

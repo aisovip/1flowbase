@@ -40,6 +40,7 @@ import { NotificationDeliveryWindow } from './NotificationDeliveryWindow';
 import { NotificationInstanceDrawer } from './NotificationInstanceDrawer';
 import { NotificationInstanceFilters } from './NotificationInstanceFilters';
 import { NotificationLogs } from './NotificationLogs';
+import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 import './notifications-page.css';
 
 export function NotificationsPage() {
@@ -64,6 +65,7 @@ export function NotificationsPage() {
 
 function NotificationChannelsPage() {
   const { t } = useTranslation('notifications');
+  const localizeType = useNotificationTypeLocalization();
   const scope = useAuthStore(selectNavigationQueryScope);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const client = useQueryClient();
@@ -158,12 +160,14 @@ function NotificationChannelsPage() {
         width: 160,
         title: t('type'),
         dataIndex: 'type_code',
-        render: (_, item) =>
-          types.data?.find(
+        render: (_, item) => {
+          const type = types.data?.find(
             (type) =>
               type.type_code === item.type_code &&
               type.installation_id === item.installation_id
-          )?.display_name ?? item.type_code
+          );
+          return type ? localizeType(type).display_name : item.type_code;
+        }
       },
       {
         key: 'status',
@@ -255,6 +259,7 @@ function NotificationChannelsPage() {
       editInstance,
       availability,
       types.data,
+      localizeType,
       changeStatus,
       statusPending,
       statusVariables,
@@ -309,7 +314,7 @@ function NotificationChannelsPage() {
                         type.type_code,
                         type.installation_id
                       ]),
-                      label: type.display_name,
+                      label: localizeType(type).display_name,
                       onClick: () => setEditing({ type })
                     }))
                 }}

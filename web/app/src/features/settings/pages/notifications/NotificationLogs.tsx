@@ -32,9 +32,11 @@ import {
   notificationInstancesOptions,
   notificationTypesOptions
 } from '../../../notifications/api/queries';
+import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 
 export function NotificationLogs() {
   const { t } = useTranslation('notifications');
+  const localizeType = useNotificationTypeLocalization();
   const scope = useAuthStore(selectNavigationQueryScope);
   const [filters, setFilters] = useState<NotificationLogListInput>({});
   const [page, setPage] = useState(1);
@@ -44,6 +46,24 @@ export function NotificationLogs() {
   );
   const instances = useQuery(notificationInstancesOptions(scope));
   const types = useQuery(notificationTypesOptions(scope));
+  const typeLabel = useCallback(
+    (item: NotificationSendLog) => {
+      const instance = instances.data?.find(
+        (entry) => entry.id === item.instance_id
+      );
+      const type = types.data?.find(
+        (entry) =>
+          entry.type_code === item.type_code &&
+          entry.installation_id === instance?.installation_id
+      );
+      return type
+        ? localizeType(type).display_name
+        : item.type_code === 'system'
+          ? t('system_notification_type')
+          : (item.type_code ?? '—');
+    },
+    [instances.data, types.data, localizeType, t]
+  );
   const statusLabel = useCallback(
     (status: NotificationSendLog['status']) =>
       status === 'success'
@@ -123,7 +143,8 @@ export function NotificationLogs() {
         key: 'type_code',
         title: t('type'),
         width: 140,
-        dataIndex: 'type_code'
+        dataIndex: 'type_code',
+        render: (_, item) => typeLabel(item)
       },
       {
         key: 'status',
@@ -149,7 +170,7 @@ export function NotificationLogs() {
         )
       }
     ],
-    [t, statusLabel, failureLabel]
+    [t, statusLabel, failureLabel, typeLabel]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,
@@ -220,7 +241,10 @@ export function NotificationLogs() {
                 new Map(
                   types.data?.map((item) => [
                     item.type_code,
-                    { value: item.type_code, label: item.display_name }
+                    {
+                      value: item.type_code,
+                      label: localizeType(item).display_name
+                    }
                   ])
                 ).values()
               )}
@@ -252,6 +276,7 @@ export function NotificationLogs() {
           onClose={() => setSelected(undefined)}
           statusLabel={statusLabel}
           failureLabel={failureLabel}
+          typeLabel={typeLabel}
         />
       )}
     </section>
@@ -261,12 +286,14 @@ function NotificationLogDetail({
   id,
   onClose,
   statusLabel,
-  failureLabel
+  failureLabel,
+  typeLabel
 }: {
   id: string;
   onClose: () => void;
   statusLabel: (status: NotificationSendLog['status']) => string;
   failureLabel: (code: string | null) => string;
+  typeLabel: (item: NotificationSendLog) => string;
 }) {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
@@ -303,11 +330,7 @@ function NotificationLogDetail({
               {item.display_name ?? t('deleted_channel')}
             </NotificationLogField>
             <NotificationLogField label={t('type')}>
-              <Tag>
-                {item.type_code === 'system'
-                  ? t('system_message_type')
-                  : (item.type_code ?? '—')}
-              </Tag>
+              <Tag>{typeLabel(item)}</Tag>
             </NotificationLogField>
             <NotificationLogField label={t('source')}>
               {item.source === 'workflow'

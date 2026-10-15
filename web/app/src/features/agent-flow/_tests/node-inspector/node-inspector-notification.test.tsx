@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   NotificationInstance,
@@ -9,6 +9,7 @@ import {
   listNotificationTypes
 } from '@1flowbase/api-client';
 import type { FlowBinding } from '@1flowbase/flow-schema';
+import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
 import { createNodeDocument } from '../../lib/document/node-factory';
 import { createEdgeDocument } from '../../lib/document/edge-factory';
@@ -233,6 +234,65 @@ beforeEach(async () => {
 });
 
 describe('notification inspector AC-002/005', () => {
+  test('switches plugin field text without changing existing notification bindings or defaults', async () => {
+    vi.mocked(listNotificationTypes).mockResolvedValue([
+      {
+        ...pluginType,
+        i18n: {
+          zh_Hans: {
+            description: '插件通知说明',
+            input_form: {
+              fields: {
+                amount: { label: '金额' },
+                enabled: { label: '启用通知' }
+              }
+            }
+          },
+          en_US: {
+            description: 'Plugin notification help',
+            input_form: {
+              fields: {
+                amount: { label: 'Amount' },
+                enabled: { label: 'Enabled' }
+              }
+            }
+          }
+        }
+      }
+    ]);
+    await renderNotification(
+      { instance_id: pluginInstance.id },
+      {
+        input: {
+          kind: 'named_bindings',
+          value: [
+            {
+              name: 'amount',
+              valueType: 'number',
+              value: { kind: 'constant', value: 7 }
+            }
+          ]
+        }
+      }
+    );
+    await screen.findByRole('spinbutton', { name: '金额' });
+    const before = structuredClone(node().bindings);
+    try {
+      await act(async () => {
+        await appI18n.changeLanguage('en_US');
+      });
+      expect(screen.getByRole('spinbutton', { name: 'Amount' })).toHaveValue(
+        '7'
+      );
+      expect(screen.getByText('Plugin notification help')).toBeInTheDocument();
+      expect(node().bindings).toEqual(before);
+      expect(pluginType.input_form.fields[0].default_value).toBe(1);
+    } finally {
+      await act(async () => {
+        await appI18n.changeLanguage('zh_Hans');
+      });
+    }
+  });
   test('selects a persistent instance, writes recipient UUID array and input fields as named expressions', async () => {
     await renderNotification();
     await openSelect('通知实例');

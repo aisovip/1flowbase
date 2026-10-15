@@ -75,7 +75,6 @@
   "log_id": "日志 ID",
   "channel_identifier": "渠道标识",
   "message": "消息",
-  "system_message_type": "站内信",
   "authorization_status": "授权状态",
   "authorization_unauthorized": "未授权",
   "authorization_pending": "授权待确认",
@@ -104,5 +103,8 @@
   "delivery_window_message_hint": "请向机器人发送任意消息以开启或续期24小时通知订阅窗口，然后刷新订阅状态。渠道仍需启用后才能发送通知。",
   "failure_subscription_required": "尚未收到可验证的用户消息，请先向机器人发送任意消息以开启通知订阅窗口",
   "failure_subscription_expired": "24小时通知订阅窗口已过，请向机器人发送任意消息续期后重试",
-  "failure_subscription_unavailable": "无法确认通知订阅状态，请稍后重试"
+  "failure_subscription_unavailable": "无法确认通知订阅状态，请稍后重试",
+  "system_notification_type": "系统通知",
+  "system_notification_description": "向工作区成员发送站内通知",
+  "system_notification_recipients": "收件人"
 }
