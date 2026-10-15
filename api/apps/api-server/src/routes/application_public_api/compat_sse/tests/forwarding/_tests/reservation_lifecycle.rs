@@ -4,10 +4,11 @@ use control_plane::application_public_api::{
     callback_resume::{
         PublishedCallbackReservation, PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
     },
+    native_tool_resume::correlate_native_responses_callback,
 };
 use control_plane::ports::{
-    CreateCallbackTaskInput, CreateCheckpointInput, RuntimeEventSubscription,
-    RuntimeEventTrimPolicy,
+    CreateCallbackTaskInput, CreateCheckpointInput, ProviderTransportPayload,
+    RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
 use orchestration_runtime::{
     compiled_plan::CompiledNode,
@@ -116,7 +117,7 @@ async fn fixture(
         .execute(state.store.pool())
         .await
         .unwrap();
-    let owner: Uuid = sqlx::query_scalar("select created_by from flow_runs where id=$1")
+    let (owner, workspace_id): (Uuid, Uuid) = sqlx::query_as("select r.created_by,a.workspace_id from flow_runs r join applications a on a.id=r.application_id where r.id=$1")
         .bind(run.id)
         .fetch_one(state.store.pool())
         .await
@@ -126,7 +127,7 @@ async fn fixture(
         application_id: run.application_id,
         creator_user_id: owner,
         tenant_id: Uuid::nil(),
-        workspace_id: Uuid::nil(),
+        workspace_id,
         actor: domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
     };
     let node = state
@@ -143,13 +144,25 @@ async fn fixture(
         })
         .await
         .unwrap();
+    // Match the native Responses ingress in openai.rs: correlate the response
+    // cursor/provider call ID and retain the same native transport in the command.
+    let response_id = format!("resp_reservation_fixture_{}", run.id);
+    let request = json!({"model":"fixture","stream":true,"store":false,
+        "previous_response_id":response_id,
+        "input":[{"type":"function_call_output","call_id":"call_fixture","output":"fixture-result"}]});
+    let native_transport = ProviderTransportPayload::openai_responses(request.clone()).unwrap();
     let callback = state
         .store
         .create_callback_task(&CreateCallbackTaskInput {
             flow_run_id: run.id,
             node_run_id: node.id,
             callback_kind: "llm_tool_calls".into(),
-            request_payload: json!({"tool_calls": [{"id":"call_fixture", "name":"fixture", "arguments":{}}]}),
+            request_payload: json!({"tool_calls": [{"id":"call_fixture", "name":"fixture", "arguments":{}}],
+                "provider_metadata":{"native_response":{
+                    "response_id":response_id,
+                    "configuration_digest":native_transport.configuration_digest().unwrap(),
+                    "user_messages_digest":native_transport.user_messages_digest().unwrap()
+                }}}),
             external_ref_payload: None,
         })
         .await
@@ -170,15 +183,21 @@ async fn fixture(
         .bind(Uuid::now_v7()).bind(run.id).bind(callback.id).bind(run.application_id)
         .execute(state.store.pool()).await.unwrap();
     run.metadata["response_round_id"] = json!(callback.id);
+    let (correlated_callback, response_payload) =
+        correlate_native_responses_callback(&state.store, &actor, &request)
+            .await
+            .unwrap()
+            .expect("the real native Responses ingress must recognize this owned callback");
+    assert_eq!(correlated_callback.id, callback.id);
     let command = ResumePublishedCallbackCommand {
         bearer_token: String::new(),
         target: PublishedCallbackResumeTarget::CallbackTask {
             callback_task_id: callback.id,
         },
-        source: PublishedCallbackResumeSource::NativeAgent,
-        response_payload: json!({"tool_results": [{"tool_call_id":"call_fixture", "output":"fixture-result"}]}),
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload,
         response_mode: Some("streaming".into()),
-        native_transport: None,
+        native_transport: Some(native_transport),
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -276,6 +295,13 @@ async fn await_received(state: &ApiState, id: Uuid) {
     .expect("unstarted admission must be released without its predecessor timeout");
 }
 
+async fn assert_single_cleaned_claim(state: &ApiState, callback_id: Uuid) {
+    let counts: (i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from flow_run_callback_resume_attempts where callback_task_id=$1), count(*), count(*) filter (where status='failed') from flow_run_resume_claims where callback_task_id=$1",
+    ).bind(callback_id).fetch_one(state.store.pool()).await.unwrap();
+    assert_eq!(counts, (1, 1, 1), "pre-execution cleanup retains one admission and one failed execution claim, without duplicate ownership");
+}
+
 #[tokio::test]
 async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_retry() {
     for failure in ["open", "subscribe"] {
@@ -311,6 +337,7 @@ async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_r
         .await;
         assert!(result.is_err());
         await_received(&state, id).await;
+        assert_single_cleaned_claim(&state, callback_task_id_from_resume_command(&command)).await;
         if failure == "subscribe" {
             assert_ne!(
                 stream
@@ -379,11 +406,17 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
     };
     assert!(error.is_cancelled());
     await_received(&state, id).await;
+    assert_single_cleaned_claim(&state, callback_task_id_from_resume_command(&command)).await;
     let retry = service
         .reserve_native_callback_reservation_for_actor(actor, &command)
         .await
         .unwrap();
     assert!(matches!(retry, PublishedCallbackReservation::Acquired(_)));
+    assert_eq!(
+        retry.attempt_id(),
+        id,
+        "cancellation retry must reuse its existing admission"
+    );
     let mut guard = CompatibleCallbackReservation::new(retry, service);
     let cleanup = guard.release_ticket().unwrap();
     guard.handoff();
@@ -414,6 +447,10 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
 #[tokio::test]
 async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution() {
     let (state, dependencies, run, actor, mut command, service, stream) = fixture("open").await;
+    // Partial native-agent deliveries retain their existing API semantics;
+    // native Responses correlation above requires the complete owned call set.
+    command.source = PublishedCallbackResumeSource::NativeAgent;
+    command.native_transport = None;
     let callback_id = callback_task_id_from_resume_command(&command);
     sqlx::query("insert into flow_run_tool_callback_inbox (id,scope_id,application_id,flow_run_id,callback_task_id,tool_call_id,tool_ordinal) select $1,a.workspace_id,a.id,$2,$3,'call_pending',1 from applications a where a.id=$4")
         .bind(Uuid::now_v7()).bind(run.id).bind(callback_id).bind(run.application_id)
