@@ -6,10 +6,7 @@ impl ResponsesHistoryMigrationReadRepository for PgControlPlaneStore {
         &self,
         input: &ResponsesHistoryFlowPageInput,
     ) -> Result<ResponsesHistoryFlowPage> {
-        anyhow::ensure!(
-            (1..=1_000).contains(&input.limit),
-            "responses_history_page_limit_invalid"
-        );
+        anyhow::ensure!(input.limit > 0, "responses_history_page_limit_invalid");
         let mut ids = sqlx::query_scalar::<_, Uuid>(
             "select id from flow_runs where scope_id=$1 and application_id=$2 and ($3::uuid is null or id>$3) order by id limit $4",
         )
@@ -39,15 +36,14 @@ impl ResponsesHistoryMigrationReadRepository for PgControlPlaneStore {
         &self,
         input: &ResponsesHistoryNativeSourcePageInput,
     ) -> Result<ResponsesHistoryNativeSourcePage> {
-        anyhow::ensure!(
-            (1..=1_000).contains(&input.limit),
-            "responses_history_page_limit_invalid"
-        );
+        anyhow::ensure!(input.limit > 0, "responses_history_page_limit_invalid");
         let mut rows = sqlx::query(
-            r#"select e.id,e.node_run_id,e.sequence,e.event_type,
+            r#"select e.id,e.node_run_id,e.sequence,e.event_type,e.scope_id,
+                      (n.flow_run_id=f.id and n.scope_id=f.scope_id) as node_valid,
                       runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as payload
                  from runtime_events e
                  join flow_runs f on f.id=e.flow_run_id
+                 left join node_runs n on n.id=e.node_run_id
                 where f.id=$1 and f.scope_id=$2 and f.application_id=$3
                   and ($4::bigint is null or e.sequence>$4)
                   and (e.event_type='provider_output_item_done' or
@@ -67,6 +63,12 @@ impl ResponsesHistoryMigrationReadRepository for PgControlPlaneStore {
         let sources = rows
             .into_iter()
             .map(|row| {
+                anyhow::ensure!(
+                    row.try_get::<Uuid, _>("scope_id")? == input.flow.scope_id
+                        && (row.try_get::<Option<Uuid>, _>("node_run_id")?.is_none()
+                            || row.try_get::<Option<bool>, _>("node_valid")? == Some(true)),
+                    "responses_history_native_source_owner_mismatch"
+                );
                 Ok(ResponsesHistoryNativeSource {
                     id: row.try_get("id")?,
                     node_run_id: row.try_get("node_run_id")?,

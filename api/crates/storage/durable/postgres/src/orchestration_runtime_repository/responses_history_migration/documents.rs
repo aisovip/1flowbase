@@ -30,26 +30,35 @@ fn location(
     }
 }
 
-async fn read_locked(
+pub(super) async fn read_current(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
     owner: ResponsesHistoryDocumentOwner,
+    lock: bool,
 ) -> Result<Value> {
     let (table, lock_table, column, id) = location(owner, flow);
     // Share the converter's source lock, including when no shadow exists yet.
     // This prevents a legacy conversion from creating a stale shadow mid-write.
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!("{table}:{column}:{id}"))
-        .execute(&mut **tx)
-        .await?;
+    if lock {
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(format!("{table}:{column}:{id}"))
+            .execute(&mut **tx)
+            .await?;
+    }
     let flow_predicate = if lock_table == "flow_runs" {
         "r.id=f.id"
     } else {
         "r.flow_run_id=f.id"
     };
+    let node_predicate = match owner {
+        ResponsesHistoryDocumentOwner::CallbackRequest { .. } | ResponsesHistoryDocumentOwner::SpanMetadata { .. } =>
+            "and (r.node_run_id is null or exists(select 1 from node_runs n where n.id=r.node_run_id and n.flow_run_id=f.id and n.scope_id=f.scope_id))",
+        _ => "",
+    };
+    let lock_suffix = if lock { "for update of r" } else { "" };
     // node_run_records is an outer-join view: lock its physical owner first.
     let locked = sqlx::query_scalar::<_, Uuid>(&format!(
-        "select r.id from {lock_table} r join flow_runs f on {flow_predicate} where r.id=$1 and f.id=$2 and f.scope_id=$3 and f.application_id=$4 and r.scope_id=$3 for update of r"
+        "select r.id from {lock_table} r join flow_runs f on {flow_predicate} where r.id=$1 and f.id=$2 and f.scope_id=$3 and f.application_id=$4 and r.scope_id=$3 {node_predicate} {lock_suffix}"
     ))
     .bind(id).bind(flow.flow_run_id).bind(flow.scope_id).bind(flow.application_id)
     .fetch_optional(&mut **tx).await?;
@@ -62,7 +71,7 @@ async fn read_locked(
     )).bind(id).fetch_one(&mut **tx).await?)
 }
 
-async fn read_shadow(
+pub(super) async fn read_shadow(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
     owner: ResponsesHistoryDocumentOwner,
@@ -89,7 +98,7 @@ async fn read_shadow(
     .transpose()
 }
 
-async fn verify_shadow_content(
+pub(super) async fn verify_shadow_content(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
     binding: &ResponsesHistoryShadowBinding,
@@ -129,7 +138,7 @@ async fn write_document(
     Ok(())
 }
 
-async fn write_shadow(
+pub(super) async fn write_shadow(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     binding: &ResponsesHistoryShadowBinding,
 ) -> Result<()> {
@@ -147,7 +156,6 @@ async fn write_shadow(
 
 /// Caller owns the transaction and must call lock_flow at its entrance. This
 /// participant never commits and never interprets or rewrites proof fields.
-#[allow(dead_code)] // Connected by the complete maintenance coordinator in WP002b.
 pub(super) async fn apply(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
@@ -162,7 +170,7 @@ pub(super) async fn apply(
             "responses_history_duplicate_document"
         );
         anyhow::ensure!(
-            read_locked(tx, flow, change.owner).await? == change.before,
+            read_current(tx, flow, change.owner, true).await? == change.before,
             "responses_history_document_cas_conflict"
         );
         let before_shadow = read_shadow(tx, flow, change.owner).await?;
@@ -198,7 +206,6 @@ pub(super) async fn apply(
 }
 
 /// Rollback CAS checks both mutable source and shadow; immutable content remains.
-#[allow(dead_code)] // Connected by the complete maintenance coordinator in WP002b.
 pub(super) async fn rollback(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
@@ -211,7 +218,7 @@ pub(super) async fn rollback(
             "responses_history_duplicate_document"
         );
         anyhow::ensure!(
-            read_locked(tx, flow, receipt.change.owner).await? == receipt.change.after,
+            read_current(tx, flow, receipt.change.owner, true).await? == receipt.change.after,
             "responses_history_document_rollback_conflict"
         );
         let shadow = read_shadow(tx, flow, receipt.change.owner).await?;
@@ -239,4 +246,51 @@ pub(super) async fn rollback(
         }
     }
     Ok(())
+}
+
+/// Enumerate every finite owner in this flow. A corrupt source owner fails closed.
+pub(super) async fn load_all(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow: &ResponsesHistoryFlowKey,
+) -> Result<Vec<ResponsesHistoryDocument>> {
+    let mut owners = vec![
+        ResponsesHistoryDocumentOwner::FlowInput,
+        ResponsesHistoryDocumentOwner::FlowOutput,
+    ];
+    for id in sqlx::query_scalar::<_, Uuid>(
+        "select id from flow_run_callback_tasks where flow_run_id=$1 order by id",
+    )
+    .bind(flow.flow_run_id)
+    .fetch_all(&mut **tx)
+    .await?
+    {
+        owners.push(ResponsesHistoryDocumentOwner::CallbackRequest {
+            callback_task_id: id,
+        });
+    }
+    for id in
+        sqlx::query_scalar::<_, Uuid>("select id from node_runs where flow_run_id=$1 order by id")
+            .bind(flow.flow_run_id)
+            .fetch_all(&mut **tx)
+            .await?
+    {
+        owners.push(ResponsesHistoryDocumentOwner::NodeOutput { node_run_id: id });
+    }
+    for id in sqlx::query_scalar::<_, Uuid>(
+        "select id from runtime_spans where flow_run_id=$1 order by id",
+    )
+    .bind(flow.flow_run_id)
+    .fetch_all(&mut **tx)
+    .await?
+    {
+        owners.push(ResponsesHistoryDocumentOwner::SpanMetadata { span_id: id });
+    }
+    let mut result = Vec::with_capacity(owners.len());
+    for owner in owners {
+        result.push(ResponsesHistoryDocument {
+            owner,
+            value: read_current(tx, flow, owner, false).await?,
+        });
+    }
+    Ok(result)
 }

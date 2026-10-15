@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::secret_crypto::{decrypt_secret_json_with_aad, encrypt_secret_json_with_aad};
 
-const KEY_VERSION: &str = "provider-secret-master-key:v1";
+pub(crate) const KEY_VERSION: &str = "provider-secret-master-key:v1";
 
 #[derive(Clone)]
 pub struct PgProviderProtocolCapsuleStore {
@@ -21,7 +21,7 @@ pub struct PgProviderProtocolCapsuleStore {
 }
 
 impl PgProviderProtocolCapsuleStore {
-    fn associated_data(flow_run_id: Uuid, kind: &str, slot_key: &str) -> Vec<u8> {
+    pub(crate) fn associated_data(flow_run_id: Uuid, kind: &str, slot_key: &str) -> Vec<u8> {
         format!("provider_protocol_capsule:v1\0{flow_run_id}\0{kind}\0{slot_key}").into_bytes()
     }
 
