@@ -15,8 +15,9 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
     owner = await openTemporaryConsoleSession({ playwright, apiBaseUrl: args.apiBaseUrl, ...credentials, storageStatePath });
     await fs.chmod(storageStatePath, 0o600);
     rebaseStorageStateCookies(storageStatePath, args.webBaseUrl);
-    browser = await playwright.chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true });
     for (const [name, viewport] of viewports) {
+      // Release renderer/navigation caches between viewport evidence batches.
+      browser = await playwright.chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true });
       const context = await browser.newContext({ viewport, storageState: storageStatePath });
       try {
         const page = await context.newPage();
@@ -74,7 +75,7 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         await dialog.getByText(/^(服务端交换回执|Server exchange receipt)$/).waitFor({ state: 'visible' });
         assert.equal(await dialog.getByText(/仅导出了部分|exported only part/).count(), 0, 'conversation expansion is not a partial failure');
         receipt.checks.push({ name: `${name} real UI Langfuse complete conversation export`, status: 'pass', application_id: applicationId, log_conversation_ids: exportBody.log_conversation_ids, exported_records: exported.exported_records, exported_spans: exported.exported_spans, trace_ids: exported.trace_ids });
-        await dialog.getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
+        await dialog.locator('.ant-modal-footer').getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
 
         await page.goto(`${args.webBaseUrl}/applications/${targetApplicationId}/logs?language=zh`, { waitUntil: 'domcontentloaded' });
         const targetRows = page.locator(importedRecordIds.map(id => `input[type=checkbox][name="${id}"]`).join(', '));
@@ -100,16 +101,21 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         assert.ok(await importDialog.getByText(String(eventCount), { exact: true }).isVisible(), 'UI renders duplicate count');
         await save('langfuse-import-receipt.png', targetApplicationId, importMasks);
         receipt.checks.push({ name: `${name} real UI Langfuse repeat import`, status: 'pass', application_id: targetApplicationId, accepted_events: imported.accepted_events, duplicate_events: imported.duplicate_events, record_ids: imported.record_ids, trace_ids: traceIds });
-        await importDialog.getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
+        await importDialog.locator('.ant-modal-footer').getByRole('button', { name: /^(关\s*闭|Close)$/ }).click();
         await page.goto(`${args.webBaseUrl}/applications/${targetApplicationId}/logs?language=zh&run_id=${encodeURIComponent(conversation.record_id)}`, { waitUntil: 'domcontentloaded' });
         const details = page.getByTestId('application-logs-floating-run-detail');
         await details.getByText(conversation.user, { exact: true }).waitFor({ state: 'visible' });
         await details.getByText(conversation.final_answer, { exact: true }).waitFor({ state: 'visible' });
         await save('05-imported-conversation.png', targetApplicationId);
         receipt.checks.push({ name: `${name} imported source user and final conversation visible`, status: 'pass', application_id: targetApplicationId, record_id: conversation.record_id });
-      } finally { await context.close(); }
+      } finally {
+        try { await context.close(); }
+        finally { await browser.close(); browser = null; }
+      }
     }
     for (const [name, viewport] of viewports) {
+      // Release renderer/navigation caches between viewport evidence batches.
+      browser = await playwright.chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true });
       const context = await browser.newContext({ storageState: args.langfuseStoragePrivateFile, viewport });
       try {
         const page = await context.newPage();
@@ -119,7 +125,10 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         const output = path.join(args.outDir, name === 'desktop' ? '03-langfuse-traces.png' : `${name}-03-langfuse-traces.png`);
         await page.screenshot({ path: output, fullPage: true, animations: 'disabled' });
         receipt.screenshots.push({ path: output, viewport, scope: 'Langfuse traces page only; API readiness is checked separately' });
-      } finally { await context.close(); }
+      } finally {
+        try { await context.close(); }
+        finally { await browser.close(); browser = null; }
+      }
     }
   } finally {
     try { if (browser) await browser.close(); }
