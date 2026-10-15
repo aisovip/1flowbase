@@ -1687,3 +1687,10 @@ impl orchestration_runtime::execution_engine::LlmRoutingCounterStore
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "responses-history-migration")]
+pub(crate) fn materialize_responses_history_checkpoint(
+    lineage: &[crate::ports::RuntimeContextContentVersion],
+) -> Result<serde_json::Map<String, Value>> {
+    persistence::materialize_responses_history_checkpoint(lineage)
+}

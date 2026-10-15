@@ -721,3 +721,10 @@ pub(super) fn next_node_started_at(detail: &domain::ApplicationRunDetail) -> Off
         .map(|value| value + Duration::seconds(1))
         .unwrap_or_else(OffsetDateTime::now_utc)
 }
+
+#[cfg(feature = "responses-history-migration")]
+pub(super) fn materialize_responses_history_checkpoint(
+    lineage: &[crate::ports::RuntimeContextContentVersion],
+) -> Result<Map<String, Value>> {
+    checkpoint_locator::materialize_checkpoint_content(lineage)
+}

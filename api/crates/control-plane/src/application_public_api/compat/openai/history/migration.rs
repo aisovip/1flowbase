@@ -165,3 +165,18 @@ impl VerifiedReplacement {
 #[cfg(test)]
 #[path = "migration/_tests/mod.rs"]
 mod tests;
+
+mod source_graph;
+pub use source_graph::{
+    HistorySourceGraph, SourceGraphResolution, SourceLocator, SourceNamespace, SourcedReplacement,
+    UnresolvedSource,
+};
+
+/// Reuse the runtime checkpoint materializer. The returned pool retains the
+/// recovery marker. Preserve all user values and strip/replace only that marker
+/// when producing a replacement snapshot; never replace the pool with the marker.
+pub fn materialize_checkpoint_content(
+    lineage: &[crate::ports::RuntimeContextContentVersion],
+) -> Result<serde_json::Map<String, Value>> {
+    crate::orchestration_runtime::materialize_responses_history_checkpoint(lineage)
+}
