@@ -21,7 +21,7 @@ async function run() {
   const artifactRoot = path.resolve(process.env.NRA_ARTIFACT_DIR || 'tmp/test-governance/callback-active-lease');
   fs.mkdirSync(artifactRoot, { recursive: true });
   const mock = await createActiveLeaseMock();
-  let gateway, socket, watchdog, outputTimer;
+  let gateway, socket, watchdog, outputTimer, releaseError;
   const evidence = { controlledMock: true, model: 'gpt-6-luna', effort: 'max',
     ageInjection: 'Only isolated fixture admission timestamp is aged by 6 minutes; execution lease remains live.' };
   const save = () => fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));
@@ -71,9 +71,18 @@ async function run() {
     socket.terminate();
     await new Promise(resolve => socket.readyState === WebSocket.CLOSED ? resolve() : socket.once('close', resolve));
     assert.equal(socketError, undefined);
-    // SSE headers can wait for a body frame. Emit non-terminal output while
-    // holding the provider completion, so admission still sees an active lease.
-    outputTimer = setTimeout(() => mock.releaseOutput(), 250);
+    // An attached response follows the durable round terminal. Keep the
+    // provider live while the retry is in flight, then finish the original
+    // invocation; waiting for retry headers before this would deadlock the fixture.
+    outputTimer = setTimeout(() => {
+      try {
+        evidence.during = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'claim_status',c.status,'lease_live',c.lease_expires_at>now()) from flow_run_callback_resume_attempts a join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
+        assert.equal(evidence.during.attempt_status, 'processing');
+        assert.equal(evidence.during.claim_status, 'processing');
+        assert.equal(evidence.during.lease_live, true);
+      } catch (error) { releaseError = error; }
+      mock.release();
+    }, 2000);
     const retry = await fetch(gateway.target.gateway.responses_url, {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: gateway.target.gateway.authorization,
         'session-id': session }, body: JSON.stringify(followup), signal: AbortSignal.timeout(45_000),
@@ -81,13 +90,9 @@ async function run() {
     evidence.httpStatus = retry.status;
     if (retry.status !== 200) { evidence.body = await retry.text(); save(); }
     assert.equal(retry.status, 200, 'Live callback lease must attach, even when admission is older than five minutes');
-    evidence.during = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'claim_status',c.status,'lease_live',c.lease_expires_at>now()) from flow_run_callback_resume_attempts a join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
-    assert.equal(evidence.during.attempt_status, 'processing');
-    assert.equal(evidence.during.claim_status, 'processing');
-    assert.equal(evidence.during.lease_live, true);
-    // The retry has entered the stream before the original provider completes.
-    mock.release();
     const raw = await retry.text();
+    if (releaseError) throw releaseError;
+    assert.ok(evidence.during, 'The original invocation must remain live until controlled release');
     evidence.events = decodeSseChunks([Buffer.from(raw)]).filter(record => !record.done).map(record => record.data);
     assert.equal(evidence.events.filter(event => event.type === 'response.completed').length, 1);
     assert.ok(!evidence.events.some(event => ['error', 'response.failed'].includes(event.type)));

@@ -6,7 +6,7 @@ const { responsesEvents } = require('../mock-upstream/protocol-events');
 async function createActiveLeaseMock() {
   const trace = [];
   const sockets = new Set();
-  let release, releaseOutput;
+  let release;
   let ready;
   const continuing = new Promise(resolve => { ready = resolve; });
   const server = http.createServer((req, res) => {
@@ -42,13 +42,10 @@ async function createActiveLeaseMock() {
       } else if (ordinal === 2) {
         const response = responsesEvents('lease_active', 'LEASE_', 'COMPLETED');
         emit(response.chunks[0]);
-        let outputReleased = false;
-        releaseOutput = () => {
-          if (outputReleased) return;
-          outputReleased = true;
+        release = () => {
           for (const event of response.chunks.slice(1)) emit(event);
+          emit(response.terminal);
         };
-        release = () => { releaseOutput(); emit(response.terminal); };
         ready();
       } else {
         emit({ type: 'error', error: { code: 'duplicate_execution', message: 'Callback was executed twice' } });
@@ -58,7 +55,6 @@ async function createActiveLeaseMock() {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return { baseUrl: `http://127.0.0.1:${server.address().port}`, trace, continuing,
-    releaseOutput() { if (!releaseOutput) throw new Error('Continuation has not started'); releaseOutput(); },
     release() { if (!release) throw new Error('Continuation has not started'); release(); },
     async close() { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); } };
 }
