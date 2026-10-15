@@ -36,7 +36,8 @@ pub(super) async fn load_all(
     lock: bool,
 ) -> Result<Vec<ResponsesHistoryContinuation>> {
     let suffix = if lock { "for update" } else { "" };
-    let rows=sqlx::query(&format!("select slot_key,encrypted_payload,plaintext_digest,plaintext_size_bytes,key_version,hard_expires_at from provider_protocol_capsules where flow_run_id=$1 and capsule_kind='continuation' order by slot_key {suffix}"))
+    // Only a static locking suffix varies; all source values remain bound.
+    let rows=sqlx::query(sqlx::AssertSqlSafe(format!("select slot_key,encrypted_payload,plaintext_digest,plaintext_size_bytes,key_version,hard_expires_at from provider_protocol_capsules where flow_run_id=$1 and capsule_kind='continuation' order by slot_key {suffix}")))
         .bind(flow.flow_run_id).fetch_all(&mut **tx).await?;
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {

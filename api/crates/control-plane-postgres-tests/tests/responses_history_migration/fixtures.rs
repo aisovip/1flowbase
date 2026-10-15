@@ -484,7 +484,8 @@ pub(super) async fn durable_flow_state(
             "t.part_id",
         ),
     ] {
-        let rows:Value=sqlx::query_scalar(&format!("select coalesce(jsonb_agg(to_jsonb(t) order by {order}),'[]'::jsonb) from {table} t where {predicate}"))
+        // All SQL fragments come from the literal inventory above; the flow ID is bound.
+        let rows:Value=sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select coalesce(jsonb_agg(to_jsonb(t) order by {order}),'[]'::jsonb) from {table} t where {predicate}")))
             .bind(flow.flow_run_id).fetch_one(store.pool()).await.unwrap();
         result.insert(table.into(), rows);
     }
