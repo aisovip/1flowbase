@@ -653,6 +653,13 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         .unwrap();
     runtime.host.stop().await.unwrap();
     let reconstructed = RuntimeFixture::new(&state);
+    // Rebuild the persisted installation through the real activation owner before
+    // the new host accepts notification calls; a fresh fixture has no snapshots.
+    reconstructed
+        .composition
+        .rebuild_installation(installation_id)
+        .await
+        .unwrap();
     let restored = NotificationService::new(
         reconstructed.store.clone(),
         state.provider_secret_master_key.clone(),
