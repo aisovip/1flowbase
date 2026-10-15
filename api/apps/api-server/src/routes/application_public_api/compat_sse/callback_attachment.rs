@@ -1,6 +1,18 @@
 use super::*;
 use event_forwarding::is_public_terminal_runtime_event;
 
+/// Diagnostic tails and their synthetic start do not establish a round.
+pub(super) fn callback_round_replay_established(
+    replay: &[RuntimeEventEnvelope],
+    round_id: uuid::Uuid,
+) -> bool {
+    replay.iter().any(|event| {
+        (event.event_type == "flow_started"
+            && event.payload["response_round_id"] == json!(round_id))
+            || event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+    })
+}
+
 pub(super) async fn attach_live_compatible_callback_round(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,

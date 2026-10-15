@@ -54,7 +54,9 @@ use crate::{
 };
 
 mod callback_attachment;
-use callback_attachment::attach_live_compatible_callback_round;
+use callback_attachment::{
+    attach_live_compatible_callback_round, callback_round_replay_established,
+};
 mod event_forwarding;
 mod protocol_mappers;
 #[cfg(test)]
@@ -1291,17 +1293,6 @@ async fn live_compatible_round_start(
     }
 }
 
-fn callback_round_replay_established(
-    replay: &[RuntimeEventEnvelope],
-    round_id: uuid::Uuid,
-) -> bool {
-    replay.iter().any(|event| {
-        (event.event_type == "flow_started"
-            && event.payload["response_round_id"] == json!(round_id))
-            || event_forwarding::is_public_terminal_runtime_event(&event.event_type)
-    })
-}
-
 async fn open_compatible_turn_with_invoker(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
@@ -1322,7 +1313,6 @@ async fn open_compatible_turn_with_invoker(
     let durable_round_established = ignored_waiting_callback_task_id
         .is_some_and(|round_id| callback_round_replay_established(&durable_round_replay, round_id));
     if !durable_round_established {
-        // Diagnostic tails and their synthetic start do not establish a round.
         durable_round_replay.clear();
     }
     if let Err(error) = dependencies
