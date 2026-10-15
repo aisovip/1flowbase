@@ -195,9 +195,12 @@ async fn event(
 }
 
 pub(super) async fn fixture(version: u32) -> Fixture {
+    fixture_with_output(version,json!({"type":"function_call","id":"fc_fixture","call_id":"call_fixture","name":"exec","arguments":"{ \"n\": 9007199254740993 }"})).await
+}
+
+pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture {
     let (schema, store, flow) = seed().await;
     let user = json!({"role":"user","content":"original\0user line"});
-    let output = json!({"type":"function_call","id":"fc_fixture","call_id":"call_fixture","name":"exec","arguments":"{ \"n\": 9007199254740993 }"});
     let mut accumulator = migration::MigrationAccumulator::new(version).unwrap();
     accumulator.append(&user).unwrap();
     accumulator.append(&output).unwrap();
@@ -358,21 +361,31 @@ pub(super) async fn fixture(version: u32) -> Fixture {
         .await
         .unwrap();
     assert_eq!(sources.sources.len(), 3);
-    let source = sources.sources.first().unwrap();
-    let verified = vec![migration::SourcedReplacement {
-        replacement: verified_receipt,
-        source: migration::SourceLocator {
-            namespace: migration::SourceNamespace::Native,
-            flow_run_id: flow.flow_run_id,
-            node_run_id: Some(node.id),
-            source_id: source.id,
-            sequence: Some(source.sequence),
-            completion_source_id: Some(sources.sources.last().unwrap().id),
-            invocation_id: Some(invocation.to_string()),
-            provider_attempt_index: Some(0),
-            response_id: Some("fixture-response".into()),
-        },
-    }];
+    let mut graph = migration::HistorySourceGraph::new(&[migration::ScopedHistoryTarget {
+        flow_run_id: flow.flow_run_id,
+        proof: old.clone(),
+    }])
+    .unwrap();
+    for source in &sources.sources {
+        graph
+            .push_native(
+                flow.flow_run_id,
+                source.node_run_id,
+                source.id,
+                source.sequence,
+                &source.event_type,
+                &source.payload,
+            )
+            .unwrap();
+    }
+    graph.finish_native_flow(flow.flow_run_id).unwrap();
+    let resolution = graph.resolve().unwrap();
+    assert!(resolution.unresolved_targets.is_empty() && resolution.unresolved_sources.is_empty());
+    assert_eq!(resolution.verified.len(), 1);
+    let verified = resolution.verified;
+    assert_eq!(verified[0].replacement().old(), old);
+    assert_eq!(verified[0].replacement().current(), current);
+    assert_eq!(verified[0].source().flow_run_id, flow.flow_run_id);
     let snapshot = store.load_responses_history_flow(&flow, KEY).await.unwrap();
     assert_eq!(snapshot.contexts.len(), 2);
     assert_eq!(snapshot.checkpoints[0].checkpoint_id, inline.id);

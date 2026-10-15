@@ -244,9 +244,15 @@ async fn verified_v1_v2_migration_is_atomic_lossless_and_reversible_across_all_o
 #[tokio::test]
 async fn indexed_original_native_and_public_sources_produce_verified_receipts() {
     let f = fixture(2).await;
-    let mut graph =
-        migration::HistorySourceGraph::new(&migration::collect_proofs(&f.snapshot).unwrap())
-            .unwrap();
+    let targets: Vec<_> = migration::collect_proofs(&f.snapshot)
+        .unwrap()
+        .into_iter()
+        .map(|proof| migration::ScopedHistoryTarget {
+            flow_run_id: f.flow.flow_run_id,
+            proof,
+        })
+        .collect();
+    let mut graph = migration::HistorySourceGraph::new(&targets).unwrap();
     let mut after_sequence = None;
     let mut sources = Vec::new();
     loop {
@@ -284,8 +290,8 @@ async fn indexed_original_native_and_public_sources_produce_verified_receipts() 
     graph.finish_native_flow(f.flow.flow_run_id).unwrap();
     let resolved = graph.resolve().unwrap();
     assert!(resolved.unresolved_sources.is_empty() && resolved.unresolved_targets.is_empty());
-    assert_eq!(resolved.verified[0].replacement.old(), f.old);
-    assert_eq!(resolved.verified[0].replacement.current(), f.current);
+    assert_eq!(resolved.verified[0].replacement().old(), f.old);
+    assert_eq!(resolved.verified[0].replacement().current(), f.current);
     let original: Value =
         serde_json::from_str(sources[0].payload["body"].as_str().unwrap()).unwrap();
     assert_eq!(
@@ -294,13 +300,17 @@ async fn indexed_original_native_and_public_sources_produce_verified_receipts() 
     );
     let inspection = migration::inspect_flow(&f.snapshot).unwrap();
     let round = &inspection.public_rounds[0];
-    let mut public = migration::HistorySourceGraph::new(&[f.old.clone()]).unwrap();
+    let mut public = migration::HistorySourceGraph::new(&[migration::ScopedHistoryTarget {
+        flow_run_id: f.flow.flow_run_id,
+        proof: f.old.clone(),
+    }])
+    .unwrap();
     public.push_public(f.flow.flow_run_id,sources[0].id,&json!({"encoding":"utf8","frame_kind":"request","body":original["native_request"]["wire_body"].to_string()}),round).unwrap();
     let public = public.resolve().unwrap();
     assert!(public.unresolved_sources.is_empty() && public.unresolved_targets.is_empty());
-    assert_eq!(public.verified[0].replacement.current(), f.current);
+    assert_eq!(public.verified[0].replacement().current(), f.current);
     assert_eq!(
-        public.verified[0].source.namespace,
+        public.verified[0].source().namespace,
         migration::SourceNamespace::Public
     );
     let mut wrong = migration::MigrationAccumulator::new(2).unwrap();
@@ -529,5 +539,145 @@ async fn rollback_refuses_later_document_change_without_touching_other_owners() 
             .unwrap()
             .documents,
         f.snapshot.documents
+    );
+}
+
+#[tokio::test]
+async fn same_application_colliding_legacy_proof_without_owned_sources_cannot_borrow_receipt() {
+    let a_output = json!({"type":"future","id":"alpha"});
+    let b_output = json!({"type":"future","id":"beta"});
+    let f = fixture_with_output(1, a_output).await;
+    let mut b_history = migration::MigrationAccumulator::new(1).unwrap();
+    b_history
+        .append(&json!({"role":"user","content":"original\0user line"}))
+        .unwrap();
+    b_history.append(&b_output).unwrap();
+    let b_old = b_history.snapshot().old();
+    assert_eq!(b_old, f.old, "frozen v1 drops these unknown-item ids");
+    assert_ne!(
+        b_history.snapshot().current(),
+        f.current,
+        "current proof preserves unknown extension ids"
+    );
+    let b_id = Uuid::now_v7();
+    sqlx::query("insert into flow_runs(id,application_id,flow_id,flow_draft_id,compiled_plan_id,run_mode,status,created_by,input_payload) select $1,application_id,flow_id,flow_draft_id,compiled_plan_id,run_mode,'paused',created_by,$3 from flow_runs where id=$2")
+        .bind(b_id).bind(f.flow.flow_run_id).bind(json!({"sys":{"responses_input_history":b_old},"user":{"surviving":"no original request or output items"}})).execute(f.store.pool()).await.unwrap();
+    let b_flow = ResponsesHistoryFlowKey {
+        flow_run_id: b_id,
+        ..f.flow
+    };
+    let b = f
+        .store
+        .load_responses_history_flow(&b_flow, KEY)
+        .await
+        .unwrap();
+    assert_eq!(migration::collect_proofs(&b).unwrap(), vec![f.old.clone()]);
+    let b_sources = f
+        .store
+        .list_responses_history_native_sources(&ResponsesHistoryNativeSourcePageInput {
+            flow: b_flow,
+            after_sequence: None,
+            limit: 10,
+        })
+        .await
+        .unwrap();
+    assert!(
+        b_sources.sources.is_empty(),
+        "B deliberately has no surviving originals"
+    );
+    let targets = [
+        migration::ScopedHistoryTarget {
+            flow_run_id: f.flow.flow_run_id,
+            proof: f.old.clone(),
+        },
+        migration::ScopedHistoryTarget {
+            flow_run_id: b_id,
+            proof: b_old.clone(),
+        },
+    ];
+    let mut graph = migration::HistorySourceGraph::new(&targets).unwrap();
+    let sources = f
+        .store
+        .list_responses_history_native_sources(&ResponsesHistoryNativeSourcePageInput {
+            flow: f.flow,
+            after_sequence: None,
+            limit: 10,
+        })
+        .await
+        .unwrap();
+    for source in sources.sources {
+        graph
+            .push_native(
+                f.flow.flow_run_id,
+                source.node_run_id,
+                source.id,
+                source.sequence,
+                &source.event_type,
+                &source.payload,
+            )
+            .unwrap();
+    }
+    graph.finish_native_flow(f.flow.flow_run_id).unwrap();
+    let resolution = graph.resolve().unwrap();
+    assert!(resolution.unresolved_sources.is_empty());
+    assert_eq!(resolution.verified.len(), 1);
+    assert_eq!(
+        resolution.verified[0].source().flow_run_id,
+        f.flow.flow_run_id
+    );
+    assert_eq!(resolution.verified[0].replacement().current(), f.current);
+    assert_eq!(
+        resolution.unresolved_targets,
+        vec![migration::ScopedHistoryTarget {
+            flow_run_id: b_id,
+            proof: b_old
+        }]
+    );
+    let before_a = durable_state(&f).await;
+    assert!(
+        migration::build_plan(&b, &resolution.verified).is_err(),
+        "same digest is not source ownership"
+    );
+    assert!(
+        migration::apply_verified_flow(&f.store, &b, &resolution.verified, KEY)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.store
+            .load_responses_history_flow(&b_flow, KEY)
+            .await
+            .unwrap()
+            .documents,
+        b.documents
+    );
+    assert_eq!(
+        durable_state(&f).await,
+        before_a,
+        "rejecting B must not touch A or shared immutable storage"
+    );
+    migration::apply_verified_flow(&f.store, &f.snapshot, &resolution.verified, KEY)
+        .await
+        .unwrap();
+    assert!(migration::collect_proofs(
+        &f.store
+            .load_responses_history_flow(&f.flow, KEY)
+            .await
+            .unwrap()
+    )
+    .unwrap()
+    .is_empty());
+    let unchanged_b = f
+        .store
+        .load_responses_history_flow(&b_flow, KEY)
+        .await
+        .unwrap();
+    assert_eq!(
+        unchanged_b.documents, b.documents,
+        "only A is permitted to migrate"
+    );
+    assert_eq!(
+        migration::collect_proofs(&unchanged_b).unwrap(),
+        vec![f.old.clone()]
     );
 }
