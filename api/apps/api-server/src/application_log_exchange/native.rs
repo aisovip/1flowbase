@@ -109,13 +109,12 @@ pub(super) async fn read(
             .read_native_agent_log_messages(actor.current_workspace_id, app.id, run_id)
             .await?;
         let usage = store.list_usage_ledger(run_id).await?;
-        let mut events = normalize(
-            &run,
-            &session,
-            serde_json::to_value(archive)?,
-            messages,
-            usage,
-        )?;
+        let mut archive = serde_json::to_value(archive)?;
+        archive["native_source_relationships"] = json!({"task_id":task.id,"log_conversation_id":task.log_conversation_id,"parent_task_run_id":task.parent_task_run_id});
+        if task.log_conversation_id.is_none() && run.external_conversation_id.is_none() {
+            diagnostic(&mut archive, "conversation_relation_missing");
+        }
+        let mut events = normalize(&run, &session, archive, messages, usage)?;
         let parent = if run_id != task.id {
             Some(task.id)
         } else {
@@ -177,6 +176,17 @@ fn text(value: Option<&Value>) -> Option<String> {
             .unwrap_or_else(|| value.to_string())
     })
 }
+fn diagnostic(raw: &mut Value, code: &str) {
+    let items = raw
+        .as_object_mut()
+        .expect("native archive is an object")
+        .entry("exchange_diagnostics")
+        .or_insert_with(|| json!([]));
+    items
+        .as_array_mut()
+        .expect("exchange diagnostics is an array")
+        .push(json!(code));
+}
 pub(super) fn normalize(
     run: &domain::FlowRunRecord,
     session: &str,
@@ -189,7 +199,7 @@ pub(super) fn normalize(
     source.name = Some("native.source_facts".into());
     source.raw = archive;
     if messages.is_empty() {
-        source.raw["exchange_diagnostics"] = json!(["canonical_messages_missing"]);
+        diagnostic(&mut source.raw, "canonical_messages_missing");
     }
     result.push(source);
     for unit in messages {
@@ -295,7 +305,7 @@ pub(super) fn normalize(
             fact.raw = json!({"native_source_fact":"flow_run_fact","id":run.id,"status":run.status.as_str()});
             result.push(fact);
         } else {
-            result[0].raw["exchange_diagnostics"] = json!(["terminal_finished_at_missing"]);
+            diagnostic(&mut result[0].raw, "terminal_finished_at_missing");
         }
     }
     // Source facts are immutable. A corrected source unit gets a new version;
