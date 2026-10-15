@@ -127,6 +127,8 @@ async function run() {
     evidence.upstream = mock.trace;
     if (sql) {
       evidence.finalState = sql("select jsonb_build_object('run',r.id,'status',r.status,'error',r.error_payload,'attempt',a.status,'claim',c.status) from flow_runs r left join flow_run_callback_resume_attempts a on a.flow_run_id=r.id left join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;");
+      evidence.roundIdentity = sql("select jsonb_build_object('sequence',sequence,'type',event_type,'round',payload->>'response_round_id','generation',payload->>'stream_generation_id','callback',payload->>'callback_task_id','stream_sequence',payload->'stream_sequence','sequence_end',payload->'sequence_end','resolved_round',runtime_event_original_payload(payload,raw_json_payloads,flow_run_id)->>'response_round_id','resolved_generation',runtime_event_original_payload(payload,raw_json_payloads,flow_run_id)->>'stream_generation_id') from runtime_events order by sequence;");
+      evidence.callbackIdentity = sql("select jsonb_build_object('id',id,'status',status,'created_at',created_at,'completed_at',completed_at) from flow_run_callback_tasks order by created_at;");
       evidence.eventTail = sql("select jsonb_build_object('type',event_type,'sequence',sequence,'payload',left(payload::text,500)) from runtime_events order by created_at desc limit 12;");
     }
     save();
