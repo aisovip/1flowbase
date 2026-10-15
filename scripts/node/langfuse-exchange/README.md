@@ -32,7 +32,7 @@ without model calls. `--native-application-id` optionally chooses that history.
 On desktop and mobile it saves/reloads the connection, checks the real remote,
 exports both sources by date, waits for remote persistence, imports into the chosen
 Agent Logs application, repeats import, compares exact original source facts, and
-captures actual pages. The source application keys are revoked on exit; labeled
+captures actual pages. It also imports the current synthetic traces by date and checks source/target/date label associations and unique form IDs. Source selection follows the managed component prefix and real virtual-list scrolling; no hidden UI state is set. The source application keys are revoked independently on exit (including normal DELETE204 responses); labeled
 applications and imported history remain available for manual inspection.
 
 Receipts and screenshots go beneath `tmp/test-governance/`. A resource supervisor
@@ -42,3 +42,13 @@ or disk occupancy reaches 90%. Ports 7600 and 7800 are protected and rejected.
 Existing standard OTLP codec, authorization, native archive and source-reader
 regressions run in `agent-logs-otlp.yml`; the plugin's own SDK callback and mapping
 fixtures run in the official repository's `langfuse-ci.yml`.
+
+Remote persistence is verified by complete, trace-bound observations v2 cursor reads,
+with a narrow older-deployment capability fallback to the numbered observations API.
+Duplicate remote bookkeeping versions are compared by semantic facts; foreign traces,
+real conflicts and pagination loops fail acceptance. HTTP200 or an enqueue receipt alone
+does not pass the persistence check. External screenshots open the exact current synthetic
+Trace detail and timestamp, not a project-wide history table. Keys are masked, and final
+publication still requires visual inspection. All original21-fact/raw/dedup assertions remain.
+
+The helper regression tests are `node --test scripts/node/langfuse-exchange/_tests/*.test.cjs`.

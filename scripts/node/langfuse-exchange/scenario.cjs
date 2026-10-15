@@ -8,6 +8,7 @@ const { execFileSync } = require('node:child_process');
 const { loadRootCredentials, openTemporaryOwnerSession } = require('../page-debug/auth');
 const { syntheticBatch } = require('../agent-logs-exchange/fixtures.cjs');
 const { capture } = require('./browser.cjs');
+const { readTraceObservations } = require('./remote-readback.cjs');
 const root = path.resolve(__dirname,'../../..');
 async function main() {
   const { values } = parseArgs({options:{'api-base-url':{type:'string'},'web-base-url':{type:'string'},'credentials-root':{type:'string'},'langfuse-private-file':{type:'string'},'langfuse-storage-private-file':{type:'string'},'out-dir':{type:'string'},'native-application-id':{type:'string'},'deadline-ms':{type:'string',default:'120000'}}});
@@ -22,9 +23,15 @@ async function main() {
   const credentials=loadRootCredentials({repoRoot:args.credentialsRoot});
   const owner=await openTemporaryOwnerSession({apiBaseUrl:args.apiBaseUrl,...credentials});
   const keys=[];
+  let failure;
   async function request(method,route,body,token) {
     const response=await fetch(args.apiBaseUrl+route,{method,redirect:'error',signal:AbortSignal.timeout(args.deadlineMs),headers:{'content-type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{cookie:owner.cookie,'x-csrf-token':owner.csrfToken})},...(body===undefined?{}:{body:JSON.stringify(body)})});
-    const result=await response.json(); assert.ok(response.ok,`HTTP ${response.status} ${route}: ${result.code||'unknown'}`);
+    const text=await response.text(); let result;
+    try { result=text ? JSON.parse(text) : undefined; }
+    catch { throw Error(`HTTP ${response.status} invalid JSON ${route}`); }
+    assert.ok(response.ok,`HTTP ${response.status} ${route}: ${result?.code||'unknown'}`);
+    if (response.status === 204 && method === 'DELETE') return;
+    assert.ok(result, `HTTP ${response.status} missing JSON ${route}`);
     return route.endsWith('/otlp/export')?result:result.data;
   }
   try {
@@ -53,17 +60,20 @@ async function main() {
     sources.push({...native,started_at_from:new Date(at).toISOString(),started_at_to:new Date(at+1).toISOString()});
     receipt.sources=sources;checkpoint();
     const authorization='Basic '+Buffer.from(`${langfuse.public_key}:${langfuse.secret_key}`).toString('base64');
-    async function waitRemote(traceIds) {
+    async function waitRemote(traceIds, expectedSpans) {
       const deadline=Date.now()+args.deadlineMs;
-      while(true) {
-        let ready=true;
-        for(const id of traceIds) {
-          const response=await fetch(`${langfuse.base_url}/api/public/traces/${encodeURIComponent(id)}`,{headers:{Authorization:authorization},signal:AbortSignal.timeout(30000),redirect:'error'});
-          if(response.status===404){ready=false;continue;}
-          assert.ok(response.ok,`Langfuse trace HTTP ${response.status}`);
-          const trace=await response.json();if(!trace.observations?.length)ready=false;
+      for (;;) {
+        const summary={}; let count=0;
+        for (const id of traceIds) {
+          const rows=await readTraceObservations({baseUrl:langfuse.base_url,authorization,traceId:id,deadlineMs:Math.max(1,deadline-Date.now())});
+          const starts=rows.map(row=>Date.parse(row.startTime));
+          assert.ok(starts.every(Number.isFinite),'remote actual observation start times');
+          summary[id]={observation_ids:rows.map(row=>row.id).sort(),start_time:rows.length ? new Date(starts.reduce((first, at)=>Math.min(first,at),Infinity)).toISOString() : null};
+          count+=rows.length;
         }
-        if(ready)return;
+        if(Object.values(summary).every(trace=>trace.observation_ids.length) && count>=expectedSpans) {
+          receipt.remote_readback=summary;checkpoint();return summary;
+        }
         assert.ok(Date.now()<deadline,'Langfuse persistence deadline');await new Promise(r=>setTimeout(r,1000));
       }
     }
@@ -87,8 +97,22 @@ async function main() {
       assert.equal(importedTasks,3);assert.ok(first);return first;
     }
     receipt.trace_ids=await capture({args,credentials,langfuse,sources,target:{application_id:apps[1].id,name:apps[1].name},receipt,waitRemote,verifyTarget});
-    receipt.result='pass';checkpoint();process.stdout.write(JSON.stringify({result:'pass',receipt:path.join(args.outDir,'receipt.json'),traces:receipt.trace_ids.length,screenshots:receipt.screenshots.length})+'\n');
-  } catch(error) {receipt.result='fail';receipt.error=error.message;checkpoint();throw error;}
-  finally {try {for(const key of keys)await request('DELETE',`/api/console/applications/${key.application_id}/api-keys/${key.id}`);}finally{await owner.dispose();}}
+    receipt.result='pass';checkpoint();
+  } catch(error) {receipt.result='fail';receipt.error=error.message;failure=error;checkpoint();}
+  finally {
+    receipt.cleanup={revoked_keys:[],errors:[]};
+    for(const key of keys) {
+      try {await request('DELETE',`/api/console/applications/${key.application_id}/api-keys/${key.id}`);receipt.cleanup.revoked_keys.push(key.id);}
+      catch(error) {receipt.cleanup.errors.push(error.message);}
+    }
+    try {await owner.dispose();receipt.cleanup.session_revoked=true;}
+    catch(error) {receipt.cleanup.errors.push(error.message);}
+    if(receipt.cleanup.errors.length && !failure) {
+      failure=Error('Acceptance cleanup failed; see receipt cleanup errors');receipt.result='fail';receipt.error=failure.message;
+    }
+    checkpoint();
+  }
+  if(failure)throw failure;
+  process.stdout.write(JSON.stringify({result:'pass',receipt:path.join(args.outDir,'receipt.json'),traces:receipt.trace_ids.length,screenshots:receipt.screenshots.length})+'\n');
 }
 main().catch(e=>{process.stderr.write(e.message+'\n');process.exitCode=1;});
