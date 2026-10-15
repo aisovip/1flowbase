@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Dropdown,
   Empty,
   Flex,
   Grid,
@@ -19,8 +17,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import type {
   NotificationInstance,
-  NotificationInstanceListInput,
-  NotificationType
+  NotificationInstanceListInput
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../state/auth-store';
 import { selectNavigationQueryScope } from '../../../../state/navigation-query-scope';
@@ -74,21 +71,10 @@ function NotificationChannelsPage() {
   const types = useQuery(notificationTypesOptions(scope));
   const [editing, setEditing] = useState<{
     instance?: NotificationInstance;
-    type?: NotificationType;
   }>();
-  const editInstance = useCallback(
-    (instance: NotificationInstance) => {
-      setEditing({
-        instance,
-        type: types.data?.find(
-          (type) =>
-            type.type_code === instance.type_code &&
-            type.installation_id === instance.installation_id
-        )
-      });
-    },
-    [types.data]
-  );
+  const editInstance = useCallback((instance: NotificationInstance) => {
+    setEditing({ instance });
+  }, []);
   const refresh = () =>
     client.invalidateQueries({ queryKey: notificationQueryKey(scope) });
   const status = useMutation({
@@ -303,30 +289,14 @@ function NotificationChannelsPage() {
               >
                 {t('refresh')}
               </Button>
-              <Dropdown
-                trigger={['click']}
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
                 disabled={!types.data?.some((type) => type.available)}
-                menu={{
-                  items: (types.data ?? [])
-                    .filter((type) => type.available)
-                    .map((type) => ({
-                      key: JSON.stringify([
-                        type.type_code,
-                        type.installation_id
-                      ]),
-                      label: localizeType(type).display_name,
-                      onClick: () => setEditing({ type })
-                    }))
-                }}
+                onClick={() => setEditing({})}
               >
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  disabled={!types.data?.some((type) => type.available)}
-                >
-                  {t('create')} <DownOutlined />
-                </Button>
-              </Dropdown>
+                {t('create')}
+              </Button>
             </Space>
           </Flex>
         }
@@ -366,15 +336,9 @@ function NotificationChannelsPage() {
       />
       {editing && (
         <NotificationInstanceDrawer
-          key={
-            editing.instance?.id ??
-            JSON.stringify([
-              editing.type?.type_code,
-              editing.type?.installation_id
-            ])
-          }
+          key={editing.instance?.id ?? 'new'}
           instance={editing.instance}
-          type={editing.type}
+          types={types.data ?? []}
           onClose={() => setEditing(undefined)}
           onSaved={(options) => {
             if (!options?.keepOpen) setEditing(undefined);

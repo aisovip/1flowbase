@@ -1,0 +1,224 @@
+.notification-instance-drawer__body {
+  gap: 24px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+
+.notification-instance-drawer__sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.notification-instance-drawer__name,
+.notification-instance-drawer__type {
+  min-height: 44px;
+  font-size: 16px;
+  border-radius: 8px;
+}
+
+.notification-instance-drawer__name {
+  background: var(--bg-elevated);
+}
+
+.notification-instance-drawer__type {
+  gap: 8px;
+}
+
+.notification-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  padding-inline: 9px;
+  white-space: normal;
+}
+
+.notification-authorization {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 24px;
+}
+
+.notification-authorization__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.notification-authorization__heading h3 {
+  margin-inline-end: auto;
+}
+
+.notification-authorization__heading h3,
+.notification-authorization__identity h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.notification-authorization__panel {
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  min-width: 0;
+}
+
+.notification-authorization__summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.notification-authorization__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 22px;
+}
+
+.notification-authorization__identity {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.notification-authorization__identity p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.notification-authorization__result {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 20px;
+}
+
+.notification-authorization__result--success {
+  color: var(--status-success);
+}
+
+.notification-authorization__result--error {
+  color: var(--status-failed);
+}
+
+.notification-subscription {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 20px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.notification-subscription__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 20px;
+  line-height: 1.5;
+}
+
+.notification-subscription__row dt {
+  color: var(--text-secondary);
+}
+
+.notification-subscription__row dd {
+  margin: 0;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.notification-authorization__hint {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.notification-authorization__hint > :first-child {
+  flex-shrink: 0;
+}
+
+.notification-authorization__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.notification-authorization__qr {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.notification-instance-drawer .schema-form-drawer__submit,
+.notification-instance-drawer .schema-form-drawer__cancel {
+  border-radius: 999px;
+  min-height: 38px;
+  padding-inline: 20px;
+}
+
+.notification-instance-drawer .schema-form-drawer__submit:not(:disabled) {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+
+.notification-instance-drawer .schema-form-drawer__submit:not(:disabled):hover {
+  background: var(--text-secondary);
+  border-color: var(--text-secondary);
+}
+
+@media (max-width: 480px) {
+  .notification-authorization__panel {
+    padding: 16px;
+  }
+  .notification-subscription__row {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .notification-subscription__row dt {
+    flex-shrink: 0;
+  }
+  .notification-subscription__row dd {
+    font-size: 13px;
+  }
+}
+
+.notification-instance-drawer .schema-form-drawer__header-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .notification-authorization__actions {
+    margin-inline-start: auto;
+  }
+}

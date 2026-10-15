@@ -2,11 +2,25 @@
 title: "Issue 2282 Agent Logs 应用需求对齐"
 memory_type: project
 created_at: "2026-10-07 16"
-updated_at: "2026-10-15 11"
+updated_at: "2026-10-15 20"
 decision_policy: verify_before_decision
-status: reimport_runtime_verified
+status: public_connector_verified
 tags: [issue-2282, agent-logs, client-trajectory, ingestion, collector-cli]
 ---
+
+## 互通架构后续纠正：统一日志与连接器插件（2026-10-15）
+
+用户要求重新诊断 AgentFlow 与 AgentLogs 是否统一，并明确底座负责协议兼容和通用日志能力，Langfuse 定制转换/导入导出应采用类似私有 SSH 的受管插件设置页，按应用与日期操作。此边界修正优先于之前“功能交付通过”的范围结算；之前 QA 不能作为两类应用交换已统一或第三方职责归属正确的证据。
+
+用户随后明确授权实施，Langfuse 放公开官方仓库 `/home/taichuy/git/1flowbase-official-plugins/runtime-extensions/@taichuy/langfuse`；浏览器验收配置地址、聊天导出、导入指定 Agent Logs，之后发布双语 Wiki。Root #2445 / Delivery #2446、#2447 是当前计划真值，实施及 QA 状态查最新 Ledger，不能沿用旧内置入口验收。动机是统一原生与采集日志事实，并把供应商变化隔离在插件；导出支持 Agent Flow 与 Agent Logs，导入仅历史 Agent Logs，不恢复执行引擎状态。未设截止日期。
+
+公开连接器方向已实施并通过真实桌面/移动浏览器完整验收；双语 Wiki 已改为插件设置页流程。后续以 Root #2445 当前 Ledger 和归档 QA7 为证据入口，不再以旧内置 Langfuse 接口作为当前使用入口。本轮已验证上传包安装；正式目录上架和运行中热重装是独立发布事项。
+
+## 多实例与 OpenAPI 增量交付（2026-10-15）
+
+公开插件0.2.0已通过独立集中QA6：共享DataTable每实例一行、宿主locale、实例认证隔离、AgentLogs21+AgentFlow5完整往返、重复/日期/raw/no-native-run、实际117操作OpenAPI和四个PATMCP工具；20图已Root视觉审查。已合入并推送host dev@a29c39e79、official main@1c37a68b；双语Wiki master@60b3a66。验收与清理证据归档 `tmp/test-governance/langfuse-plugin/evidence-instances/qa6/report.md`，Root2445为唯一用户验收入口。正式registry发布及热重装未验证，7600/7800未重启。无新截止日期。
+
+MCP使用已广告的response_fields选择status/headers/完整JSONbody；默认rawbase64会触发宿主通用详情保护。`outcome=succeeded`且`detail_unavailable`不能视为操作未执行，不自动重试原操作；HTTP仍保留完整原始字节。实现范围未增加Langfuse专用缓存/协议/恢复机制。
 
 ## OTLP 交付结算（2026-10-15）
 

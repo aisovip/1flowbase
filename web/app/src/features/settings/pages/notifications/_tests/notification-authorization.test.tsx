@@ -149,7 +149,17 @@ afterEach(async () => {
 test('persists a new instance before metadata-driven QR, retains edits and polls to authorized', async () => {
   vi.useFakeTimers();
   render(
-    <NotificationInstanceDrawer type={type} onClose={vi.fn()} onSaved={saved} />
+    <NotificationInstanceDrawer
+      types={[type]}
+      onClose={vi.fn()}
+      onSaved={saved}
+    />
+  );
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+  fireEvent.click(
+    screen.getByText('扫码渠道', {
+      selector: '.ant-select-item-option-content'
+    })
   );
   fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
     target: { value: '新渠道' }
@@ -179,6 +189,12 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
     body: { type: 'begin', action: 'scan' }
   });
   expect(saved).toHaveBeenCalledWith({ keepOpen: true });
+  expect(
+    screen.queryByRole('combobox', { name: '通知类型' })
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
+    '扫码渠道'
+  );
   expect(screen.getByRole('textbox', { name: '渠道名称' })).toHaveValue(
     '新渠道'
   );
@@ -195,7 +211,7 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
+  expect(screen.getByText('已授权')).toBeInTheDocument();
   expect(screen.getByText('授权已完成。')).toBeInTheDocument();
   expect(screen.getByText('通知实例已停用')).toBeInTheDocument();
   expect(commands.some((command) => command.body.status === 'enabled')).toBe(
@@ -219,7 +235,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
   render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
-      type={type}
+      types={[type]}
       onClose={vi.fn()}
       onSaved={saved}
     />
@@ -234,11 +250,11 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
     await Promise.resolve();
   });
   expect(pollCommand?.signal?.aborted).toBe(true);
-  expect(screen.getByText('授权状态: 未授权')).toBeInTheDocument();
+  expect(screen.getByText('未授权', { selector: 'span' })).toBeInTheDocument();
   await act(async () => {
     finish({ status: 'authorized' });
   });
-  expect(screen.queryByText('授权状态: 已授权')).not.toBeInTheDocument();
+  expect(screen.queryByText('已授权')).not.toBeInTheDocument();
 });
 
 test('unmount stops polling and aborts the request without cancelling backend authorization', async () => {
@@ -247,7 +263,7 @@ test('unmount stops polling and aborts the request without cancelling backend au
   const { unmount } = render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
-      type={type}
+      types={[type]}
       onClose={vi.fn()}
       onSaved={saved}
     />
@@ -273,12 +289,14 @@ test('invalid authorization offers the declared reauthorization action independe
   render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: { status: 'invalid' } }}
-      type={type}
+      types={[type]}
       onClose={vi.fn()}
       onSaved={saved}
     />
   );
-  expect(screen.getByText('授权状态: 授权已失效')).toBeInTheDocument();
+  expect(
+    screen.getByText('授权已失效', { selector: 'span' })
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '重新授权：扫码授权' }));
   await screen.findByText('请扫码并在设备上确认授权。');
   expect(commands[0]?.body).toEqual({ type: 'begin', action: 'scan' });
@@ -289,7 +307,7 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
   render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: null }}
-      type={{ ...type, authorization: undefined }}
+      types={[{ ...type, authorization: undefined }]}
       onClose={vi.fn()}
       onSaved={saved}
     />
@@ -301,7 +319,7 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
   fireEvent.change(screen.getByRole('textbox', { name: '服务地址' }), {
     target: { value: 'https://example.com/edited' }
   });
-  fireEvent.click(screen.getByRole('button', { name: '提交' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
     display_name: '我的渠道',
@@ -322,14 +340,14 @@ test('authorization errors remain safe and do not claim a backend status change'
   render(
     <NotificationInstanceDrawer
       instance={instance}
-      type={type}
+      types={[type]}
       onClose={vi.fn()}
       onSaved={saved}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: '扫码授权' }));
   await screen.findByText('授权操作未完成，请重试。');
-  expect(screen.getByText('授权状态: 未授权')).toBeInTheDocument();
+  expect(screen.getByText('未授权', { selector: 'span' })).toBeInTheDocument();
   expect(
     screen.queryByText(/SECRET_TOKEN|raw provider exception/)
   ).not.toBeInTheDocument();
@@ -383,22 +401,23 @@ test.each(subscriptionCases)(
         onChanged={saved}
       />
     );
-    expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
-    expect(screen.getByText(`通知订阅: ${label}`)).toBeInTheDocument();
+    expect(screen.getByText('已授权')).toBeInTheDocument();
+    expect(screen.getByText('通知订阅')).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
     if (delivery_window.last_received_at_ms !== undefined) {
+      expect(screen.getByText('最近消息时间')).toBeInTheDocument();
+      expect(screen.getByText('可用期限')).toBeInTheDocument();
       expect(
         screen.getByText(
-          `最近消息时间: ${formatDateTime(new Date(windowTimes.last_received_at_ms))}`
+          formatDateTime(new Date(windowTimes.last_received_at_ms))
         )
       ).toBeInTheDocument();
       expect(
-        screen.getByText(
-          `可用期限: ${formatDateTime(new Date(windowTimes.expires_at_ms))}`
-        )
+        screen.getByText(formatDateTime(new Date(windowTimes.expires_at_ms)))
       ).toBeInTheDocument();
     } else {
       expect(
-        screen.queryByText(/最近消息时间:|可用期限:/)
+        screen.queryByText(/最近消息时间|可用期限/)
       ).not.toBeInTheDocument();
     }
     // The same old timestamps can be active, expired or unknown: only backend status decides.
@@ -411,9 +430,7 @@ test.each(subscriptionCases)(
     await act(async () => {
       await appI18n.changeLanguage('en_US');
     });
-    expect(
-      screen.getByText(`Notification subscription: ${english}`)
-    ).toBeInTheDocument();
+    expect(screen.getByText(english)).toBeInTheDocument();
   }
 );
 
@@ -430,15 +447,15 @@ test('manual Maintain refresh updates the window without reauthorizing, enabling
       onChanged={saved}
     />
   );
-  expect(screen.getByText('通知订阅: 订阅已过期')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '刷新订阅状态' }));
+  expect(screen.getByText('订阅已过期')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /刷新状态/ }));
   await act(async () => {
     await Promise.resolve();
   });
-  expect(screen.getByText('通知订阅: 订阅有效/可发送')).toBeInTheDocument();
+  expect(screen.getByText('订阅有效/可发送')).toBeInTheDocument();
   expect(
     screen.getByText(
-      `可用期限: ${formatDateTime(new Date(maintained.delivery_window!.expires_at_ms!))}`
+      formatDateTime(new Date(maintained.delivery_window!.expires_at_ms!))
     )
   ).toBeInTheDocument();
   expect(commands).toHaveLength(1);
@@ -465,7 +482,7 @@ test.each(['unauthorized', 'pending', 'invalid'] as const)(
       />
     );
     expect(
-      screen.queryByRole('button', { name: '刷新订阅状态' })
+      screen.queryByRole('button', { name: /刷新状态/ })
     ).not.toBeInTheDocument();
   }
 );
@@ -480,7 +497,7 @@ test('authorization without a delivery window keeps generic messaging without in
     />
   );
   expect(screen.getByText('授权已完成。')).toBeInTheDocument();
-  expect(screen.queryByText(/通知订阅:|24小时/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/通知订阅|24小时/)).not.toBeInTheDocument();
   expect(screen.queryByText(/微信/)).not.toBeInTheDocument();
 });
 
@@ -502,10 +519,10 @@ test('failed Maintain preserves authorization and subscription evidence without 
       onChanged={saved}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: '刷新订阅状态' }));
+  fireEvent.click(screen.getByRole('button', { name: /刷新状态/ }));
   await screen.findByText('授权操作未完成，请重试。');
-  expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
-  expect(screen.getByText('通知订阅: 订阅状态待确认')).toBeInTheDocument();
+  expect(screen.getByText('已授权')).toBeInTheDocument();
+  expect(screen.getByText('订阅状态待确认')).toBeInTheDocument();
   expect(screen.queryByText('SECRET_TOKEN')).not.toBeInTheDocument();
   expect(saved).not.toHaveBeenCalled();
 });

@@ -1,4 +1,4 @@
-import { Space, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { NotificationDeliveryWindowView } from '@1flowbase/api-client';
 import { formatDateTime } from '../../../../shared/i18n/format';
@@ -21,22 +21,40 @@ export function NotificationDeliveryWindow({
           : t('delivery_window_unknown');
   if (compact) return <Typography.Text>{statusLabel}</Typography.Text>;
   return (
-    <Space orientation="vertical" size="small">
-      <Typography.Text>
-        {t('delivery_window_status')}: {statusLabel}
-      </Typography.Text>
-      {!compact && delivery_window.last_received_at_ms !== undefined && (
-        <Typography.Text type="secondary">
-          {t('delivery_window_last_received')}:{' '}
-          {formatDateTime(new Date(delivery_window.last_received_at_ms))}
-        </Typography.Text>
+    <dl className="notification-subscription">
+      <div className="notification-subscription__row">
+        <dt>{t('delivery_window_status')}</dt>
+        <dd>
+          <Tag
+            className="notification-status"
+            color={
+              delivery_window.status === 'active'
+                ? 'success'
+                : delivery_window.status === 'expired'
+                  ? 'error'
+                  : delivery_window.status === 'waiting_for_message'
+                    ? 'warning'
+                    : 'default'
+            }
+          >
+            {statusLabel}
+          </Tag>
+        </dd>
+      </div>
+      {delivery_window.last_received_at_ms !== undefined && (
+        <div className="notification-subscription__row">
+          <dt>{t('delivery_window_last_received')}</dt>
+          <dd>
+            {formatDateTime(new Date(delivery_window.last_received_at_ms))}
+          </dd>
+        </div>
       )}
-      {!compact && delivery_window.expires_at_ms !== undefined && (
-        <Typography.Text type="secondary">
-          {t('delivery_window_expires')}:{' '}
-          {formatDateTime(new Date(delivery_window.expires_at_ms))}
-        </Typography.Text>
+      {delivery_window.expires_at_ms !== undefined && (
+        <div className="notification-subscription__row">
+          <dt>{t('delivery_window_expires')}</dt>
+          <dd>{formatDateTime(new Date(delivery_window.expires_at_ms))}</dd>
+        </div>
       )}
-    </Space>
+    </dl>
   );
 }

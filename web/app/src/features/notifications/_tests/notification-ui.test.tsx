@@ -160,7 +160,9 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
     reads
   );
   expect(plugin.display_name).toBe('Raw plugin name');
-  fireEvent.click(screen.getByRole('button', { name: 'Submit', exact: true }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Save changes', exact: true })
+  );
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       display_name: 'User supplied 新名称',
@@ -381,14 +383,14 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
     fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提交' })).toBeDisabled();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
     expect(screen.queryByText('Unavailable external')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('menuitem', { name: '系统通知' }));
-    expect(
-      screen.queryByRole('combobox', { name: '通知类型' })
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: '通知类型' })).toHaveValue(
-      '系统通知'
+    fireEvent.click(
+      screen.getByText('系统通知', {
+        selector: '.ant-select-item-option-content'
+      })
     );
     fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'New notifications' }
@@ -424,7 +426,12 @@ describe('notification management and inbox AC-001/003/004/006', () => {
       expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
     );
     fireEvent.click(await screen.findByRole('button', { name: /新增/ }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mail B' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+    fireEvent.click(
+      screen.getByText('Mail B', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
     fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
       target: { value: 'Team mail' }
     });
@@ -433,6 +440,67 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     expect(calls.find((call) => call.method === 'POST')?.body).toMatchObject({
       type_code: 'acme/mail',
       installation_id: 'installation-b'
+    });
+  });
+  test('switching draft types retains the name but clears all prior schema values', async () => {
+    catalog = [
+      {
+        ...type,
+        type_code: 'vendor/first',
+        installation_id: 'first-installation',
+        display_name: 'First type'
+      },
+      {
+        ...type,
+        type_code: 'vendor/other',
+        installation_id: 'other-installation',
+        display_name: 'Second type',
+        config_form: {
+          schema_version: '1.0.0',
+          fields: [{ ...type.config_form.fields[0], label: 'Second token' }]
+        }
+      }
+    ];
+    renderUI(<NotificationsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /新增/ })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: '渠道名称' }), {
+      target: { value: 'Shared channel name' }
+    });
+    const choose = (label: string) => {
+      fireEvent.mouseDown(screen.getByRole('combobox', { name: '通知类型' }));
+      fireEvent.click(
+        screen.getByText(label, { selector: '.ant-select-item-option-content' })
+      );
+    };
+    choose('First type');
+    fireEvent.change(screen.getByLabelText('访问令牌'), {
+      target: { value: 'must-not-leak' }
+    });
+    choose('Second type');
+    expect(screen.getByRole('textbox', { name: '渠道名称' })).toHaveValue(
+      'Shared channel name'
+    );
+    expect(screen.queryByLabelText('访问令牌')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Second token')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Second token'), {
+      target: { value: 'discard-this-too' }
+    });
+    choose('First type');
+    expect(screen.getByLabelText('访问令牌')).toHaveValue('');
+    choose('Second type');
+    fireEvent.change(screen.getByLabelText('Second token'), {
+      target: { value: 'second-only' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await screen.findByRole('button', { name: 'Shared channel name' });
+    expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
+      type_code: 'vendor/other',
+      installation_id: 'other-installation',
+      display_name: 'Shared channel name',
+      config_json: { token: 'second-only' }
     });
   });
   test('applies canonical query conditions and renders backend results, then clears the conditions', async () => {
@@ -469,7 +537,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     const token = document.querySelector('input[type="password"]');
     expect(token).toBeInstanceOf(HTMLInputElement);
     expect(token).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     await screen.findByRole('button', { name: '团队通知' });
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.body).toEqual({ display_name: '团队通知', config_json: {} });
@@ -722,9 +790,7 @@ test('preserves the HTTP snapshot after a failed page fetch and does not falsify
     )
   );
   await waitFor(() =>
-    expect(
-      screen.getAllByRole('button', { name: '下一页' })[1]
-    ).toBeEnabled()
+    expect(screen.getAllByRole('button', { name: '下一页' })[1]).toBeEnabled()
   );
   expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();

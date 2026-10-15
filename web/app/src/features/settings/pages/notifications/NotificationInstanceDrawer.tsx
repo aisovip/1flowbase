@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { Alert, Form, Input, Space } from 'antd';
+import { Alert, Form, Input, Select, Tag } from 'antd';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useTranslation } from 'react-i18next';
 import type {
   NotificationInstance,
@@ -17,27 +19,35 @@ import {
 import { NotificationAuthorization } from './NotificationAuthorization';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
+import './notification-instance-drawer.css';
 
 export function NotificationInstanceDrawer({
   instance,
-  type: sourceType,
+  types,
   onClose,
   onSaved
 }: {
   instance?: NotificationInstance;
-  type?: NotificationType;
+  types: NotificationType[];
   onClose: () => void;
   onSaved: (options?: { keepOpen: boolean }) => void;
 }) {
   const { t } = useTranslation('notifications');
   const localizeType = useNotificationTypeLocalization();
-  const type = useMemo(
-    () => sourceType && localizeType(sourceType),
-    [sourceType, localizeType]
-  );
+  const [savedInstance, setSavedInstance] = useState(instance);
+  const [selectedIdentity, setSelectedIdentity] = useState<string>();
+  const typeIdentity = savedInstance
+    ? JSON.stringify([savedInstance.type_code, savedInstance.installation_id])
+    : selectedIdentity;
+  const type = useMemo(() => {
+    const selected = types.find(
+      (item) =>
+        JSON.stringify([item.type_code, item.installation_id]) === typeIdentity
+    );
+    return selected && localizeType(selected);
+  }, [types, typeIdentity, localizeType]);
   const draftConfig = useRef<SchemaFormValues | undefined>(undefined);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
-  const [savedInstance, setSavedInstance] = useState(instance);
   const [beginOnMount, setBeginOnMount] = useState(false);
   const [display_name, setDisplayName] = useState(instance?.display_name ?? '');
   const [nameError, setNameError] = useState(false);
@@ -72,10 +82,26 @@ export function NotificationInstanceDrawer({
         : t('type_unavailable');
   return (
     <SchemaFormDrawer
+      key={typeIdentity ?? 'new'}
       open
       title={savedInstance ? t('edit_instance') : t('create_instance')}
       rootClassName="notification-instance-drawer"
       footerAlign="end"
+      actionsPlacement="footer"
+      bodyClassName="notification-instance-drawer__body"
+      extra={
+        savedInstance && (
+          <Tag
+            className="notification-status"
+            color={savedInstance.status === 'enabled' ? 'success' : 'default'}
+            icon={
+              savedInstance.status === 'enabled' ? <CheckOutlined /> : undefined
+            }
+          >
+            {savedInstance.status === 'enabled' ? t('enabled') : t('disabled')}
+          </Tag>
+        )
+      }
       schema={schema}
       initialValues={initialValues}
       resizable
@@ -86,11 +112,13 @@ export function NotificationInstanceDrawer({
       submitText={
         !savedInstance && type?.authorization
           ? t('save_and_authorize')
-          : t('submit')
+          : savedInstance
+            ? t('save_changes')
+            : t('submit')
       }
       cancelText={t('cancel')}
       leadingContent={
-        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+        <div className="notification-instance-drawer__sections">
           <Form layout="vertical" component={false}>
             <Form.Item
               label={t('display_name')}
@@ -99,6 +127,8 @@ export function NotificationInstanceDrawer({
               help={nameError ? t('name_required') : undefined}
             >
               <Input
+                className="notification-instance-drawer__name"
+                size="large"
                 autoFocus
                 value={display_name}
                 onChange={(event) => {
@@ -109,16 +139,43 @@ export function NotificationInstanceDrawer({
                 autoComplete="off"
               />
             </Form.Item>
-            <Form.Item label={t('type')}>
-              <Input
-                readOnly
-                value={type?.display_name ?? instance?.type_code}
-                aria-label={t('type')}
-              />
+            <Form.Item label={t('type')} required={!savedInstance}>
+              {savedInstance ? (
+                <Input
+                  className="notification-instance-drawer__type"
+                  size="large"
+                  prefix={<MessageOutlined aria-hidden />}
+                  readOnly
+                  value={type?.display_name ?? savedInstance.type_code}
+                  aria-label={t('type')}
+                />
+              ) : (
+                <Select
+                  className="notification-instance-drawer__type"
+                  size="large"
+                  aria-label={t('type')}
+                  value={selectedIdentity}
+                  options={types
+                    .filter((item) => item.available)
+                    .map((item) => ({
+                      value: JSON.stringify([
+                        item.type_code,
+                        item.installation_id
+                      ]),
+                      label: localizeType(item).display_name
+                    }))}
+                  onChange={(value: string) => {
+                    draftConfig.current = undefined;
+                    setSelectedIdentity(value);
+                  }}
+                />
+              )}
             </Form.Item>
           </Form>
           {type?.authorization && savedInstance?.authorization && (
             <NotificationAuthorization
+              display_name={type.display_name}
+              description={type.description ?? undefined}
               instance_id={savedInstance.id}
               descriptor={type.authorization}
               authorization={savedInstance.authorization}
@@ -130,7 +187,7 @@ export function NotificationInstanceDrawer({
           {!type && instance && (
             <Alert type="info" title={t('config_unavailable')} />
           )}
-        </Space>
+        </div>
       }
       submitDisabled={
         !display_name.trim() || (!savedInstance && !type?.available)

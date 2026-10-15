@@ -63,6 +63,7 @@ export interface SchemaFormDrawerStatusMessage {
 
 export interface SchemaFormDrawerProps {
   open: boolean;
+  actionsPlacement?: 'footer' | 'header';
   title: string;
   subtitle?: string;
   schema: PluginFormSchema;
@@ -99,6 +100,7 @@ export interface SchemaFormDrawerProps {
     changed: SchemaFormValues,
     context: SchemaFormDrawerContext
   ) => void;
+  extra?: ReactNode;
   extraActions?: SchemaFormDrawerAction[];
   footerAlign?: 'start' | 'end';
 }
@@ -215,10 +217,12 @@ function errorMessageFrom(error: unknown) {
 }
 
 export function SchemaFormDrawer({
+  actionsPlacement = 'footer',
   bodyClassName,
   cancelText,
   defaultWidth,
   disabled = false,
+  extra,
   extraActions = [],
   footerAlign = 'start',
   initialValues,
@@ -404,6 +408,7 @@ export function SchemaFormDrawer({
         ))}
         {footerAlign === 'end' && (
           <Button
+            className="schema-form-drawer__cancel"
             aria-label={resolvedCancelText}
             disabled={isSubmitting}
             onClick={confirmClose}
@@ -412,6 +417,7 @@ export function SchemaFormDrawer({
           </Button>
         )}
         <Button
+          className="schema-form-drawer__submit"
           aria-label={resolvedSubmitText}
           disabled={disabled || submitDisabled}
           loading={isSubmitting}
@@ -422,6 +428,7 @@ export function SchemaFormDrawer({
         </Button>
         {footerAlign === 'start' && (
           <Button
+            className="schema-form-drawer__cancel"
             aria-label={resolvedCancelText}
             disabled={isSubmitting}
             onClick={confirmClose}
@@ -432,6 +439,20 @@ export function SchemaFormDrawer({
       </Space>
     </Flex>
   );
+  const headerExtra =
+    actionsPlacement === 'header' ? (
+      <Flex
+        className="schema-form-drawer__header-actions"
+        align="center"
+        gap="small"
+        wrap
+      >
+        {extra}
+        {footer}
+      </Flex>
+    ) : (
+      extra
+    );
   const body = (
     <div
       className={['schema-form-drawer__body', bodyClassName]
@@ -506,8 +527,9 @@ export function SchemaFormDrawer({
     return (
       <ResizableDrawer
         destroyOnClose
+        extra={headerExtra}
         defaultWidth={initialResizableWidth}
-        footer={footer}
+        footer={actionsPlacement === 'footer' ? footer : undefined}
         maxWidth={maxWidth}
         minWidth={minWidth}
         open={open}
@@ -527,7 +549,8 @@ export function SchemaFormDrawer({
     <Drawer
       className="schema-form-drawer"
       destroyOnHidden
-      footer={footer}
+      extra={headerExtra}
+      footer={actionsPlacement === 'footer' ? footer : undefined}
       open={open}
       placement="right"
       rootClassName={rootClassName}
