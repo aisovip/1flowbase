@@ -9,6 +9,10 @@ on:
         description: Verify callback attachment live and durable delivery before building the candidate
         type: boolean
         default: false
+      history_fixtures_only:
+        description: Run only remaining history service fixtures and dependency checks; no binary rebuild
+        type: boolean
+        default: false
       verify_history_migration:
         description: Verify the single Responses history path and offline migration with PostgreSQL
         type: boolean
@@ -33,6 +37,7 @@ env:
 
 jobs:
   regression:
+    if: ${{ !inputs.history_fixtures_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     services:
@@ -145,6 +150,55 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
           cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
           sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gateway-target-handoff-evidence
+          path: tmp/test-governance/gateway-target-handoff/ci
+
+  history-fixtures:
+    if: ${{ inputs.history_fixtures_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: gateway-fixture
+          POSTGRES_DB: gateway_fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gateway_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+      API_DATABASE_URL: postgres://postgres:gateway-fixture@127.0.0.1:5432/gateway_fixture
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: gateway-target-handoff
+          cache-on-failure: true
+          workspaces: api -> target
+      - name: Resolve source and repository resources
+        run: |
+          mkdir -p tmp/test-governance/gateway-target-handoff/ci
+          git rev-parse HEAD > tmp/test-governance/gateway-target-handoff/ci/source-sha.txt
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Real PostgreSQL history migration service fixtures
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --features responses-history-migration --test responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-postgres.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-postgres.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-postgres.log
+      - name: Dependency ownership boundaries
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log
       - uses: actions/upload-artifact@v6
         if: always()
         with:

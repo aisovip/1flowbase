@@ -2,7 +2,6 @@ use super::*;
 pub(super) const KEY: &str = "responses-history-isolated-fixture-key";
 
 pub(super) struct Fixture {
-    pub _schema: postgres_test_support::PostgresTestSchema,
     pub store: PgControlPlaneStore,
     pub flow: ResponsesHistoryFlowKey,
     pub node_id: Uuid,
@@ -13,16 +12,13 @@ pub(super) struct Fixture {
     pub snapshot: ResponsesHistoryFlowSnapshot,
 }
 
-async fn seed() -> (
-    postgres_test_support::PostgresTestSchema,
-    PgControlPlaneStore,
-    ResponsesHistoryFlowKey,
-) {
+async fn seed() -> (PgControlPlaneStore, ResponsesHistoryFlowKey) {
     let url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let schema = postgres_test_support::PostgresTestSchema::create(&url)
         .await
         .unwrap();
+    // connect transfers the temporary database guard into the pool lifetime.
     let pool = schema.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
@@ -112,7 +108,6 @@ async fn seed() -> (
     .unwrap();
 
     (
-        schema,
         store,
         ResponsesHistoryFlowKey {
             scope_id: workspace_id,
@@ -199,7 +194,7 @@ pub(super) async fn fixture(version: u32) -> Fixture {
 }
 
 pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture {
-    let (schema, store, flow) = seed().await;
+    let (store, flow) = seed().await;
     let user = json!({"role":"user","content":"original\0user line"});
     let mut accumulator = migration::MigrationAccumulator::new(version).unwrap();
     accumulator.append(&user).unwrap();
@@ -390,7 +385,6 @@ pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture 
     assert_eq!(snapshot.contexts.len(), 2);
     assert_eq!(snapshot.checkpoints[0].checkpoint_id, inline.id);
     Fixture {
-        _schema: schema,
         store,
         flow,
         node_id: node.id,

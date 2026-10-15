@@ -46,7 +46,10 @@ async fn verified_v1_v2_migration_is_atomic_lossless_and_reversible_across_all_o
             .load_responses_history_flow(&f.flow, KEY)
             .await
             .unwrap();
-        assert!(migration::collect_proofs(&after).unwrap().is_empty());
+        assert_eq!(
+            migration::collect_proofs(&after).unwrap(),
+            vec![f.current.clone()]
+        );
         assert!(migration::inspect_flow(&after)
             .unwrap()
             .public_rounds
@@ -659,14 +662,16 @@ async fn same_application_colliding_legacy_proof_without_owned_sources_cannot_bo
     migration::apply_verified_flow(&f.store, &f.snapshot, &resolution.verified, KEY)
         .await
         .unwrap();
-    assert!(migration::collect_proofs(
-        &f.store
-            .load_responses_history_flow(&f.flow, KEY)
-            .await
-            .unwrap()
-    )
-    .unwrap()
-    .is_empty());
+    assert_eq!(
+        migration::collect_proofs(
+            &f.store
+                .load_responses_history_flow(&f.flow, KEY)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        vec![f.current.clone()]
+    );
     let unchanged_b = f
         .store
         .load_responses_history_flow(&b_flow, KEY)
