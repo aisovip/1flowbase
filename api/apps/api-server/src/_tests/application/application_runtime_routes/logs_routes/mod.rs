@@ -123,6 +123,7 @@ mod deletion;
 
 mod deletion_jobs;
 
+mod exchange;
 mod unified_log_queries;
 
 // Ingestion fixtures opt in through the same durable state writer as the API.

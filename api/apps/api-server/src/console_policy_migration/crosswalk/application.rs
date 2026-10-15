@@ -1,5 +1,7 @@
 use super::{legacy_mapping, LegacyGrantMappingSpec};
 
+// Audited legacy settings-feature projection, not the current application operation inventory.
+// New independently granted operations stay in the default-disabled disposition ledger.
 pub(super) const APPLICATION_SIMPLE_OPERATIONS: &[&str] = &[
     "applications.api.set_enabled",
     "applications.create",

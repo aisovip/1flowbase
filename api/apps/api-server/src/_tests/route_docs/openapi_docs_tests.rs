@@ -347,3 +347,19 @@ fn category_spec_builder_keeps_all_category_operations_closed() {
     assert!(spec["paths"]["/api/runtime/jobs"].is_null());
     assert!(spec["components"].is_object());
 }
+
+#[test]
+fn canonical_otlp_trace_ingest_advertises_application_bearer_and_standard_wire_formats() {
+    let registry = api_server::openapi_docs::build_default_api_docs_registry().unwrap();
+    let spec = registry.operation_spec("ingest_traces").unwrap();
+    let operation = &spec["paths"]["/api/logs/otlp/v1/traces"]["post"];
+    assert_eq!(operation["security"], json!([{ "applicationApiKey": [] }]));
+    for mime in ["application/json", "application/x-protobuf"] {
+        assert!(operation["requestBody"]["content"].get(mime).is_some());
+        assert!(operation["responses"]["200"]["content"].get(mime).is_some());
+    }
+    assert!(operation["responses"].get("415").is_some());
+    assert!(spec["components"]["securitySchemes"]
+        .get("applicationApiKey")
+        .is_some());
+}

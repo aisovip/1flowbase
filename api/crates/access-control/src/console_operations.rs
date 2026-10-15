@@ -30,6 +30,12 @@ pub const APPLICATIONS_RUN_OPERATION_ID: &str = "applications.run";
 pub const APPLICATIONS_LOGS_EXPORT_OPERATION_ID: &str = "applications.logs.export";
 pub const APPLICATIONS_LOGS_DELETE_OPERATION_ID: &str = "applications.logs.delete";
 pub const APPLICATIONS_LOGS_IMPORT_OPERATION_ID: &str = "applications.logs.import";
+pub const APPLICATIONS_LOGS_OTLP_EXPORT_OPERATION_ID: &str = "applications.logs.otlp.export";
+pub const APPLICATIONS_LOGS_OTLP_IMPORT_OPERATION_ID: &str = "applications.logs.otlp.import";
+pub const APPLICATIONS_LOGS_LANGFUSE_EXPORT_OPERATION_ID: &str =
+    "applications.logs.langfuse.export";
+pub const APPLICATIONS_LOGS_LANGFUSE_IMPORT_OPERATION_ID: &str =
+    "applications.logs.langfuse.import";
 pub const APPLICATIONS_CREATE_ACTION_CODE: &str = "create";
 pub const APPLICATIONS_VIEW_ACTION_CODE: &str = "view";
 pub const APPLICATIONS_UPDATE_ACTION_CODE: &str = "update";

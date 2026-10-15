@@ -1,5 +1,6 @@
 pub(super) mod deletion_jobs;
 use super::*;
+pub(super) mod reader;
 pub(super) mod reprice;
 use control_plane_contracts::ports::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -8,7 +9,7 @@ pub(super) async fn ingest(
     store: &PgControlPlaneStore,
     application_id: Uuid,
     scope_id: Uuid,
-    api_key_id: Uuid,
+    api_key_id: Option<Uuid>,
     batch: &AgentLogsBatch,
     costs: &[Option<String>],
 ) -> Result<AgentLogsReceipt> {
@@ -158,7 +159,7 @@ async fn ensure_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     application_id: Uuid,
     scope_id: Uuid,
-    api_key_id: Uuid,
+    api_key_id: Option<Uuid>,
     batch: &AgentLogsBatch,
     event: &AgentLogEvent,
 ) -> Result<Uuid> {

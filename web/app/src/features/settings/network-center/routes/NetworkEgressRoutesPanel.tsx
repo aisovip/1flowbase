@@ -211,7 +211,12 @@ export function NetworkEgressRoutesPanel() {
                   item.consumer_reference
                     ? (modelName.get(item.consumer_reference) ??
                       item.consumer_reference)
-                    : item.consumer_kind
+                    : item.consumer_kind === 'agent_logs_exchange'
+                      ? i18nText(
+                          'settings',
+                          'auto.network_center_route_agent_logs_exchange'
+                        )
+                      : item.consumer_kind
               },
               {
                 title: i18nText(
@@ -299,6 +304,13 @@ export function NetworkEgressRoutesPanel() {
                   label: i18nText(
                     'settings',
                     'auto.network_center_route_http_node'
+                  )
+                },
+                {
+                  value: 'agent_logs_exchange',
+                  label: i18nText(
+                    'settings',
+                    'auto.network_center_route_agent_logs_exchange'
                   )
                 },
                 {

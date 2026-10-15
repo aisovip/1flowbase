@@ -7,13 +7,45 @@
 }
 .application-collector__catalog {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, max(320px, calc((100% - 32px) / 3))), 1fr)
+  );
+  gap: 16px;
 }
 .application-collector__card {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px;
   border: 1px solid var(--border-default);
   border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.application-collector__card > .application-collector__identity {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+.application-collector__card .application-collector__logo {
+  grid-row: span 2;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+}
+.application-collector__card .application-collector__name {
+  margin: 0 0 4px;
+}
+.application-collector__card .application-collector__status {
+  grid-column: 2;
+  justify-self: start;
+  margin: 0;
+}
+.application-collector__card > button,
+.application-collector__card > .application-collector__actions {
+  margin-top: auto;
 }
 .application-collector__actions {
   width: 100%;

@@ -1,0 +1,302 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "openlit-cli"
+            }
+          },
+          {
+            "key": "custom.resource",
+            "value": {
+              "stringValue": "original-resource"
+            }
+          }
+        ]
+      },
+      "schemaUrl": "resource-schema",
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "openlit",
+            "version": "source-version",
+            "attributes": [
+              {
+                "key": "custom.scope",
+                "value": {
+                  "stringValue": "original-scope"
+                }
+              }
+            ]
+          },
+          "schemaUrl": "scope-schema",
+          "spans": [
+            {
+              "traceId": "112233445566778899aabbccddeeff00",
+              "spanId": "0102030405060708",
+              "name": "coding_agent.session",
+              "startTimeUnixNano": "1791350400123456789",
+              "endTimeUnixNano": "1791350401123456789",
+              "attributes": [
+                {
+                  "key": "coding_agent.session.id",
+                  "value": {
+                    "stringValue": "session-one"
+                  }
+                },
+                {
+                  "key": "coding_agent.client",
+                  "value": {
+                    "stringValue": "codex"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.total_tokens",
+                  "value": {
+                    "intValue": "999"
+                  }
+                },
+                {
+                  "key": "gen_ai.input.messages",
+                  "value": {
+                    "stringValue": "[{\"role\":\"human\",\"content\":\"root repeated prompt\"}]"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "112233445566778899aabbccddeeff00",
+              "spanId": "1112131415161718",
+              "parentSpanId": "0102030405060708",
+              "name": "coding_agent.llm.turn",
+              "kind": 3,
+              "startTimeUnixNano": "1791350400123456790",
+              "endTimeUnixNano": "1791350400123457789",
+              "attributes": [
+                {
+                  "key": "coding_agent.session.id",
+                  "value": {
+                    "stringValue": "session-one"
+                  }
+                },
+                {
+                  "key": "coding_agent.client",
+                  "value": {
+                    "stringValue": "codex"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "gpt-source"
+                  }
+                },
+                {
+                  "key": "gen_ai.provider.name",
+                  "value": {
+                    "stringValue": "openai"
+                  }
+                },
+                {
+                  "key": "gen_ai.input.messages",
+                  "value": {
+                    "stringValue": "[{\"role\": \"system\", \"parts\": [{\"type\": \"text\", \"content\": \"effective instructions\"}]}, {\"role\": \"user\", \"content\": \"historical question\"}, {\"role\": \"user\", \"source\": {\"type\": \"human\"}, \"parts\": [{\"type\": \"text\", \"content\": \"explicit human message\"}]}]"
+                  }
+                },
+                {
+                  "key": "gen_ai.output.messages",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "kvlistValue": {
+                            "values": [
+                              {
+                                "key": "role",
+                                "value": {
+                                  "stringValue": "assistant"
+                                }
+                              },
+                              {
+                                "key": "parts",
+                                "value": {
+                                  "arrayValue": {
+                                    "values": [
+                                      {
+                                        "kvlistValue": {
+                                          "values": [
+                                            {
+                                              "key": "type",
+                                              "value": {
+                                                "stringValue": "text"
+                                              }
+                                            },
+                                            {
+                                              "key": "content",
+                                              "value": {
+                                                "stringValue": "ordinary answer"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "kvlistValue": {
+                                          "values": [
+                                            {
+                                              "key": "type",
+                                              "value": {
+                                                "stringValue": "tool_call"
+                                              }
+                                            },
+                                            {
+                                              "key": "name",
+                                              "value": {
+                                                "stringValue": "weather"
+                                              }
+                                            },
+                                            {
+                                              "key": "id",
+                                              "value": {
+                                                "stringValue": "call-weather"
+                                              }
+                                            },
+                                            {
+                                              "key": "arguments",
+                                              "value": {
+                                                "stringValue": "{\"city\":\"杭州\"}"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "13"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": 7
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache.read_input_tokens",
+                  "value": {
+                    "intValue": "2"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache.creation_input_tokens",
+                  "value": {
+                    "intValue": "3"
+                  }
+                },
+                {
+                  "key": "source.bool",
+                  "value": {
+                    "boolValue": true
+                  }
+                },
+                {
+                  "key": "source.double",
+                  "value": {
+                    "doubleValue": 1.25
+                  }
+                },
+                {
+                  "key": "source.bytes",
+                  "value": {
+                    "bytesValue": "AQID"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "112233445566778899aabbccddeeff00",
+              "spanId": "2122232425262728",
+              "parentSpanId": "0102030405060708",
+              "name": "coding_agent.tool.call",
+              "startTimeUnixNano": "1791350400123457790",
+              "endTimeUnixNano": "1791350400123458789",
+              "attributes": [
+                {
+                  "key": "coding_agent.session.id",
+                  "value": {
+                    "stringValue": "session-one"
+                  }
+                },
+                {
+                  "key": "coding_agent.client",
+                  "value": {
+                    "stringValue": "codex"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "weather"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call-weather"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"city\":\"杭州\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"temp\":20}"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "ffeeddccbbaa99887766554433221100",
+              "spanId": "3132333435363738",
+              "name": "chat",
+              "startTimeUnixNano": "1791350400123459789",
+              "attributes": [
+                {
+                  "key": "gen_ai.conversation.id",
+                  "value": {
+                    "stringValue": "session-two"
+                  }
+                },
+                {
+                  "key": "gen_ai.output.messages",
+                  "value": {
+                    "stringValue": "[{\"role\":\"assistant\",\"content\":\"answer two\"}]"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

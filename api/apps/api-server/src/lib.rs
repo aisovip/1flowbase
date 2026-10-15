@@ -6,6 +6,7 @@ mod managed_service_mcp;
 mod managed_services;
 mod resource_import;
 
+pub mod agent_logs_protocol;
 pub mod app_state;
 pub mod application_public_docs;
 pub mod config;
@@ -389,6 +390,7 @@ fn console_router_with_assembly(
         .route("/health", external_route_assembly::get(health))
         .merge(routes::application_public_api::compatible_route_assembly())
         .merge(routes::application_public_api::agent_logs::route_assembly())
+        .merge(routes::application_public_api::agent_logs::otlp::route_assembly())
         .nest(
             "/api/agent/v1",
             routes::application_public_api::route_assembly(),

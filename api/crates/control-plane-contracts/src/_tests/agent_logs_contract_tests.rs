@@ -1,5 +1,29 @@
 use crate::ports::*;
 use serde_json::json;
+
+#[test]
+fn agent_logs_export_requires_exactly_one_nonempty_selector() {
+    let id = uuid::Uuid::now_v7();
+    assert_eq!(
+        AgentLogsExportSelector::from_ids(Some(vec![id]), None).unwrap(),
+        AgentLogsExportSelector::Records(vec![id])
+    );
+    assert_eq!(
+        AgentLogsExportSelector::from_ids(None, Some(vec![id])).unwrap(),
+        AgentLogsExportSelector::Conversations(vec![id])
+    );
+    for (records, conversations) in [
+        (None, None),
+        (Some(vec![]), None),
+        (None, Some(vec![])),
+        (Some(vec![id]), Some(vec![id])),
+        (Some(vec![]), Some(vec![id])),
+        (Some(vec![id]), Some(vec![])),
+        (Some(vec![]), Some(vec![])),
+    ] {
+        assert!(AgentLogsExportSelector::from_ids(records, conversations).is_err());
+    }
+}
 #[test]
 fn agent_logs_frozen_optional_usage_and_transport_contract() {
     let payload = json!({"schema_version":"1flowbase.agent-logs/v1","source_id":"collector","source_client":"codex","events":[{"event_id":"source-event","source_session_id":"session","source_task_id":"turn","parent_source_task_id":null,"sequence":0,"occurred_at":"2026-10-07T08:00:00Z","kind":"usage","content":null,"phase":null,"name":null,"call_id":null,"model_id":null,"provider_code":null,"usage":{"basis":"cumulative","response_id":null,"input_tokens":null,"output_tokens":null,"input_cache_hit_tokens":4,"cache_write_tokens":null,"total_tokens":20},"inherited":false,"raw":{}}]});

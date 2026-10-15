@@ -1,4 +1,5 @@
 //! Application-key admitted observational ingestion, independent of generation.
+pub mod otlp;
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
     extract::{DefaultBodyLimit, State},

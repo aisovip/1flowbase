@@ -194,11 +194,27 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
         scope_id: Uuid,
-        api_key_id: Uuid,
+        api_key_id: Option<Uuid>,
         batch: &control_plane_contracts::ports::AgentLogsBatch,
         costs: &[Option<String>],
     ) -> Result<control_plane_contracts::ports::AgentLogsReceipt> {
         agent_logs::ingest(self, application_id, scope_id, api_key_id, batch, costs).await
+    }
+    async fn read_imported_agent_logs(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        record_ids: &[Uuid],
+    ) -> Result<Vec<control_plane_contracts::ports::AgentLogsBatch>> {
+        agent_logs::reader::read(self, application_id, scope_id, record_ids).await
+    }
+    async fn read_imported_agent_logs_selection(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        selector: &control_plane_contracts::ports::AgentLogsExportSelector,
+    ) -> Result<control_plane_contracts::ports::AgentLogsExportFacts> {
+        agent_logs::reader::read_selection(self, application_id, scope_id, selector).await
     }
     async fn query_application_log_records(
         &self,

@@ -2,6 +2,8 @@
 
 [中文](README.zh-CN.md)
 
+[OTLP / Langfuse exchange and OpenLIT SDK guide](otlp-exchange.md)
+
 New log applications start with **Log reception** enabled. Create an API key and configure the collector to start uploading. You can disable reception at any time in application management or the API page.
 
 The collector has two installation stages. First, install the signed distribution package from the remote extension catalog **in 1flowbase**. Then open its **Download collector CLI** detail and run the command on your computer. The installer, native archive, checksums and documentation are served by your own 1flowbase at version-pinned URLs. They remain available if the remote repository is offline. “Installed in platform” describes the retained distribution package; it does not indicate that a client process is online.

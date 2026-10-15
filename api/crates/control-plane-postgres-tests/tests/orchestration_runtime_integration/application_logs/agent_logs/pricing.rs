@@ -300,7 +300,7 @@ async fn agent_logs_reprice_changes_only_costs_is_idempotent_and_includes_later_
         .ingest_agent_logs(
             app,
             scope,
-            Uuid::now_v7(),
+            Some(Uuid::now_v7()),
             &original,
             &[None, None, Some("0".into()), None],
         )
@@ -333,7 +333,7 @@ async fn agent_logs_reprice_changes_only_costs_is_idempotent_and_includes_later_
         .ingest_agent_logs(
             foreign,
             scope,
-            Uuid::now_v7(),
+            Some(Uuid::now_v7()),
             &original,
             &[None, None, Some("0".into()), None],
         )

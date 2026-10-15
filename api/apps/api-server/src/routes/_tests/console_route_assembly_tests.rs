@@ -440,6 +440,26 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.update",
             ),
             (
+                "POST",
+                "/api/console/applications/:id/logs/otlp/export",
+                "applications.logs.otlp.export",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/otlp/import",
+                "applications.logs.otlp.import",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/langfuse/export",
+                "applications.logs.langfuse.export",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/logs/langfuse/import",
+                "applications.logs.langfuse.import",
+            ),
+            (
                 "GET",
                 "/api/console/applications/logs/current-context",
                 "applications.view",

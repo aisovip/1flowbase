@@ -5,8 +5,10 @@ use crate::ports::{
 use anyhow::Result;
 use uuid::Uuid;
 
+mod console_import;
 mod deletion;
 mod pricing;
+pub use console_import::AgentLogsPartialImportError;
 
 pub struct AgentLogsService<R> {
     repository: R,
@@ -20,6 +22,18 @@ impl<R: BillingRepository + OrchestrationRuntimeRepository> AgentLogsService<R> 
         application_id: Uuid,
         scope_id: Uuid,
         api_key_id: Uuid,
+        batch: AgentLogsBatch,
+    ) -> Result<AgentLogsReceipt> {
+        self.ingest_batch(application_id, scope_id, Some(api_key_id), batch)
+            .await
+    }
+
+    /// The optional key describes provenance, never invents an Application credential.
+    async fn ingest_batch(
+        &self,
+        application_id: Uuid,
+        scope_id: Uuid,
+        api_key_id: Option<Uuid>,
         batch: AgentLogsBatch,
     ) -> Result<AgentLogsReceipt> {
         batch

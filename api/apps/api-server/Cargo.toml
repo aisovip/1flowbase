@@ -11,6 +11,8 @@ license.workspace = true
 root-1805-consumer-fixture = []
 
 [dependencies]
+opentelemetry-proto.workspace = true
+prost.workspace = true
 percent-encoding.workspace = true
 url.workspace = true
 anyhow.workspace = true
@@ -40,6 +42,7 @@ time.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1"
+tonic-types.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 tracing.workspace = true

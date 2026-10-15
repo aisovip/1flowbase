@@ -193,6 +193,7 @@ pub enum NetworkEgressConsumerSelector {
     ModelProviderDefault,
     ModelProviderInstance { instance_id: Uuid },
     HttpNodeDefault,
+    AgentLogsExchange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,15 +213,17 @@ impl NetworkEgressConsumerSelector {
             Self::GithubOfficialSources => "github",
             Self::ModelProviderDefault | Self::ModelProviderInstance { .. } => "model_provider",
             Self::HttpNodeDefault => "http_node",
+            Self::AgentLogsExchange => "agent_logs_exchange",
         }
     }
 
     pub const fn consumer_reference(&self) -> Option<Uuid> {
         match self {
             Self::ModelProviderInstance { instance_id } => Some(*instance_id),
-            Self::GithubOfficialSources | Self::ModelProviderDefault | Self::HttpNodeDefault => {
-                None
-            }
+            Self::GithubOfficialSources
+            | Self::ModelProviderDefault
+            | Self::HttpNodeDefault
+            | Self::AgentLogsExchange => None,
         }
     }
 
@@ -235,6 +238,7 @@ impl NetworkEgressConsumerSelector {
                 Ok(Self::ModelProviderInstance { instance_id })
             }
             ("http_node", None) => Ok(Self::HttpNodeDefault),
+            ("agent_logs_exchange", None) => Ok(Self::AgentLogsExchange),
             _ => Err(NetworkEgressConsumerSelectorParseError),
         }
     }
@@ -254,3 +258,7 @@ pub struct NetworkEgressRoute {
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
+
+#[cfg(test)]
+#[path = "_tests/network_egress/consumer.rs"]
+mod consumer_tests;

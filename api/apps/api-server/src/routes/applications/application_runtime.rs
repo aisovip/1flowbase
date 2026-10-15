@@ -57,6 +57,7 @@ pub(crate) mod interface_debug_variables;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
 pub(crate) mod interface_trace_payloads;
+pub(crate) mod log_exchange;
 pub(crate) mod log_query;
 pub(crate) mod logs_delete;
 pub(crate) mod record_trace;
@@ -97,6 +98,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .merge(log_exchange::route_assembly())
         .route("/applications/logs/current-context", console_get(log_query::current_context::get_current_run_context, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/query-fields", console_get(log_query::get_query_fields, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/logs/conversations/query", console_post(log_query::query_log_conversations, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
