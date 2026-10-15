@@ -408,6 +408,13 @@ impl ResumeClaimStatus {
     }
 }
 
+/// Host-only admission revision checked atomically when acquiring callback execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallbackResumeAdmissionFence {
+    pub attempt_id: Uuid,
+    pub expected_updated_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct AcquireResumeClaimInput {
     pub scope_id: Uuid,

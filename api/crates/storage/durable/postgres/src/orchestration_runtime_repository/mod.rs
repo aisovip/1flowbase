@@ -22,12 +22,12 @@ use control_plane_contracts::{
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
         ApplicationRunTraceRefreshJob, AttachCompiledPlanToFlowRunInput, BillingRepository,
-        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
-        ClaimRuntimeEventDeliveriesInput, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
-        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, CompleteFlowRunInput,
-        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        BindInvocationContextInput, CallbackResumeAdmissionFence, CallbackResumeContext,
+        CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
+        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
@@ -810,6 +810,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::acquire_resume_claim(self, input).await
     }
 
+    async fn acquire_resume_claim_with_admission(
+        &self,
+        input: &AcquireResumeClaimInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<AcquireResumeClaimOutput> {
+        PgControlPlaneStore::acquire_resume_claim_with_admission(self, input, admission).await
+    }
+
     async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
         PgControlPlaneStore::renew_resume_claim(self, input).await
     }
@@ -826,6 +834,15 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &CommitToolCallbackResultsInput,
     ) -> Result<CommitToolCallbackResultsOutput> {
         PgControlPlaneStore::commit_tool_callback_results(self, input).await
+    }
+
+    async fn commit_tool_callback_results_with_admission(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<CommitToolCallbackResultsOutput> {
+        PgControlPlaneStore::commit_tool_callback_results_with_admission(self, input, admission)
+            .await
     }
 
     async fn append_usage_ledger(

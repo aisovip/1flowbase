@@ -1,6 +1,8 @@
 mod inference_recovery;
+mod prepared;
 mod reservation;
 pub use inference_recovery::NativeInferenceRecoveryGrant;
+pub use prepared::{PreparedPublishedCallback, PreparedPublishedCallbackExecution};
 pub use reservation::{PublishedCallbackReservation, PublishedCallbackReservationReceipt};
 
 use std::{sync::Arc, time::Duration};
@@ -629,6 +631,19 @@ where
             })
             .await;
 
+        self.finish_callback_resume_result(flow_run, callback_task, attempt, &command, result)
+            .await
+    }
+
+    async fn finish_callback_resume_result(
+        &self,
+        flow_run: domain::FlowRunRecord,
+        callback_task: domain::CallbackTaskRecord,
+        attempt: domain::FlowRunCallbackResumeAttemptRecord,
+        command: &ResumePublishedCallbackCommand,
+        result: Result<domain::FlowRunRecord>,
+    ) -> Result<ResumePublishedCallbackResult> {
+        let is_tool_round = callback_task.callback_kind == "llm_tool_calls";
         match result {
             Ok(flow_run) => {
                 if is_tool_round {

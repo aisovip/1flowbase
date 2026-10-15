@@ -823,6 +823,8 @@ mod semantic_runtime;
 
 #[path = "callback_resume/active_lease.rs"]
 mod active_lease;
+#[path = "callback_resume/prepared_execution.rs"]
+mod prepared_execution;
 
 // Interrupt the real public consumer at the provider execution port after durable
 // receipt commit, then retry through that same consumer with an expired lease.

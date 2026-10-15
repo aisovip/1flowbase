@@ -12,6 +12,13 @@ impl PublishedCallbackReservationReceipt {
     pub fn attempt_id(&self) -> Uuid {
         self.attempt_id
     }
+
+    pub(super) fn admission_fence(&self) -> crate::ports::CallbackResumeAdmissionFence {
+        crate::ports::CallbackResumeAdmissionFence {
+            attempt_id: self.attempt_id,
+            expected_updated_at: self.acquired_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
