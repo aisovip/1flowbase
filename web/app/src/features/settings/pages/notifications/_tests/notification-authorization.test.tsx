@@ -158,7 +158,9 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
     target: { value: 'https://example.com/custom' }
   });
   fireEvent.click(screen.getByRole('button', { name: '保存并扫码授权' }));
-  await act(async () => {});
+  await act(async () => {
+    await Promise.resolve();
+  });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -228,7 +230,9 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
   const pollCommand = commands.find((command) => command.body.type === 'poll');
   expect(pollCommand).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: '取消授权' }));
-  await act(async () => {});
+  await act(async () => {
+    await Promise.resolve();
+  });
   expect(pollCommand?.signal?.aborted).toBe(true);
   expect(screen.getByText('授权状态: 未授权')).toBeInTheDocument();
   await act(async () => {
@@ -428,7 +432,9 @@ test('manual Maintain refresh updates the window without reauthorizing, enabling
   );
   expect(screen.getByText('通知订阅: 订阅已过期')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '刷新订阅状态' }));
-  await act(async () => {});
+  await act(async () => {
+    await Promise.resolve();
+  });
   expect(screen.getByText('通知订阅: 订阅有效/可发送')).toBeInTheDocument();
   expect(
     screen.getByText(
