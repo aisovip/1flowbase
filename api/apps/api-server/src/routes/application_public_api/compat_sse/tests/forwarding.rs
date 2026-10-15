@@ -222,6 +222,11 @@ async fn callback_attach_partial_live_then_durable_does_not_repeat_items_or_delt
     assert_terminal_callback_attach(true, 2).await;
 }
 
+#[tokio::test]
+async fn callback_attach_retains_terminal_observation_until_durable_identity_arrives() {
+    assert_terminal_callback_attach(true, 3).await;
+}
+
 async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mode: u8) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
@@ -243,6 +248,16 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         json!({"callback_task_id": callback_task_id}),
     )
     .await;
+    let generation = Uuid::now_v7();
+    if live_mode == 3 {
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "runtime_stream_opened",
+            json!({"stream_generation_id": generation}),
+        )
+        .await;
+    }
     let first_item =
         json!({"type": "message", "content": [{"type": "output_text", "text": "first"}]});
     let second_item =
@@ -390,6 +405,23 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             &second_item,
         )
         .await;
+        if live_mode == 3 {
+            // Let the bridge consume the terminal page while its durable
+            // identity remains Pending. The next write contains no terminal.
+            assert!(
+                tokio::time::timeout(Duration::from_millis(1100), attached.events.recv())
+                    .await
+                    .is_err(),
+                "unidentified terminal must not close attachment"
+            );
+            append_compat_sse_runtime_event(
+                &state,
+                attached.initial_run.id,
+                "flow_started",
+                json!({"response_round_id": callback_task_id, "stream_generation_id": generation}),
+            )
+            .await;
+        }
     }
     while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
         .await

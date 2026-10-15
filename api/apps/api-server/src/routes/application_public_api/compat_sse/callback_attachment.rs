@@ -39,7 +39,9 @@ pub(super) fn follow_callback_subscription(
     from_sequence: i64,
     mut subscription: control_plane::ports::RuntimeEventSubscription,
 ) -> control_plane::ports::RuntimeEventSubscription {
-    let (sender, receiver) = mpsc::unbounded_channel();
+    let (sender, receiver) = mpsc::channel(32);
+    let (diagnostic_sender, diagnostic) = mpsc::channel(1);
+    drop(diagnostic_sender);
     let replay = std::mem::take(&mut subscription.replay);
     let terminal_writer = subscription.terminal_writer;
     let closure = subscription.closure;
@@ -65,6 +67,7 @@ pub(super) fn follow_callback_subscription(
                 return;
             }
         };
+        let mut terminal_observed = false;
         let mut live_open = true;
         let mut poll = tokio::time::interval(Duration::from_secs(1));
         poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -80,13 +83,12 @@ pub(super) fn follow_callback_subscription(
                     started |= event.event_type == "flow_started";
                     remember_completed_output(&event, &mut completed_items);
                     let terminal = is_public_terminal_runtime_event(&event.event_type);
-                    if sender.send(event).is_err() || terminal {
+                    if sender.send(event).await.is_err() || terminal {
                         return;
                     }
                 }
                 _ = poll.tick() => {
-                    let mut saw_terminal = false;
-                    loop {
+                    while !terminal_observed {
                         let page = match dependencies.native.store.list_runtime_event_durable_page(
                             initial_run.id, durable_cursor, None, 64,
                         ).await {
@@ -105,13 +107,13 @@ pub(super) fn follow_callback_subscription(
                             }
                             durable_cursor = last.sequence;
                         }
-                        saw_terminal |= page.iter().any(|event|
+                        terminal_observed |= page.iter().any(|event|
                             is_public_terminal_runtime_event(&event.event_type));
-                        if page.len() < 64 || saw_terminal {
+                        if page.len() < 64 || terminal_observed {
                             break;
                         }
                     }
-                    if !saw_terminal {
+                    if !terminal_observed {
                         continue;
                     }
                     let replay = match durable_compatible_round_replay(
@@ -119,7 +121,12 @@ pub(super) fn follow_callback_subscription(
                     ).await {
                         Ok(DurableCompatibleRoundReplay::Ready(replay)) if replay.last()
                             .is_some_and(|event| is_public_terminal_runtime_event(&event.event_type)) => replay,
-                        Ok(_) => continue,
+                        Ok(DurableCompatibleRoundReplay::PendingIdentity) => continue,
+                        Ok(DurableCompatibleRoundReplay::Ready(_)) => {
+                            // A resolved identity can exclude a foreign terminal.
+                            terminal_observed = false;
+                            continue;
+                        }
                         Err(error) => {
                             warn!(flow_run_id = %initial_run.id, ?error,
                                 "failed to follow durable callback completion");
@@ -142,7 +149,7 @@ pub(super) fn follow_callback_subscription(
                         cursor = cursor.saturating_add(1);
                         event.sequence = cursor;
                         event.event_id = format!("{}:{}", event.run_id, cursor);
-                        if sender.send(event).is_err() {
+                        if sender.send(event).await.is_err() {
                             return;
                         }
                     }
@@ -154,7 +161,7 @@ pub(super) fn follow_callback_subscription(
     control_plane::ports::RuntimeEventSubscription {
         terminal_writer,
         replay,
-        live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(receiver),
+        live_events: control_plane::ports::RuntimeEventReceiver::new(receiver, diagnostic),
         closure,
     }
 }
