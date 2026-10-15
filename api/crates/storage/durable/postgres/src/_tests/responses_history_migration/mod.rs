@@ -222,9 +222,25 @@ async fn responses_history_dag_shared_ancestors_are_loaded_and_copied_once() {
     let restored = store.load_responses_history_flow(&flow, "").await.unwrap();
     assert_eq!(restored.checkpoints, before.checkpoints);
     assert_eq!(
+        restored.contexts.last().unwrap().content,
+        before.contexts.last().unwrap().content
+    );
+    assert_eq!(
+        restored.contexts.last().unwrap().previous_projection_id,
+        before.contexts.last().unwrap().previous_projection_id
+    );
+    assert_ne!(
+        restored.latest_context_version_id,
+        before.latest_context_version_id
+    );
+    store
+        .rollback_responses_history_migration(&receipt, "")
+        .await
+        .unwrap();
+    assert_eq!(
         count_versions(&store, &flow).await,
-        2 * VERSIONS as i64,
-        "rollback retains immutable audit nodes"
+        2 * VERSIONS as i64 + 1,
+        "rollback retains audit nodes and appends original effective head"
     );
 }
 
@@ -423,11 +439,31 @@ async fn responses_history_dag_legacy_inline_uses_existing_latest_checkpoint_ord
         .unwrap()
         .checkpoints
         .is_empty());
+    let mut missing_anchor = receipt.clone();
+    missing_anchor.checkpoints.clear();
+    assert!(store
+        .rollback_responses_history_migration(&missing_anchor, "")
+        .await
+        .is_err());
+    assert_eq!(count_versions(&store, &flow).await, 2);
     store
         .rollback_responses_history_migration(&receipt, "")
         .await
         .unwrap();
     let restored = store.load_responses_history_flow(&flow, "").await.unwrap();
     assert_eq!(restored.checkpoints, before.checkpoints);
-    assert_eq!(count_versions(&store, &flow).await, 2);
+    assert!(before.latest_context_version_id.is_none());
+    assert!(
+        restored.latest_context_version_id.is_some(),
+        "append-only rollback restores effective pool, not original absence"
+    );
+    assert_eq!(
+        restored.contexts.last().unwrap().content["variable_pool"],
+        before.checkpoints.last().unwrap().variable_snapshot
+    );
+    store
+        .rollback_responses_history_migration(&receipt, "")
+        .await
+        .unwrap();
+    assert_eq!(count_versions(&store, &flow).await, 3);
 }

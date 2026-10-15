@@ -8,6 +8,7 @@ mod contexts;
 use std::collections::{HashMap, HashSet};
 mod checkpoints;
 mod documents;
+mod rollback;
 mod sources;
 
 async fn latest_context(
@@ -555,6 +556,12 @@ impl ResponsesHistoryMigrationRepository for PgControlPlaneStore {
         let mut tx = self.pool().begin().await?;
         lock_flow(&mut tx, &receipt.flow, receipt.expected_status).await?;
         let current = snapshot(&mut tx, &receipt.flow, master_key, true).await?;
+        contexts::verify_receipts(&mut tx, &receipt.flow, &receipt.contexts).await?;
+        let restoration = rollback::original_head(&mut tx, receipt, &current).await?;
+        if rollback::already_restored(&mut tx, receipt, &current, &restoration).await? {
+            tx.rollback().await?;
+            return Ok(());
+        }
         anyhow::ensure!(
             snapshot_latest(&current) == receipt.after_latest_context,
             "responses_history_parent_context_conflict"
@@ -577,7 +584,6 @@ impl ResponsesHistoryMigrationRepository for PgControlPlaneStore {
                 "responses_history_capsule_rollback_conflict"
             );
         }
-        contexts::verify_receipts(&mut tx, &receipt.flow, &receipt.contexts).await?;
         documents::rollback(&mut tx, &receipt.flow, &receipt.documents).await?;
         checkpoints::rollback(
             &mut tx,
@@ -587,8 +593,9 @@ impl ResponsesHistoryMigrationRepository for PgControlPlaneStore {
         )
         .await?;
         capsules::rollback(&mut tx, &receipt.flow, &receipt.continuations, master_key).await?;
-        // Appended immutable contexts deliberately remain the sequence head. Only
-        // mutable checkpoint references move back; later plans use the new max.
+        // Restore effective latest data without deleting immutable provenance.
+        // The new restoration identity (or original inline absence) is observable.
+        rollback::append_head(&mut tx, &receipt.flow, restoration).await?;
         tx.commit().await?;
         Ok(())
     }

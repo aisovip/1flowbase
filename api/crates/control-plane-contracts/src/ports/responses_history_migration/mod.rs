@@ -223,7 +223,12 @@ pub struct ResponsesHistoryContinuationReceipt {
 }
 
 /// Contains exact reversible mutable state. Newly inserted immutable content is
-/// deliberately retained by rollback. Master keys are never part of this type.
+/// deliberately retained by rollback. To restore effective latest recovery data,
+/// rollback appends the original latest content with its original parent chain.
+/// If no prior context existed, it appends the original latest inline checkpoint
+/// pool instead: original context absence/identity cannot be restored. Repeated
+/// rollback recognizes that restoration head plus exact mutable preimages.
+/// Master keys are never part of this type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponsesHistoryMigrationReceipt {
     pub format_version: u32,
@@ -274,7 +279,10 @@ pub trait ResponsesHistoryMigrationRepository: ResponsesHistoryMigrationReadRepo
         master_key: &str,
     ) -> anyhow::Result<ResponsesHistoryMigrationReceipt>;
 
-    /// Refuses any later mutable-state change rather than overwriting it.
+    /// Refuses later changes. Restores effective recovery data by appending a new
+    /// latest head; original latest identity/absence is not restored. All source
+    /// immutable contexts and audit bindings remain. Repeated rollback is a no-op
+    /// only when restoration head and every mutable preimage still match exactly.
     async fn rollback_responses_history_migration(
         &self,
         receipt: &ResponsesHistoryMigrationReceipt,
