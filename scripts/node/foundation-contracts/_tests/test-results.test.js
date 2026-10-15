@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseExecutedTestCounts } = require('../test-results.js');
+const { parseExecutedTestCounts, testExecutionError } = require('../test-results.js');
 const { buildFoundationPlan, buildContractReceipt } = require('../core.js');
 
 for (const [runner, output, expected] of [
@@ -68,4 +68,16 @@ test('conditional MCP continuation rejects zero-test and missing-count receipts'
     invalid.commands.find((item) => item.id === 'mcp-result-continuation').passedCount = passedCount;
     assert.equal(buildContractReceipt({ candidateSha: 'candidate', plan, componentResults: [invalid] }).status, 'failed');
   }
+});
+
+
+test('execution diagnosis distinguishes failed, zero and absent evidence and rejects malformed counts', () => {
+  assert.equal(testExecutionError({ passedCount: 313, failedCount: 1 }), 'test execution failed: 313 passed; 1 failed');
+  assert.equal(testExecutionError({ passedCount: 0, failedCount: 1 }), 'test execution failed: 0 passed; 1 failed');
+  assert.match(testExecutionError({ passedCount: 0, failedCount: 0 }), /zero execution/u);
+  for (const counts of [{ passedCount: null, failedCount: null }, { passedCount: 1, failedCount: null },
+    { passedCount: -1, failedCount: 0 }, { passedCount: 1.5, failedCount: 0 }]) {
+    assert.match(testExecutionError(counts), /missing or invalid/u);
+  }
+  assert.equal(testExecutionError({ passedCount: 2, failedCount: 0 }), '');
 });

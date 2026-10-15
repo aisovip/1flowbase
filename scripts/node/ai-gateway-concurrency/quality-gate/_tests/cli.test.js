@@ -399,13 +399,30 @@ test("quality gate pins the four blocking transports without implicit enum expan
   assert.doesNotMatch(inventorySource, /Object\.values/u);
 });
 
+function assertVendoredSwagger(cargo) {
+  // The workspace uses an inline TOML dependency; only its feature contract is
+  // relevant here. A version upgrade must not change this offline build check.
+  const dependency = cargo.match(/^utoipa-swagger-ui\s*=\s*\{([^}]+)\}/mu);
+  assert.ok(dependency, "workspace must declare utoipa-swagger-ui");
+  const features = dependency[1].match(/\bfeatures\s*=\s*\[([^\]]*)\]/u);
+  assert.ok(features, "Swagger UI must declare its build features");
+  const names = [...features[1].matchAll(/["']([^"']+)["']/gu)].map((match) => match[1]);
+  assert.ok(names.includes("vendored"), "Swagger UI must enable vendored assets");
+  assert.ok(names.includes("axum"), "Swagger UI must enable Axum integration");
+}
+
 test("release gate vendors Swagger UI instead of downloading a GitHub archive during Cargo build", () => {
   const repoRoot = path.resolve(__dirname, "../../../../../");
-  const cargo = fs.readFileSync(path.join(repoRoot, "api/Cargo.toml"), "utf8");
-  assert.match(
-    cargo,
-    /utoipa-swagger-ui = \{ version = "8", features = \["axum", "vendored"\] \}/u,
-  );
+  assertVendoredSwagger(fs.readFileSync(path.join(repoRoot, "api/Cargo.toml"), "utf8"));
+  for (const version of ["8", "10.0.1", "99.1.0"]) {
+    assertVendoredSwagger(`utoipa-swagger-ui = { version = "${version}", features = ["vendored", "axum"] }`);
+  }
+  assert.throws(() => assertVendoredSwagger(
+    'utoipa-swagger-ui = { version = "10.0.1", features = ["axum"] }',
+  ), /must enable vendored assets/u);
+  assert.throws(() => assertVendoredSwagger(
+    'other = { features = ["axum", "vendored"] }',
+  ), /must declare utoipa-swagger-ui/u);
 });
 
 test("quality gate derives one owned temporary database from the loopback Docker service", () => {

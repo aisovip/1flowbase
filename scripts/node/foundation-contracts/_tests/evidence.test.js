@@ -8,7 +8,7 @@ const { buildFoundationPlan, buildContractReceipt, runFastPack } = require('../c
 const candidateSha = 'abcdef1234567890';
 const passedOutput = 'running 2 tests\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;\n';
 
-function withRun(t, foundation, output = foundation === 'native-react' ? 'Tests 2 passed (2)\n' : passedOutput) {
+function withRun(t, foundation, output = foundation === 'native-react' ? 'Tests 2 passed (2)\n' : passedOutput, status = 0) {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'foundation-execution-evidence-'));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   const plan = buildFoundationPlan({ foundation });
@@ -18,7 +18,7 @@ function withRun(t, foundation, output = foundation === 'native-react' ? 'Tests 
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args });
       fs.writeSync(options.stdio[1], output);
-      return { status: 0 };
+      return { status };
     },
   });
   return { repoRoot, plan, receipt, calls };
@@ -43,10 +43,26 @@ test('zero-test, missing-summary and failed-test Cargo output cannot produce gre
   ]) {
     const { repoRoot, plan, receipt } = withRun(t, 'mcp-gateway', output);
     assert.equal(receipt.status, 'failed');
-    assert.match(receipt.errors[0], /no executed passing tests/u);
+    assert.match(receipt.errors[0], /no executed passing tests|missing or invalid executed-test summary|test execution failed/u);
     assert.equal(fs.readFileSync(path.join(repoRoot, receipt.commands[0].logPath), 'utf8'), output);
     assert.equal(buildContractReceipt({ candidateSha, plan, componentResults: [receipt] }).status, 'failed');
   }
+});
+
+test('failed execution preserves real passing counts instead of claiming zero execution', (t) => {
+  const output = 'test result: FAILED. 313 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;\n';
+  const { plan, receipt } = withRun(t, 'ai-gateway', '# pass 313\n# fail 1\n');
+  assert.equal(receipt.status, 'failed');
+  assert.equal(receipt.commands[0].passedCount, 313);
+  assert.equal(receipt.commands[0].failedCount, 1);
+  assert.match(receipt.errors[0], /test execution failed: 313 passed; 1 failed/u);
+  assert.doesNotMatch(receipt.errors.join(' '), /no executed|zero execution/u);
+  const aggregate = buildContractReceipt({ candidateSha, plan, componentResults: [receipt] });
+  assert.equal(aggregate.status, 'failed');
+  assert.doesNotMatch(aggregate.errors.join(' '), /no executed|zero execution/u);
+  const cargo = withRun(t, 'mcp-gateway', output, 101).receipt;
+  assert.equal(cargo.commands[0].exitCode, 101);
+  assert.match(cargo.errors[0], /313 passed; 1 failed/u);
 });
 
 test('aggregation refuses omitted, incomplete, duplicate and unsuccessful required command evidence', (t) => {

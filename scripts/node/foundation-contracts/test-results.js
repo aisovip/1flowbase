@@ -21,4 +21,13 @@ function parseExecutedTestCounts(runner, output) {
   return counts;
 }
 
-module.exports = { parseExecutedTestCounts };
+function testExecutionError({ passedCount, failedCount }) {
+  if (![passedCount, failedCount].every((count) => Number.isInteger(count) && count >= 0)) {
+    return 'missing or invalid executed-test summary';
+  }
+  if (failedCount > 0) return `test execution failed: ${passedCount} passed; ${failedCount} failed`;
+  if (passedCount === 0) return 'no executed passing tests (zero execution)';
+  return '';
+}
+
+module.exports = { parseExecutedTestCounts, testExecutionError };

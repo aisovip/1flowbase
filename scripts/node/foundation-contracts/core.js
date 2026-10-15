@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
-const { parseExecutedTestCounts } = require('./test-results.js');
+const { parseExecutedTestCounts, testExecutionError } = require('./test-results.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance', 'foundation-contracts');
 const FOUNDATION_IDS = [
@@ -283,10 +283,8 @@ function validateComponentEvidence(requiredPack, result) {
     if (typeof evidence.logPath !== 'string' || !evidence.logPath.trim()) {
       errors.push(`${required.id} has no command log path`);
     }
-    if (required.testRunner && !(Number.isInteger(evidence.passedCount)
-      && evidence.passedCount > 0 && evidence.failedCount === 0)) {
-      errors.push(`${required.id} has no executed passing tests`);
-    }
+    const executionError = required.testRunner ? testExecutionError(evidence) : '';
+    if (executionError) errors.push(`${required.id}: ${executionError}`);
   }
   return errors;
 }
@@ -463,9 +461,9 @@ function runFastPack({ repoRoot, candidateSha, plan, foundation, spawnSyncImpl =
     const counts = item.testRunner
       ? parseExecutedTestCounts(item.testRunner, fs.readFileSync(absoluteLogPath, 'utf8'))
       : { passedCount: null, failedCount: null };
-    const missingTests = item.testRunner && !(counts.passedCount > 0 && counts.failedCount === 0);
-    const error = result.error?.message || (missingTests ? 'no executed passing tests' : '');
-    const exitCode = result.error || missingTests ? 1 : (result.status ?? 1);
+    const executionError = item.testRunner ? testExecutionError(counts) : '';
+    const error = result.error?.message || executionError;
+    const exitCode = result.status !== 0 ? (result.status ?? 1) : (error ? 1 : 0);
     commandResults.push({
       id: item.id,
       command: [item.command, ...item.args].join(' '),
