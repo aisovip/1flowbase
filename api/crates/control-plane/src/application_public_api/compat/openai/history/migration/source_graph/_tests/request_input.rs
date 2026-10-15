@@ -21,7 +21,7 @@ fn entire_original_input_attests_only_input_with_exact_request_locator() {
             original["encoding"] = json!("base64");
         }
         let request = Uuid::now_v7();
-        let mut graph = input_graph(&[expected.clone()]);
+        let mut graph = input_graph(std::slice::from_ref(&expected));
         graph
             .push_public_request_input(test_flow(), request, 37, &original)
             .unwrap();
@@ -54,7 +54,7 @@ fn string_and_explicit_null_cursor_follow_the_original_input_producer() {
         json!({"input":"hello 雪"}),
         json!({"previous_response_id":null,"input":"hello 雪"}),
     ] {
-        let mut graph = input_graph(&[expected.clone()]);
+        let mut graph = input_graph(std::slice::from_ref(&expected));
         graph
             .push_public_request_input(test_flow(), Uuid::now_v7(), 1, &frame(&body))
             .unwrap();
@@ -99,7 +99,7 @@ fn request_only_never_matches_an_intermediate_prefix_or_missing_input() {
             json!({"input":[{"role":"user","content":"changed"}]}),
         ),
     ] {
-        let mut graph = input_graph(&[expected.clone()]);
+        let mut graph = input_graph(std::slice::from_ref(&expected));
         graph
             .push_public_request_input(test_flow(), Uuid::now_v7(), 1, &frame(&body))
             .unwrap();
@@ -121,7 +121,7 @@ fn malformed_wrong_flow_or_wrong_sequence_original_frame_cannot_attest() {
         json!({"frame_kind":"request","encoding":"base64","body":"invalid%%%"}),
         json!({"frame_kind":"request","encoding":"utf8","body":json!({"input":[item]}).to_string(),"sequence":99}),
     ] {
-        let mut graph = input_graph(&[expected.clone()]);
+        let mut graph = input_graph(std::slice::from_ref(&expected));
         graph
             .push_public_request_input(test_flow(), Uuid::now_v7(), 1, &original)
             .unwrap();
@@ -129,7 +129,7 @@ fn malformed_wrong_flow_or_wrong_sequence_original_frame_cannot_attest() {
         assert!(result.verified.is_empty());
         assert_eq!(result.unresolved_targets.len(), 1);
     }
-    let mut graph = input_graph(&[expected.clone()]);
+    let mut graph = input_graph(std::slice::from_ref(&expected));
     graph
         .push_public_request_input(
             Uuid::from_u128(2),
@@ -148,9 +148,11 @@ fn same_hash_full_obligation_remains_until_a_completed_source_upgrades_coverage(
     let input = json!({"role":"user","content":"hello"});
     let expected = proof(std::slice::from_ref(&input));
     let scoped = target(expected.clone());
-    let mut graph =
-        HistorySourceGraph::with_request_input_targets(&[scoped.clone()], &[scoped.clone()])
-            .unwrap();
+    let mut graph = HistorySourceGraph::with_request_input_targets(
+        std::slice::from_ref(&scoped),
+        std::slice::from_ref(&scoped),
+    )
+    .unwrap();
     graph
         .push_public_request_input(
             test_flow(),
@@ -167,9 +169,11 @@ fn same_hash_full_obligation_remains_until_a_completed_source_upgrades_coverage(
         "non-input occurrence still needs full source"
     );
     for input_first in [true, false] {
-        let mut graph =
-            HistorySourceGraph::with_request_input_targets(&[scoped.clone()], &[scoped.clone()])
-                .unwrap();
+        let mut graph = HistorySourceGraph::with_request_input_targets(
+            std::slice::from_ref(&scoped),
+            std::slice::from_ref(&scoped),
+        )
+        .unwrap();
         if input_first {
             graph
                 .push_public_request_input(
@@ -223,9 +227,11 @@ fn failed_native_completion_does_not_promote_input_receipt_to_output_evidence() 
     let input = json!({"role":"user","content":"hello"});
     let expected = proof(std::slice::from_ref(&input));
     let scoped = target(expected);
-    let mut graph =
-        HistorySourceGraph::with_request_input_targets(&[scoped.clone()], &[scoped.clone()])
-            .unwrap();
+    let mut graph = HistorySourceGraph::with_request_input_targets(
+        std::slice::from_ref(&scoped),
+        std::slice::from_ref(&scoped),
+    )
+    .unwrap();
     let node = Uuid::now_v7();
     let invocation = Uuid::now_v7();
     graph
@@ -273,7 +279,7 @@ fn request_input_v1_ambiguity_still_poisoned_including_across_coverage_kinds() {
     let alpha = json!({"type":"future","id":"alpha"});
     let beta = json!({"type":"future","id":"beta"});
     let (old, _) = legacy_v1(&alpha);
-    let mut graph = input_graph(&[old.clone()]);
+    let mut graph = input_graph(std::slice::from_ref(&old));
     graph
         .push_public_request_input(
             test_flow(),
@@ -292,8 +298,11 @@ fn request_input_v1_ambiguity_still_poisoned_including_across_coverage_kinds() {
         .is_err());
     assert!(graph.resolve().is_err());
     let scoped = target(old);
-    let mut graph =
-        HistorySourceGraph::with_request_input_targets(&[scoped.clone()], &[scoped]).unwrap();
+    let mut graph = HistorySourceGraph::with_request_input_targets(
+        std::slice::from_ref(&scoped),
+        std::slice::from_ref(&scoped),
+    )
+    .unwrap();
     feed_round(
         &mut graph,
         test_flow(),

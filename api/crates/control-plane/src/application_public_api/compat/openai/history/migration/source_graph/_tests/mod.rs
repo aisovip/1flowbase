@@ -107,7 +107,7 @@ fn native_indexed_tools_are_complete_and_follow_provider_order() {
         json!({"type":"function_call","id":"fc_a","call_id":"a","name":"a_tool","arguments":"{}"});
     let items = vec![input.clone(), first.clone(), second.clone()];
     let expected = proof(&items);
-    let mut graph = new_graph(&[expected.clone()]).unwrap();
+    let mut graph = new_graph(std::slice::from_ref(&expected)).unwrap();
     feed_round(
         &mut graph,
         test_flow(),
@@ -169,7 +169,7 @@ fn missing_predecessors_and_conflicting_output_indexes_never_publish_receipts() 
     let input = json!({"role":"user","content":"work"});
     let output = json!({"type":"reasoning","encrypted_content":"cipher","summary":[]});
     let expected = proof(&[input.clone(), output.clone()]);
-    let mut missing = new_graph(&[expected.clone()]).unwrap();
+    let mut missing = new_graph(std::slice::from_ref(&expected)).unwrap();
     feed_round(
         &mut missing,
         test_flow(),
@@ -184,7 +184,7 @@ fn missing_predecessors_and_conflicting_output_indexes_never_publish_receipts() 
     assert!(result.unresolved_sources[0]
         .reason
         .contains("predecessor_unresolved"));
-    let mut conflict = new_graph(&[expected.clone()]).unwrap();
+    let mut conflict = new_graph(std::slice::from_ref(&expected)).unwrap();
     feed_round(
         &mut conflict,
         test_flow(),
@@ -209,7 +209,7 @@ fn native_requires_original_wire_body_and_matching_attempt() {
     let item = json!({"role":"user","content":"work"});
     let target = proof(std::slice::from_ref(&item));
     for invalid_attempt in [false, true] {
-        let mut graph = new_graph(&[target.clone()]).unwrap();
+        let mut graph = new_graph(std::slice::from_ref(&target)).unwrap();
         let flow = test_flow();
         let node = Uuid::now_v7();
         let invocation = Uuid::now_v7();
@@ -252,7 +252,7 @@ fn original_json_numbers_and_opaque_arguments_never_cross_node_reserialization()
     let body: Value = serde_json::from_str(r#"{"input":[{"type":"future_item","integer":9007199254740993,"decimal":1.0,"opaque":"雪"},{"type":"function_call","id":"fc_1","call_id":"c","name":"tool","arguments":"{ \"n\": 9007199254740993 }"}]}"#).unwrap();
     let items = body["input"].as_array().unwrap();
     let expected = proof(items);
-    let mut graph = new_graph(&[expected.clone()]).unwrap();
+    let mut graph = new_graph(std::slice::from_ref(&expected)).unwrap();
     feed_round(
         &mut graph,
         test_flow(),
@@ -475,7 +475,7 @@ fn conflicting_source_replacements_poison_the_graph() {
     let mut state = MigrationAccumulator::new(1).unwrap();
     state.append(&first).unwrap();
     let target = state.snapshot().old();
-    let mut graph = new_graph(&[target.clone()]).unwrap();
+    let mut graph = new_graph(std::slice::from_ref(&target)).unwrap();
     graph
         .push_public(
             test_flow(),

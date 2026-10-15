@@ -991,6 +991,8 @@ async fn failed_flow_original_public_request_migrates_only_input_slots_and_rolls
             "client_trajectory_sections",
             "client_trajectory_archive_heads",
             "client_trajectory_archive_parts",
+            "client_trajectory_archive_blocks",
+            "client_trajectory_archive_segments",
             "runtime_events",
             "runtime_invocation_context_bindings",
             "flow_run_recovery_history",
