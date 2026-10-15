@@ -1,3 +1,4 @@
+mod legacy_crypto;
 mod selective_tests;
 
 use std::sync::{Arc, Mutex};

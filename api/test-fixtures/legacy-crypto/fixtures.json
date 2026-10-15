@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "baseline": "6a0530638c5839ed19893a16fca3a4b890af8d4e",
+  "password": {
+    "plaintext": "legacy-storage-fixture-password",
+    "phc": "$argon2id$v=19$m=19456,t=2,p=1$1lh0OTnN+8uvU5wzdpd/yQ$UeUOURHNeGRIYdzK+ur6Pisg+Qv3TlJ/feU6gl/dYBI"
+  },
+  "secret": {
+    "master_key": "legacy-provider-master-key-public-test-data",
+    "plaintext": {
+      "bot_token": "legacy-public-fixture-token",
+      "bound_user_id": "legacy-user"
+    },
+    "encrypted": {
+      "algorithm": "aead_xchacha20poly1305_v1",
+      "nonce": "1d64eb1be902b11f368011cd5a2a599d438a3e2745a790ed",
+      "ciphertext": "05cf9e95872b2b7f05716fd4b9931552abc6486a086ef700d7e40095eb52089f4fda28ef11b45bf8f9e38376adc485ba8626609e03690a9cf3e93287e135289503960fb97aa2fce9ddd3abd4e904d3a9e00a69362c64aa3991"
+    },
+    "aad_base64": "MWZsb3diYXNlL2xlZ2FjeS1jcnlwdG8tZml4dHVyZS9zY29wZS12MQ==",
+    "encrypted_with_aad": {
+      "algorithm": "aead_xchacha20poly1305_v1",
+      "nonce": "cfa57ece699ce7b19441d71c4f9b96d917561423af26a80e",
+      "ciphertext": "6fd5e5c918b7fda00eac524fd8bade4f9a8d58b3981c7c0b86b476f9863fdbd79ac5b1c5114134d6c6a22ea1140e27ade90b6dbd7400d4e423b91b35b0cc5174acd5d1738132c2b43d09b2ce66e5244a2ec172653ca3402aeb"
+    }
+  },
+  "backup": {
+    "password": "legacy-backup-fixture-password",
+    "source_master_key": "legacy-source-master-public-fixture",
+    "key_base64": "PyMwFkp91c1LS8n6owWIefkRhF1B4IpL66oAWiTMs68=",
+    "plaintext_base64": "aGlzdG9yaWNhbCBiYWNrdXAgZGF0YQD/gHdpdGggYmluYXJ5IGJ5dGVz",
+    "encrypted_stream_base64": "MUZCS0VOQzEAAEAAG00aO3CIUnhR+iwACz6JkDoAAADb5LygjsOZcezKP86XkRAu2mYMO7e3nWPlcCMqdbuNub0NKj33XmQs4CaTXczKkLYZe3Jv1og3V7ZBEAAAAO1Mf2/f2/y2kF//RZ/j1qk=",
+    "sealed_manifest": {
+      "manifest": {
+        "format_version": 2,
+        "backup_set_id": "0199bcde-1234-7000-8000-000000000001",
+        "created_at": [
+          1970,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "application_build": "legacy.crypto.fixture",
+        "migration_head": "migration.legacy.crypto.fixture",
+        "master_key_fingerprint": "825034a7a8e8a5438f6de47653915c8d0c1ac75a09970d22d5db227466e6c64d",
+        "backup_key_fingerprint": "682c48770d553f11d3ed803bf07d46f821c34ffe76ab59b1a4eb607e5bfab250",
+        "components": [
+          {
+            "component_id": "postgres/main",
+            "kind": "postgre_sql",
+            "source_identity": "postgres/main",
+            "content_type": "application/octet-stream",
+            "size_bytes": 42,
+            "content_digest": "300e3b76852064019ac5559e3cb3e4aa605a199cd82a6f34e96538745b74d462",
+            "disposition": "embedded",
+            "rebuildability": "not_applicable",
+            "restore_target": {
+              "target_kind": "postgre_sql"
+            }
+          }
+        ],
+        "excluded_domains": [
+          "external_data_source_content",
+          "ephemeral_state",
+          "deployment_environment",
+          "tls_material",
+          "container_images",
+          "backup_repository"
+        ],
+        "total_size_bytes": 42,
+        "envelope_digest": "5f0106aa0adf6a544c33109f9f218bd0417d4d7bed0a53260a04a05ddf5a025f",
+        "chunk_size_bytes": 4194304,
+        "max_parallel_streams": 2,
+        "protection": {
+          "mode": "password_encrypted",
+          "salt_base64": "Ui/hWzQvo4w0QG88yzXQ2g==",
+          "encrypted_source_master_key_base64": "oNmm9nSbJ/A7FbFtMcCohsp+RPMlciHJnioETDyZM+hOq9vNJClYPAgwR9relhwByJW+1Rb8rHT/yXh0FFQjqgRQti31SPSybj6b"
+        }
+      },
+      "authentication_tag": "8b91dbb8d2e124e21e432e9a4661c872bd77a2ea86ade8f9d53733332053585a"
+    }
+  },
+  "artifact": {
+    "bytes_base64": "eyJ0ZW1wbGF0ZV9pZCI6ImxlZ2FjeS1jcnlwdG8tZml4dHVyZSIsInZlcnNpb24iOjF9",
+    "sha256": "7edd054c16a91d1b6733e1c1ed9250a5df88412fdf44340d0d5acb48c49f2c92",
+    "algorithm": "ed25519",
+    "key_id": "legacy-fixture-key",
+    "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMd6+VdN8cidosTcTHKpghwgLLgtguUvXhdFFdc+kmLw=\n-----END PUBLIC KEY-----\n",
+    "wrong_public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAU0cJYlWKbgg5AirmXGsnI7MncuXAxfR3bLjmo+ELovM=\n-----END PUBLIC KEY-----\n",
+    "signature_base64": "tWkwepy4g6d868sSzYXE81WAAFI5VHaEAQ4vp9KeAXbZ6qcYELsUww03f/gtl8LX6wd69RMO4ilgbt54J4e1Ag=="
+  }
+}

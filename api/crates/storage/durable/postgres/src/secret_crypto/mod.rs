@@ -219,3 +219,7 @@ mod tests {
             .contains("missing secret encryption algorithm"));
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/legacy_crypto.rs"]
+mod legacy_crypto;
