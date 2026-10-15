@@ -74,10 +74,11 @@ pub async fn feed(
                 let Some(section) = section else {
                     break;
                 };
-                for item in section.items {
+                for mut item in section.items {
                     if item.value["frame_kind"] != "request" {
                         continue;
                     }
+                    item.value["sequence"] = serde_json::json!(item.sequence);
                     // Same-flow requests are candidates, never assumed associations.
                     // The graph publishes prefixes only after the complete persisted
                     // round proof matches. Failed candidates remain in its report.

@@ -5,6 +5,18 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+responses-history-migration = [
+    "control-plane/responses-history-migration",
+    "control-plane-contracts/responses-history-migration",
+    "storage-durable-postgres/responses-history-migration",
+]
+
+[[test]]
+name = "responses_history_migration"
+path = "tests/responses_history_migration/mod.rs"
+required-features = ["responses-history-migration"]
+
 [[test]]
 name = "mcp_instance_copy"
 path = "tests/mcp_instance_copy.rs"
