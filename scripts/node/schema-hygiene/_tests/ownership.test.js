@@ -101,3 +101,26 @@ test('recipient history retains identities and read acknowledgement without casc
   assert.equal(config.systemScopeTables.includes('system_notifications'), false);
   assert.equal(config.appendOnlyTables.includes('system_notifications'), false);
 });
+
+
+test('send attempts retain workspace routing and terminal completion without pretending append-only', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const attempt = inventory.tables.find((table) => table.name === 'notification_send_logs');
+  assert.ok(attempt);
+  assert.equal(config.appendOnlyTables.includes(attempt.name), false);
+  assert.equal(config.systemScopeTables.includes(attempt.name), false);
+  assert.equal(attempt.foreignKeys.length, 0);
+  assert.ok(attempt.columns.find((column) => column.name === 'completed_at').nullable);
+  const report = evaluateSchemaHygiene({ inventory: { tables: [attempt], parseErrors: [] }, config });
+  assert.deepEqual(report.findings.filter((item) => item.severity === 'error'), []);
+  assert.equal(report.tables[0].platformReadiness.category, 'workspace_owned_notification_send_attempt');
+  // Shared owned-table mutation fixtures above reject removed identity, lifecycle
+  // columns and either real lookup index; these generic checks remain active too.
+  for (const [column, rule] of [['id', 'managed-table-id'], ['created_at', 'managed-table-created-at']]) {
+    const invalid = evaluateSchemaHygiene({
+      inventory: { tables: [{ ...attempt, columns: attempt.columns.filter((item) => item.name !== column) }], parseErrors: [] }, config,
+    });
+    assert.ok(invalid.findings.some((item) => item.rule === rule), column);
+  }
+});

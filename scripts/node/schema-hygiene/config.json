@@ -1505,6 +1505,15 @@
         "managed-table-scope-time-index",
         "managed-table-updated-at-or-append-only"
       ]
+    },
+    "notification_send_logs": {
+      "kind": "workspace_owned_notification_send_attempt",
+      "reason": "Send attempts retain workspace, actor and instance identities without cascading foreign keys; repositories fence pending to terminal status and completed_at by workspace and id. Queries use workspace created_at id and workspace instance created_at id indexes, not generic scope chronology or an editable updated_at lifecycle.",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index",
+        "managed-table-updated-at-or-append-only"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -1804,6 +1813,34 @@
         [
           "workspace_id",
           "recipient_user_id",
+          "created_at",
+          "id"
+        ]
+      ]
+    },
+    "notification_send_logs": {
+      "primaryKey": [
+        "id"
+      ],
+      "ownerColumns": [
+        "workspace_id",
+        "actor_user_id",
+        "instance_id"
+      ],
+      "requiredColumns": [
+        "source",
+        "status",
+        "completed_at"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "created_at",
+          "id"
+        ],
+        [
+          "workspace_id",
+          "instance_id",
           "created_at",
           "id"
         ]
