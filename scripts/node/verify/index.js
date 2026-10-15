@@ -138,10 +138,6 @@ function buildBackendCargoCommand({
           'nextest',
           'run',
           ...packageArgs,
-          // Temporary causal probe only; restore before the acceptance candidate is frozen.
-          ...(normalizedShard.key === 'api-server-4-of-4'
-            ? ['-E', 'test(k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run) | test(k3_compact_provider_failure_is_an_error_without_completed_projection)']
-            : []),
           '--partition',
           normalizedShard.nextestPartition,
           '--test-threads',
