@@ -28,13 +28,37 @@ pub enum NotificationAuthorizationActionKind {
     QrCode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationAuthorizationOperation {
     Begin { action: String },
     Poll,
     Cancel,
     Maintain,
+}
+
+impl<'de> Deserialize<'de> for NotificationAuthorizationOperation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Internally tagged unit variants otherwise ignore extra fields, including credentials.
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+        enum StrictOperation {
+            Begin { action: String },
+            Poll {},
+            Cancel {},
+            Maintain {},
+        }
+
+        Ok(match StrictOperation::deserialize(deserializer)? {
+            StrictOperation::Begin { action } => Self::Begin { action },
+            StrictOperation::Poll {} => Self::Poll,
+            StrictOperation::Cancel {} => Self::Cancel,
+            StrictOperation::Maintain {} => Self::Maintain,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

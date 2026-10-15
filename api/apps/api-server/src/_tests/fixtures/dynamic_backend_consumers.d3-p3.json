@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 415,
+  "projected_interface_count": 421,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -772,6 +772,18 @@
       "Get notification instance"
     ],
     [
+      "notifications.logs.list",
+      "GET",
+      "/api/console/notifications/logs",
+      "List notification send logs"
+    ],
+    [
+      "notifications.logs.get",
+      "GET",
+      "/api/console/notifications/logs/:log_id",
+      "Get notification send log"
+    ],
+    [
       "plugins.catalog.view",
       "GET",
       "/api/console/plugins/catalog",
@@ -1460,6 +1472,30 @@
       "POST",
       "/api/console/applications/:id/logs/deletion-preview",
       "Count imported logs in a deletion scope"
+    ],
+    [
+      "applications.logs.langfuse.export",
+      "POST",
+      "/api/console/applications/:id/logs/langfuse/export",
+      "Langfuse OTLP export"
+    ],
+    [
+      "applications.logs.langfuse.import",
+      "POST",
+      "/api/console/applications/:id/logs/langfuse/import",
+      "Langfuse observations"
+    ],
+    [
+      "applications.logs.otlp.export",
+      "POST",
+      "/api/console/applications/:id/logs/otlp/export",
+      "OTLP JSON file"
+    ],
+    [
+      "applications.logs.otlp.import",
+      "POST",
+      "/api/console/applications/:id/logs/otlp/import",
+      "OTLP JSON facts"
     ],
     [
       "query_record_trajectory",
@@ -2505,5 +2541,6 @@
       "/api/console/settings/ui-management/templates/:id/default",
       "UI management templates default set"
     ]
-  ]
+  ],
+  "evidence": "Six source-proven additions to the prior exact projection: notification send-log list/get from 15c076df491d88bf9824d07232b09ef5475622df and OTLP/Langfuse import/export from 900a2adca9adecfaa26b1bbbc7618883cdb4fd3e. Operation/method/path come from owner route declarations and core_console_operation_specs; summary values remain the static English API-owner values in console_route_assembly. Recipient channel/read-state operations are Authenticated and do not enter this role-configurable projection. Frozen official i18n seed bytes and product text remain unchanged."
 }

@@ -100,7 +100,7 @@ impl FileReadCall {
                         }
                         Some(format!(
                             "{:x}",
-                            base16ct::HexDisplay(&read.hash.clone()).finalize()
+                            base16ct::HexDisplay(&read.hash.clone().finalize())
                         ))
                     } else {
                         None

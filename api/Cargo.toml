@@ -66,6 +66,8 @@ sha2 = "0.11.1"
 # Keep upstream's sequential default: parallel /proc scans spend more CPU on
 # Rayon scheduling than on our narrow observations (sysinfo issue #1352).
 sysinfo = "0.39.6"
+# The native template transaction owner requires exact savepoint-depth checks.
+sqlx-core = { version = "0.9.0", default-features = false }
 sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "macros", "time", "json", "migrate"] }
 tar = "0.4.46"
 thiserror = "2.0.21"

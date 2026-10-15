@@ -1,10 +1,10 @@
 //! A narrow native-owner unit of work. SQLx inner transactions become savepoints;
 //! all owner authorization, audit, publication compilation and DDL paths are reused.
 use super::*;
-use sqlx::{
-    postgres::{PgPoolOptions, PgTransactionManager},
-    TransactionManager,
-};
+use sqlx::postgres::{PgPoolOptions, PgTransactionManager};
+// SQLx 0.9 removed the facade re-export. Keep the existing owner transaction
+// depth invariant through its defining crate, rather than raw SQL COMMIT.
+use sqlx_core::transaction::TransactionManager;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,

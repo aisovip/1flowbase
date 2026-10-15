@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+sqlx-core.workspace = true
 base16ct.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true

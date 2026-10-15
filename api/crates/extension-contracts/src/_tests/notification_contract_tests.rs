@@ -146,6 +146,51 @@ fn notification_authorization_is_opt_in_and_rejects_user_owned_managed_keys() {
 }
 
 #[test]
+fn notification_authorization_operations_preserve_canonical_wire_and_reject_unknown_fields() {
+    use crate::NotificationAuthorizationOperation as Operation;
+
+    for (operation, wire) in [
+        (
+            Operation::Begin {
+                action: "qr".into(),
+            },
+            json!({"type":"begin","action":"qr"}),
+        ),
+        (Operation::Poll, json!({"type":"poll"})),
+        (Operation::Cancel, json!({"type":"cancel"})),
+        (Operation::Maintain, json!({"type":"maintain"})),
+    ] {
+        assert_eq!(serde_json::to_value(&operation).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<Operation>(wire.clone()).unwrap(),
+            operation
+        );
+        for (field, value) in [
+            ("managed_secrets", json!({"bot_token":"injected"})),
+            ("unexpected", json!(true)),
+        ] {
+            let mut invalid = wire.clone();
+            invalid[field] = value;
+            assert!(
+                serde_json::from_value::<Operation>(invalid).is_err(),
+                "{operation:?} must reject {field}"
+            );
+        }
+    }
+
+    for invalid in [
+        json!({"type":"begin"}),
+        json!({"type":"begin","action":null}),
+        json!({"type":"begin","action":42}),
+        json!({"type":"poll","action":"qr"}),
+        json!({"type":"cancel","action":"qr"}),
+        json!({"type":"maintain","action":"qr"}),
+    ] {
+        assert!(serde_json::from_value::<Operation>(invalid).is_err());
+    }
+}
+
+#[test]
 fn notification_authorization_pending_qr_and_declared_patch_are_checked() {
     use crate::{NotificationRuntimeInput, NotificationRuntimeResult};
     let descriptor = authorizable_descriptor();

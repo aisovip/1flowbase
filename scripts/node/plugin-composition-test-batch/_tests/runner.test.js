@@ -93,6 +93,17 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
   assert.ok(inventory.approvedAddedDefinitions.includes('ui_management.plugin_settings_page.view'));
   for (const [definition, binding] of [
     ['applications.runtime.current-context.get', 'http.console.applications.runtime.current-context.get.v1'],
+    ['application.logs.otlp.traces.ingest', 'http.application.logs.otlp.traces.ingest.v1'],
+    ['applications.logs.otlp.export', 'http.console.applications.logs.otlp.export.v1'],
+    ['applications.logs.otlp.import', 'http.console.applications.logs.otlp.import.v1'],
+    ['applications.logs.langfuse.export', 'http.console.applications.logs.langfuse.export.v1'],
+    ['applications.logs.langfuse.import', 'http.console.applications.logs.langfuse.import.v1'],
+    ['notifications.logs.list', 'http.console.notifications.logs.list.v1'],
+    ['notifications.logs.get', 'http.console.notifications.logs.get.v1'],
+    ['notifications.channels.list', 'http.console.notifications.channels.list.v1'],
+    ['notifications.channels.read_all', 'http.console.notifications.channels.read_all.v1'],
+    ['notifications.messages.unread', 'http.console.notifications.messages.unread.v1'],
+    ['notifications.instances.authorization', 'http.console.notifications.instances.authorization.v1'],
     ['applications.runtime.record.conversation.messages.list', 'http.console.applications.runtime.record.conversation.messages.list.v1'],
     ['ui_management.plugin_settings_module_asset.view', 'http.console.ui-management.plugin-settings-module-asset.get.v1'],
   ]) {

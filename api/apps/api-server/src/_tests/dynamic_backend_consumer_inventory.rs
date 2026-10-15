@@ -106,6 +106,14 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.instances.delete"
                     | "notifications.instances.send"
                     | "notifications.instances.authorization"
+                    // Added by notification send logs (15c076df4) and Console
+                    // log exchange (900a2adca), after the pinned catalog release.
+                    | "notifications.logs.list"
+                    | "notifications.logs.get"
+                    | "applications.logs.otlp.export"
+                    | "applications.logs.otlp.import"
+                    | "applications.logs.langfuse.export"
+                    | "applications.logs.langfuse.import"
                     | "ui_management.templates.delete"
                     | "applications.logs.delete"
                     | "departments.delete"

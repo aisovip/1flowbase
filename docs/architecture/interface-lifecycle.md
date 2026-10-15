@@ -70,6 +70,8 @@ Business Endpoint → exactly-one Binding → exactly-one Compiled Plan
 
 依赖升级不得改变安装包、Registry、Binding、Plan、备份或密钥的已有摘要字节与小写十六进制表示。SHA-256 算法与输入规范化归原 owner；底层摘要数组类型变化仅由基础编码能力适配，不新增业务 hash 算法或复制 canonical 类型。密码 PHC、AEAD nonce/AAD/密文与签名存储格式同样保持兼容，由既有历史 fixture 与真实边界回归取证。
 
+SQLx 的动态 SQL 安全标记属于 PostgreSQL adapter，不是授权或输入校验的替代：受控 SQL 结构仍由现有标识符 quoting、有限语义映射和 catalog owner 产生，业务值继续绑定。明确开放的 native SQL 执行入口保持既有调用方授权；不得在依赖升级时暗加 SQL 能力或容量限制。Native Template 的唯一物理连接与精确事务深度检查是同一事务的语义约束，不是对部署资源的容量猜测；依赖 API 变化不得绕过 savepoint bookkeeping 或以原始 COMMIT 替代 owner 收尾。
+
 ### 四个责任平面
 
 | 平面 | 拥有的复杂度 | 不负责 |
