@@ -136,7 +136,11 @@ impl Adapter {
                 .any(|permission| {
                     matches!(
                         permission.as_str(),
-                        "file.import.resource" | "file.read.content"
+                        "file.import.resource"
+                            | "file.read.content"
+                            | "application.logs.read"
+                            | "application.logs.import"
+                            | "network.http.request"
                     )
                 }) {
                 crate::resource_import::capture_caller(

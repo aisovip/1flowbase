@@ -54,6 +54,8 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
         },
         plugin_data: Arc::new(NoData),
         file_read: None,
+        application_logs: None,
+        http_egress: None,
         file_import: None,
         plugin_credentials: Some((binding, port)),
     }

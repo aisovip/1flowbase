@@ -3,6 +3,15 @@
 //! This crate contains typed clients and a bounded, versioned stdio dispatcher.
 //! It owns no Host registry, process supervisor, storage or business routing.
 
+mod application_logs;
+pub use application_logs::{ApplicationLogsClient, ApplicationLogsClientError};
+pub use extension_contracts::{ApplicationLogsRequest, ApplicationLogsResponse};
+mod http_egress;
+pub use extension_contracts::{
+    ApplicationLogsApplication, ApplicationLogsRecord, HostServiceError,
+};
+pub use extension_contracts::{HttpEgressRequest, HttpEgressResponse};
+pub use http_egress::{HttpEgressClient, HttpEgressClientError};
 mod managed_hook;
 mod multiplex;
 mod notification;

@@ -860,6 +860,77 @@ async fn execute_callback(
     context: Option<ProviderHostCallContext>,
 ) -> Value {
     match service {
+        MultiplexHostService::ApplicationLogsV1 => {
+            let result = async {
+                let request: extension_contracts::ApplicationLogsRequest =
+                    serde_json::from_value(request).map_err(|_| {
+                        extension_contracts::HostServiceError::new("host_service_request_invalid")
+                    })?;
+                request.validate()?;
+                let (binding, port) = context
+                    .and_then(|context| context.application_logs)
+                    .ok_or_else(|| {
+                        extension_contracts::HostServiceError::new("host_service_not_granted")
+                    })?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ))
+                })
+            }
+            .await;
+            exchange_service_response(result)
+        }
+        MultiplexHostService::HttpEgressV1 => {
+            let result = async {
+                let request: extension_contracts::HttpEgressRequest =
+                    serde_json::from_value(request).map_err(|_| {
+                        extension_contracts::HostServiceError::new("host_service_request_invalid")
+                    })?;
+                request.validate()?;
+                let (binding, port) =
+                    context
+                        .and_then(|context| context.http_egress)
+                        .ok_or_else(|| {
+                            extension_contracts::HostServiceError::new("host_service_not_granted")
+                        })?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ))
+                })
+            }
+            .await;
+            exchange_service_response(result)
+        }
         MultiplexHostService::PluginDataV1 => {
             let result = async {
                 let request: PluginDataRequest = serde_json::from_value(request)
@@ -988,3 +1059,24 @@ mod credential_tests;
 #[cfg(test)]
 #[path = "../_tests/file_import_callbacks.rs"]
 mod file_import_tests;
+
+#[cfg(test)]
+#[path = "../_tests/exchange_host_services.rs"]
+mod exchange_host_services;
+
+fn exchange_service_response<T: serde::Serialize>(
+    result: Result<T, extension_contracts::HostServiceError>,
+) -> Value {
+    let value = match result {
+        Ok(value) => serde_json::json!({"result":value}),
+        Err(error) => serde_json::json!({"error":error}),
+    };
+    if serde_json::to_vec(&value)
+        .map(|bytes| bytes.len().saturating_add(256) > MULTIPLEX_MAX_FRAME_BYTES)
+        .unwrap_or(true)
+    {
+        serde_json::json!({"error":{"code":"host_service_transport_budget_exceeded"}})
+    } else {
+        value
+    }
+}

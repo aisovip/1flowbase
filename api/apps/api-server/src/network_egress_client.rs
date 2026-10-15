@@ -251,6 +251,41 @@ impl NetworkEgressHttpClientResolver {
         })
     }
 
+    /// Managed callbacks preserve raw redirects/status, and never auto-forward credentials.
+    pub(crate) async fn resolve_managed_plugin_request(
+        &self,
+        workspace_id: Uuid,
+        installation_id: Uuid,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<NetworkEgressHttpRequestScope> {
+        let route_scope = self
+            .acquire(
+                workspace_id,
+                domain::NetworkEgressConsumerSelector::ManagedPlugin { installation_id },
+            )
+            .await?;
+        let mut builder = Client::builder().redirect(reqwest::redirect::Policy::none());
+        if let Some(timeout) = timeout {
+            builder = builder.connect_timeout(timeout).timeout(timeout);
+        }
+        if let Some(scope) = &route_scope {
+            builder = builder.proxy(Proxy::all(&scope.http_proxy_url)?);
+        }
+        let client = match builder.build() {
+            Ok(client) => client,
+            Err(error) => {
+                if let Some(scope) = route_scope {
+                    scope.release().await?;
+                }
+                return Err(error.into());
+            }
+        };
+        Ok(NetworkEgressHttpRequestScope {
+            client,
+            route_scope,
+        })
+    }
+
     pub async fn resolve_http_request_with_timeouts(
         &self,
         workspace_id: Uuid,
@@ -419,3 +454,7 @@ impl Drop for NetworkEgressExecutionScope {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/exchange_network_egress.rs"]
+mod exchange_network_egress;

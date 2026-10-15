@@ -1,4 +1,5 @@
 //! API composition adapter for the resource replay + file upload Host Service.
+mod exchange_services;
 use crate::{app_state::ApiState, error_response::ApiError};
 use extension_contracts::{FileImportError, FileImportRequest};
 use runtime_core::runtime_backend::{
@@ -98,10 +99,10 @@ impl ApiFileImportPort {
             .set(Arc::downgrade(publisher))
             .map_err(|_| anyhow::anyhow!("file import host already bound"))
     }
-    fn current_state(&self) -> Option<Arc<ApiState>> {
+    pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
         self.publisher.get()?.upgrade()?.current_state()
     }
-    async fn current_caller(
+    pub(crate) async fn current_caller(
         &self,
         state: &ApiState,
         binding: &FileImportBinding,
