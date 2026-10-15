@@ -392,6 +392,66 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
 }
 
 #[tokio::test]
+async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
+    // Produced by the baseline source and lockfile; provenance is stored beside the fixture.
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test-fixtures/legacy-crypto/fixtures.json"
+    )))
+    .unwrap();
+    let user = UserRecord {
+        password_hash: fixture["password"]["phc"].as_str().unwrap().to_string(),
+        ..test_user()
+    };
+    let user_id = user.id;
+    let repository = InstanceAwareAuthRepository::new(
+        vec![authenticator(
+            STAFF_PASSWORD_AUTHENTICATOR_ID,
+            "Staff Password",
+            "password-local",
+        )],
+        user,
+    );
+    let kernel = AuthKernel::new(
+        repository.clone(),
+        SessionIssuer::new(MemorySessionStore::default(), 7),
+    );
+
+    let login = kernel
+        .login(LoginCommand {
+            login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
+            identifier: "root".to_string(),
+            password: fixture["password"]["plaintext"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        })
+        .await
+        .expect("the product password-local verifier must accept the baseline PHC");
+    assert_eq!(login.actor.user_id, user_id);
+    assert_eq!(login.session.user_id, user_id);
+
+    let rejected = kernel
+        .login(LoginCommand {
+            login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
+            identifier: "root".to_string(),
+            password: "incorrect-legacy-password".to_string(),
+        })
+        .await;
+    match rejected {
+        Ok(_) => panic!("the baseline PHC must not authenticate a wrong password"),
+        Err(error) => assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::NotAuthenticated)
+        )),
+    }
+    assert_eq!(
+        repository.password_login_calls(),
+        vec![(domain::PASSWORD_LOCAL_CONNECTION_ID, "root".to_string()); 2]
+    );
+}
+
+#[tokio::test]
 async fn password_local_entries_share_the_local_credential_connection() {
     let user = test_user();
     let repository = InstanceAwareAuthRepository::new(

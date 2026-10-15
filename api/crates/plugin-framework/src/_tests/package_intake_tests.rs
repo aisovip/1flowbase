@@ -25,6 +25,88 @@ enum ArchiveFormat {
 }
 
 #[test]
+fn trusted_artifact_verifier_accepts_legacy_signature_and_rejects_tampering() {
+    // Produced by the baseline source and lockfile; provenance is stored beside the fixture.
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test-fixtures/legacy-crypto/fixtures.json"
+    )))
+    .unwrap();
+    let artifact = &fixture["artifact"];
+    let field = |name: &str| artifact[name].as_str().unwrap();
+    let bytes = STANDARD.decode(field("bytes_base64")).unwrap();
+    let trusted = TrustedPublicKey {
+        key_id: field("key_id").to_string(),
+        algorithm: field("algorithm").to_string(),
+        public_key_pem: field("public_key_pem").to_string(),
+    };
+    let verify = |bytes: &[u8], checksum: &str, signature: &str, key: &TrustedPublicKey| {
+        verify_trusted_ed25519_artifact(
+            bytes,
+            checksum,
+            field("algorithm"),
+            field("key_id"),
+            signature,
+            std::slice::from_ref(key),
+        )
+    };
+    verify(&bytes, field("sha256"), field("signature_base64"), &trusted)
+        .expect("the product artifact verifier must accept the baseline signature");
+
+    let mut tampered = bytes.clone();
+    tampered[0] ^= 1;
+    let checksum_error = verify(
+        &tampered,
+        field("sha256"),
+        field("signature_base64"),
+        &trusted,
+    )
+    .unwrap_err();
+    assert!(checksum_error
+        .to_string()
+        .contains("artifact checksum mismatch"));
+
+    // Update the checksum so this negative reaches signature verification as well.
+    let tampered_checksum = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&tampered)));
+    let signature_error = verify(
+        &tampered,
+        &tampered_checksum,
+        field("signature_base64"),
+        &trusted,
+    )
+    .unwrap_err();
+    assert!(signature_error
+        .to_string()
+        .contains("artifact signature is invalid"));
+
+    let mut bad_signature = STANDARD.decode(field("signature_base64")).unwrap();
+    bad_signature[0] ^= 1;
+    assert!(verify(
+        &bytes,
+        field("sha256"),
+        &STANDARD.encode(bad_signature),
+        &trusted,
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("artifact signature is invalid"));
+
+    let wrong_key = TrustedPublicKey {
+        public_key_pem: field("wrong_public_key_pem").to_string(),
+        ..trusted
+    };
+    assert!(verify(
+        &bytes,
+        field("sha256"),
+        field("signature_base64"),
+        &wrong_key
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("artifact signature is invalid"));
+}
+
+#[test]
 fn trusted_artifact_verifier_rejects_checksum_signature_and_unknown_key_tampering() {
     let bytes = br#"{"template_id":"fixture"}"#;
     let signing_key = SigningKey::from_bytes(&[23; 32]);
