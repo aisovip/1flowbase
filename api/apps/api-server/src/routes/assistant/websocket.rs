@@ -303,7 +303,8 @@ async fn run_connection(
                 "type": "connection.ready",
                 "application_id": authorization.application_id,
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .await
         .is_err()
@@ -316,14 +317,14 @@ async fn run_connection(
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
-                    if sender.send(Message::Text(frame)).await.is_err() {
+                    if sender.send(Message::Text(frame.into())).await.is_err() {
                         task.abort();
                         break;
                     }
                     active = Some((task, frames));
                 }
                 Some(frame) = client_tool_frames.recv() => {
-                    if sender.send(Message::Text(frame)).await.is_err() {
+                    if sender.send(Message::Text(frame.into())).await.is_err() {
                         task.abort();
                         break;
                     }
@@ -372,7 +373,7 @@ async fn run_connection(
                                     },
                                 ).await {
                                     Ok(AssistantWebSocketCommandOutput::ClientToolResult { completed: true }) => {
-                                        let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string())).await;
+                                        let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string().into())).await;
                                     }
                                     Ok(AssistantWebSocketCommandOutput::ClientToolResult { completed: false }) => {
                                         let _ = sender.send(command_error(Some(&request_id), "unknown_client_tool_call", "client tool call is not pending")).await;
@@ -395,7 +396,7 @@ async fn run_connection(
                                         run_id,
                                     },
                                 ).await {
-                                    Ok(AssistantWebSocketCommandOutput::Cancelled) => { let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"run.cancel","run_id":run_id}).to_string())).await; }
+                                    Ok(AssistantWebSocketCommandOutput::Cancelled) => { let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"run.cancel","run_id":run_id}).to_string().into())).await; }
                                     Ok(_) => { let _ = sender.send(command_error(Some(&request_id), "assistant_cancel_failed", "run.cancel returned an invalid output")).await; }
                                     Err(error) => { let _ = sender.send(command_error(Some(&request_id), "assistant_cancel_failed", error.0.to_string())).await; }
                                 }
@@ -764,7 +765,8 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
             "request_id": request_id,
             "error": { "code": code, "message": message.into() }
         })
-        .to_string(),
+        .to_string()
+        .into(),
     )
 }
 

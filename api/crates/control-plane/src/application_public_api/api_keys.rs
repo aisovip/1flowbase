@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 use tracing::warn;
@@ -74,7 +75,7 @@ fn generate_application_api_key_token(key_id: Uuid) -> (String, String) {
     let unbiased_limit = u8::MAX - (u8::MAX % API_KEY_SECRET_ALPHABET_LEN);
 
     while secret.len() < API_KEY_SECRET_LEN {
-        let random = OsRng.next_u32() as u8;
+        let random = UnwrapErr(SysRng).next_u32() as u8;
         if random >= unbiased_limit {
             continue;
         }

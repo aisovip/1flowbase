@@ -181,7 +181,7 @@ impl FileReader {
             writer.write_all(&chunk).await?;
             bytes = total;
             if eof {
-                let actual = format!("{:x}", hash.finalize());
+                let actual = format!("{:x}", base16ct::HexDisplay(&hash.finalize()));
                 if sha256.as_deref() != Some(&actual) {
                     return Err(FileReadClientError::InvalidResponse);
                 }

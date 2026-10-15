@@ -312,7 +312,11 @@ fn journal_event(
 }
 
 fn digest(value: &[u8]) -> ContentDigest {
-    ContentDigest::try_from(format!("{:x}", Sha256::digest(value))).unwrap()
+    ContentDigest::try_from(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(value))
+    ))
+    .unwrap()
 }
 
 #[derive(Default)]

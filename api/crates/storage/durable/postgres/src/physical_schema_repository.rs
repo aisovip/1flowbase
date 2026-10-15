@@ -64,7 +64,10 @@ pub async fn create_runtime_model_table(
         "#
     );
 
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    // SQL safety: Identifiers pass quote_identifier; SQL types and DDL suffixes come from closed internal mappings.
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     create_runtime_scope_indexes(tx, model).await?;
     Ok(())
 }
@@ -82,7 +85,9 @@ pub async fn add_scalar_column(
         statement.push_str(" not null");
     }
 
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     maybe_create_unique_index(
         tx,
         &model.physical_table_name,
@@ -110,7 +115,9 @@ pub async fn add_fk_column_and_constraint(
     let statement = format!(
         "alter table {table_name} add constraint {constraint_name} foreign key ({column_name}) references {target_table_name}(id) on delete restrict"
     );
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
@@ -147,7 +154,9 @@ pub async fn create_join_table(
         "#
     );
 
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     create_join_table_scope_indexes(tx, &join_table_name, model.id, relation_target.id).await?;
     Ok(join_table_name)
 }
@@ -157,9 +166,11 @@ pub async fn drop_runtime_model_table(
     physical_table_name: &str,
 ) -> Result<()> {
     let table_name = quote_identifier(physical_table_name)?;
-    sqlx::query(&format!("drop table if exists {table_name} cascade"))
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "drop table if exists {table_name} cascade"
+    )))
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -168,9 +179,11 @@ pub async fn drop_join_table(
     join_table_name: &str,
 ) -> Result<()> {
     let table_name = quote_identifier(join_table_name)?;
-    sqlx::query(&format!("drop table if exists {table_name} cascade"))
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "drop table if exists {table_name} cascade"
+    )))
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -185,7 +198,9 @@ pub async fn drop_runtime_column(
     let statement = format!(
         "alter table {quoted_table_name} drop column if exists {quoted_column_name} cascade"
     );
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
@@ -229,14 +244,14 @@ async fn create_runtime_scope_indexes(
     let scope_created_at_index = quote_identifier(&full_uuid_name("idx_scope_created", model.id))?;
     let scope_created_by_index = quote_identifier(&full_uuid_name("idx_scope_creator", model.id))?;
 
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index {scope_created_at_index} on {table_name} (scope_id, created_at, id)"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index {scope_created_by_index} on {table_name} (scope_id, created_by)"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -255,9 +270,9 @@ async fn create_join_table_scope_indexes(
         right_model_id,
     ))?;
 
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index {scope_created_at_index} on {table_name} (scope_id, created_at, id)"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -279,7 +294,9 @@ async fn maybe_create_unique_index(
     let index_name = quote_identifier(&constraint_name("uq", field_id))?;
     let statement =
         format!("create unique index {index_name} on {quoted_table_name} ({quoted_column_name})");
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
@@ -301,9 +318,9 @@ async fn maybe_create_ordered_tree_prefix_index(
     let table_name = quote_identifier(&model.physical_table_name)?;
     let column_name = quote_identifier(&field.physical_column_name)?;
     let index_name = quote_identifier(&full_uuid_name("idx_ot_prefix", field.id))?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index {index_name} on {table_name} (scope_id, tree_partition_id, (lower({column_name}) collate \"C\") text_pattern_ops)"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
     Ok(())

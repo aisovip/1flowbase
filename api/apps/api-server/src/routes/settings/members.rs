@@ -1,16 +1,12 @@
 use std::sync::Arc;
 
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
 use control_plane::member::AssignableRoleOption;
-use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -94,9 +90,8 @@ pub struct ListMembersQuery {
 }
 
 pub(crate) fn hash_password(password: &str) -> Result<String, ApiError> {
-    let salt = SaltString::generate(&mut OsRng);
     Ok(Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|err| anyhow::anyhow!("failed to hash password: {err}"))?
         .to_string())
 }

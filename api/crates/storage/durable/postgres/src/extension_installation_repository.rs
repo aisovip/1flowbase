@@ -236,7 +236,8 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             where artifact.node_id = $1 and installation.id = $2
             "#
         );
-        sqlx::query(&query)
+        // SQL safety: Queries combine static installation/artifact columns and predicates; selectors remain bound.
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(node_id)
             .bind(installation_id)
             .fetch_optional(self.pool())
@@ -263,7 +264,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
               and installation.artifact_version = $5
             "#
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(node_id)
             .bind(identity.category.as_str())
             .bind(&identity.organization)
@@ -296,7 +297,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             order by installation.updated_at desc, installation.id desc
             "#
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(node_id)
             .fetch_all(self.pool())
             .await?
@@ -402,7 +403,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
         let mut transaction = self.pool().begin().await?;
         let locked_query =
             format!("{DELETION_DECISION_QUERY} for update of installation, artifact");
-        let decision_row = sqlx::query(&locked_query)
+        let decision_row = sqlx::query(sqlx::AssertSqlSafe(locked_query.as_str()))
             .bind(node_id)
             .bind(installation_id)
             .fetch_optional(&mut *transaction)
@@ -582,7 +583,7 @@ async fn find_joined_by_id(
         where artifact.node_id = $1 and installation.id = $2
         "#
     );
-    sqlx::query(&query)
+    sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
         .bind(node_id)
         .bind(installation_id)
         .fetch_optional(&mut **transaction)

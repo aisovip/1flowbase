@@ -64,6 +64,12 @@ Business Endpoint → exactly-one Binding → exactly-one Compiled Plan
 
 这些是目标集合与互斥分类约束，不表示每个 Interface 只能有一个 Binding。未分类、重复来源、未知 Binding、无实际挂载和业务/控制分类冲突应在发布前拒绝。控制入口只能进入明确的有限分类，不能把业务入口改名为 control 来绕过 Kernel。
 
+### 框架升级保持协议与指纹稳定
+
+框架路径语法属于 HTTP 适配器：Canonical Interface、权限目录和冻结 Binding 保持其规范 route template，装配边界负责翻译为 Axum 的 `{parameter}` / `{*rest}` 挂载语法。不得把框架语法迁移传播成外部 URL、授权身份或业务调用计划变化。参数与通配路径必须验证实际请求提取，不以目录字符串相等代替。
+
+依赖升级不得改变安装包、Registry、Binding、Plan、备份或密钥的已有摘要字节与小写十六进制表示。SHA-256 算法与输入规范化归原 owner；底层摘要数组类型变化仅由基础编码能力适配，不新增业务 hash 算法或复制 canonical 类型。密码 PHC、AEAD nonce/AAD/密文与签名存储格式同样保持兼容，由既有历史 fixture 与真实边界回归取证。
+
 ### 四个责任平面
 
 | 平面 | 拥有的复杂度 | 不负责 |

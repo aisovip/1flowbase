@@ -326,6 +326,7 @@ fn process_status_label(status: sysinfo::ProcessStatus) -> &'static str {
         Status::Parked => "parked",
         Status::LockBlocked => "lock_blocked",
         Status::UninterruptibleDiskSleep => "uninterruptible_disk_sleep",
+        Status::Suspended => "suspended",
         Status::Unknown(_) => "unknown",
     }
 }

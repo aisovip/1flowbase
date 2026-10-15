@@ -14,5 +14,5 @@ pub fn audit_row_hash(
     hasher.update(fact_table.as_bytes());
     hasher.update(fact_id.as_bytes());
     hasher.update(serde_json::to_vec(payload).unwrap_or_default());
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{:x}", base16ct::HexDisplay(&hasher.finalize()))
 }

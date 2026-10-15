@@ -50,7 +50,7 @@ pub fn load_frontend_module_asset(
     }
     let bytes = fs::read(&resolved)
         .map_err(|error| PluginFrameworkError::io(Some(&resolved), error.to_string()))?;
-    let actual = format!("{:x}", Sha256::digest(&bytes));
+    let actual = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
     if actual != asset.sha256 {
         return Err(PluginFrameworkError::invalid_provider_package(format!(
             "registered frontend module asset {} SHA-256 mismatch",

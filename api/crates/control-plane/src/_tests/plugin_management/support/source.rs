@@ -139,7 +139,7 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
                 minimum_host_version: self.minimum_host_version.clone(),
                 icon: None,
                 selected_artifact: OfficialPluginArtifact {
-                    checksum: format!("sha256:{:x}", Sha256::digest(&package_bytes)),
+                    checksum: format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&package_bytes))),
                     ..sample_artifact("linux", "amd64", Some("musl"))
                 },
                 i18n_summary: sample_i18n_summary(),

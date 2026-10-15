@@ -197,7 +197,9 @@ impl SystemBackupRuntime {
         let application_build = config.application_build.clone();
         let master_key_fingerprint = KeyFingerprint::try_from(format!(
             "{:x}",
-            Sha256::digest(config.provider_secret_master_key.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(
+                config.provider_secret_master_key.as_bytes()
+            ))
         ))
         .map_err(|_| SystemBackupRuntimeError::Configuration)?;
 

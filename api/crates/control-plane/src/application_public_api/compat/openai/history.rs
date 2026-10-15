@@ -36,7 +36,9 @@ impl History {
             item_count: 0,
             digest: format!(
                 "{:x}",
-                Sha256::digest(format!("1flowbase.responses.history.v{version}"))
+                base16ct::HexDisplay(&Sha256::digest(format!(
+                    "1flowbase.responses.history.v{version}"
+                )))
             ),
         }
     }
@@ -73,7 +75,7 @@ impl History {
         hash.update(self.digest.as_bytes());
         hash.update((byte_count.0 as u64).to_be_bytes());
         write_canonical_json(&item, &mut DigestWriter(&mut hash))?;
-        self.digest = format!("{:x}", hash.finalize());
+        self.digest = format!("{:x}", base16ct::HexDisplay(&hash.finalize()));
         self.item_count += 1;
         Ok(())
     }

@@ -3,6 +3,23 @@ use axum::{handler::Handler, routing::MethodRouter, Router};
 
 use crate::external_endpoint_catalog::ExternalEndpointContribution;
 
+/// Canonical endpoint and authorization templates retain `:name` / `*rest`.
+/// Only the protocol router consumes Axum's brace syntax.
+pub(crate) fn axum_route_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if let Some(parameter) = segment.strip_prefix(':') {
+                format!("{{{parameter}}}")
+            } else if let Some(catch_all) = segment.strip_prefix('*') {
+                format!("{{*{catch_all}}}")
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 pub(crate) struct ExternalMethodRouter<S> {
     router: MethodRouter<S>,
     methods: Vec<(&'static str, Option<&'static str>)>,
@@ -72,7 +89,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
                 .into_iter()
                 .map(|(method, binding)| (method.to_string(), path.to_string(), binding)),
         );
-        self.router = self.router.route(path, methods.router);
+        self.router = self.router.route(&axum_route_path(path), methods.router);
         self
     }
 
@@ -91,7 +108,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
                     binding,
                 )
             }));
-        self.router = self.router.nest(prefix, other.router);
+        self.router = self.router.nest(&axum_route_path(prefix), other.router);
         self
     }
 

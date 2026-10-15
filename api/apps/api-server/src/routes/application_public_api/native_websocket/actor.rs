@@ -83,7 +83,7 @@ pub(crate) async fn run_connection(
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
-                    if sender.send(Message::Text(frame)).await.is_err() {
+                    if sender.send(Message::Text(frame.into())).await.is_err() {
                         task.abort();
                         break;
                     }
@@ -126,7 +126,7 @@ pub(crate) async fn run_connection(
                         other => match decode_client_message(other) {
                             Ok(Some(NativeWebSocketClientCommand::Cancel { request_id, run_id })) => {
                                 match bridge.cancel(&request_id, run_id).await {
-                                    Ok(frame) => { let _ = sender.send(Message::Text(frame)).await; }
+                                    Ok(frame) => { let _ = sender.send(Message::Text(frame.into())).await; }
                                     Err(error) => { let _ = sender.send(error_frame(Some(&request_id), error.code(), error.to_string())).await; }
                                 }
                                 active = Some((turn, task, frames));
@@ -217,6 +217,7 @@ fn error_frame(request_id: Option<&str>, code: &str, message: impl Into<String>)
             "request_id": request_id,
             "error": { "code": code, "message": message.into() }
         })
-        .to_string(),
+        .to_string()
+        .into(),
     )
 }

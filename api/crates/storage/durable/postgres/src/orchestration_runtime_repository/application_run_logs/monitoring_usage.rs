@@ -5,7 +5,8 @@ impl PgControlPlaneStore {
         from: Option<OffsetDateTime>,
         to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringCosts> {
-        let row = sqlx::query(&application_run_monitoring_logs_query("select sum(total_cost)::double precision as total_cost, count(total_cost)::bigint as cost_recorded_count, count(*) filter (where cost_incomplete)::bigint as cost_missing_count from monitoring_logs"))
+        // SQL safety: Monitoring SQL combines internal static templates and literal aggregate clauses; selectors remain bound.
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query("select sum(total_cost)::double precision as total_cost, count(total_cost)::bigint as cost_recorded_count, count(*) filter (where cost_incomplete)::bigint as cost_missing_count from monitoring_logs")))
             .bind(application_id).bind(from).bind(to).fetch_one(self.pool()).await?;
         Ok(
             control_plane_contracts::ports::ApplicationRunMonitoringCosts {
@@ -21,7 +22,7 @@ impl PgControlPlaneStore {
         from: Option<OffsetDateTime>,
         to: Option<OffsetDateTime>,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringModelUsage>> {
-        let rows = sqlx::query(&application_run_monitoring_logs_query("select requested_model_id, count(*)::bigint as task_count, coalesce(sum(total_tokens),0)::bigint as total_tokens, sum(total_cost)::double precision as total_cost from monitoring_logs group by requested_model_id order by task_count desc, requested_model_id nulls last"))
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query("select requested_model_id, count(*)::bigint as task_count, coalesce(sum(total_tokens),0)::bigint as total_tokens, sum(total_cost)::double precision as total_cost from monitoring_logs group by requested_model_id order by task_count desc, requested_model_id nulls last")))
             .bind(application_id).bind(from).bind(to).fetch_all(self.pool()).await?;
         Ok(rows
             .into_iter()
@@ -41,7 +42,7 @@ impl PgControlPlaneStore {
         from: Option<OffsetDateTime>,
         to: Option<OffsetDateTime>,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringUserUsage>> {
-        let rows = sqlx::query(&application_run_monitoring_logs_query("select user_id, name, count(*)::bigint as task_count, coalesce(sum(total_tokens),0)::bigint as total_tokens, sum(total_cost)::double precision as total_cost from monitoring_logs group by user_id, name order by task_count desc, user_id nulls last"))
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query("select user_id, name, count(*)::bigint as task_count, coalesce(sum(total_tokens),0)::bigint as total_tokens, sum(total_cost)::double precision as total_cost from monitoring_logs group by user_id, name order by task_count desc, user_id nulls last")))
             .bind(application_id).bind(from).bind(to).fetch_all(self.pool()).await?;
         Ok(rows
             .into_iter()

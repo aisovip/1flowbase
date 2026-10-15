@@ -253,7 +253,7 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageInterfaceCapabilityRe
         "response_media_type": entry.interface.response_media_type,
     }))
     .expect("serializing OpenAPI interface schema must succeed");
-    let schema_digest = format!("{:x}", Sha256::digest(digest_input));
+    let schema_digest = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(digest_input)));
     FrontstageInterfaceCapabilityResponse {
         interface_id: entry.interface.operation_id,
         method: entry.interface.method,

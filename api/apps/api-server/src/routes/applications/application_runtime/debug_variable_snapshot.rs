@@ -121,7 +121,7 @@ async fn load_debug_variable_cache_entries(
 
 fn debug_snapshot_document_hash(document: &serde_json::Value) -> String {
     let bytes = serde_json::to_vec(document).unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn to_debug_snapshot_run_scope(

@@ -161,8 +161,11 @@ impl CompiledInterfaceExtensionPlan {
                 digest.update(format!("{fact:?}").as_bytes());
             }
         }
-        let fingerprint = ExtensionPlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
-            .expect("SHA-256 extension plan fingerprint must be a valid identity");
+        let fingerprint = ExtensionPlanFingerprint::new(format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&digest.finalize())
+        ))
+        .expect("SHA-256 extension plan fingerprint must be a valid identity");
         Ok(Self {
             registrations,
             fingerprint,

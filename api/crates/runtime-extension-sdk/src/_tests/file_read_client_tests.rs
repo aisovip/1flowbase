@@ -44,7 +44,7 @@ async fn transfer(length: u64, fault: &str) {
                     let data = vec![42u8; (length-offset).min(FILE_READ_CHUNK_BYTES as u64) as usize];
                     hash.update(&data);
                     let eof = offset + data.len() as u64 == length;
-                    let digest = eof.then(|| format!("{:x}",hash.clone().finalize()));
+                    let digest = eof.then(|| format!("{:x}",base16ct::HexDisplay(&hash.clone()).finalize()));
                     let mut response = json!({"operation":"chunk","ticket":ticket,"offset":offset,"data_base64":STANDARD.encode(data),"eof":eof,"sha256":digest});
                     match fault.as_str() {
                         "offset" => response["offset"] = json!(offset + 1),

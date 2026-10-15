@@ -156,7 +156,8 @@ async fn missing_parent(
         .collect::<Result<Vec<_>>>()?
         .join(" and ");
     let sql=format!("select exists(select 1 from {} p cross join jsonb_populate_record(null::{},$1) s where {conditions})",schema::quote(&fk.parent)?,schema::quote(&table.name)?);
-    if sqlx::query_scalar::<_, bool>(&sql)
+    // SQL safety: Names are schema::quote output; index expressions/predicates come from the target PostgreSQL catalog.
+    if sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(row)
         .fetch_one(connection)
         .await?
@@ -451,7 +452,7 @@ pub(super) async fn validate(
             "select to_jsonb(r) from jsonb_populate_record(null::{},$1) r",
             schema::quote(&table.name)?
         );
-        let normalized: Value = sqlx::query_scalar(&cast)
+        let normalized: Value = sqlx::query_scalar(sqlx::AssertSqlSafe(cast.as_str()))
             .bind(&record.row)
             .fetch_one(&mut *connection)
             .await?;
@@ -477,7 +478,9 @@ pub(super) async fn validate(
             }
         }
         for (index, sql) in unique {
-            if sqlx::query_scalar::<_, bool>(sql)
+            // unique_queries uses quoted names and index expressions read from the target catalog.
+            // Archive row values remain bound as JSON rather than inserted into the SQL text.
+            if sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(&record.row)
                 .fetch_one(&mut *connection)
                 .await?
@@ -504,7 +507,8 @@ pub(super) async fn validate(
                 .collect::<Result<Vec<_>>>()?
                 .join(" and ");
             let sql=format!("select exists(select 1 from {} t cross join jsonb_populate_record(null::{},$1) r where {condition} and to_jsonb(t) is distinct from to_jsonb(r))",schema::quote(&table.name)?,schema::quote(&table.name)?);
-            if sqlx::query_scalar::<_, bool>(&sql)
+            // The table and primary-key names above are quoted; the archive row remains bound.
+            if sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(&record.row)
                 .fetch_one(&mut *connection)
                 .await?

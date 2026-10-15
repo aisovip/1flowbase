@@ -12,7 +12,8 @@ use domain::{
     BackupManifest, BackupProtection, BackupSetId, ContentDigest, KeyFingerprint, MigrationHead,
     SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
 };
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -971,7 +972,9 @@ fn identity_only_component(
 ) -> Result<BackupComponent, SystemBackupServiceError> {
     let digest = ContentDigest::try_from(format!(
         "{:x}",
-        Sha256::digest(descriptor.source_identity.as_str().as_bytes())
+        base16ct::HexDisplay(&Sha256::digest(
+            descriptor.source_identity.as_str().as_bytes()
+        ))
     ))
     .map_err(|_| SystemBackupServiceError::Manifest)?;
     Ok(BackupComponent {
@@ -992,7 +995,7 @@ fn combined_digest(digests: &[ContentDigest]) -> Result<ContentDigest, SystemBac
     for digest in digests {
         hasher.update(digest.as_str().as_bytes());
     }
-    ContentDigest::try_from(format!("{:x}", hasher.finalize()))
+    ContentDigest::try_from(format!("{:x}", base16ct::HexDisplay(&hasher.finalize())))
         .map_err(|_| SystemBackupServiceError::Manifest)
 }
 
@@ -1040,8 +1043,9 @@ fn portable_backup_key(
     derivation.update(b"1flowbase/system-backup/key/v1\0");
     derivation.update(source_master_key);
     let key = derivation.finalize().to_vec();
-    let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
-        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let fingerprint =
+        KeyFingerprint::try_from(format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&key))))
+            .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
     BackupKeyMaterial::new(fingerprint, key)
         .ok_or(crate::ports::BackupKeyProviderError::Unavailable)
 }
@@ -1075,11 +1079,13 @@ pub async fn recover_source_master_key(
                 return Err(crate::ports::BackupKeyProviderError::Unavailable);
             }
             let (nonce, ciphertext) = sealed.split_at(24);
+            let nonce = <&XNonce>::try_from(nonce)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
             let cipher = XChaCha20Poly1305::new_from_slice(key.expose_bytes())
                 .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
             let plaintext = cipher
                 .decrypt(
-                    XNonce::from_slice(nonce),
+                    nonce,
                     Payload {
                         msg: ciphertext,
                         aad: b"1flowbase/system-backup/recovery-material/v1",
@@ -1111,10 +1117,10 @@ pub(crate) fn password_protection(
         .decode(source_master_key_base64)
         .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
     let mut salt = [0_u8; 16];
-    OsRng.fill_bytes(&mut salt);
+    UnwrapErr(SysRng).fill_bytes(&mut salt);
     let key = password_key(password, &salt)?;
     let material = BackupKeyMaterial::new(
-        KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
+        KeyFingerprint::try_from(format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&key))))
             .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?,
         key.clone(),
     )
@@ -1122,10 +1128,10 @@ pub(crate) fn password_protection(
     let cipher = XChaCha20Poly1305::new_from_slice(&key)
         .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
     let mut nonce = [0_u8; 24];
-    OsRng.fill_bytes(&mut nonce);
+    UnwrapErr(SysRng).fill_bytes(&mut nonce);
     let encrypted = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             Payload {
                 msg: &source_master_key,
                 aad: b"1flowbase/system-backup/recovery-material/v1",
@@ -1159,8 +1165,9 @@ fn checked_key_material(
     key: Vec<u8>,
     expected: &KeyFingerprint,
 ) -> Result<BackupKeyMaterial, crate::ports::BackupKeyProviderError> {
-    let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
-        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let fingerprint =
+        KeyFingerprint::try_from(format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&key))))
+            .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
     if &fingerprint != expected {
         return Err(crate::ports::BackupKeyProviderError::NotFound);
     }

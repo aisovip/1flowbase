@@ -52,7 +52,10 @@ impl PgProviderProtocolCapsuleStore {
         let plaintext = serde_json::to_vec(&value)?;
         // Persist complete admitted context/history. Storage representation and
         // real I/O errors remain explicit; guessed payload budgets lose recovery.
-        let digest = format!("sha256:{:x}", Sha256::digest(&plaintext));
+        let digest = format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(&plaintext))
+        );
         let associated_data = Self::associated_data(flow_run_id, kind, &slot_key);
         let encrypted = encrypt_secret_json_with_aad(&value, &self.master_key, &associated_data)?;
         let hard_expires_at = OffsetDateTime::now_utc() + self.hard_retention;
@@ -129,8 +132,10 @@ impl PgProviderProtocolCapsuleStore {
         let plaintext = serde_json::to_vec(&value)?;
         anyhow::ensure!(
             i64::try_from(plaintext.len())? == row.try_get::<i64, _>("plaintext_size_bytes")?
-                && format!("sha256:{:x}", Sha256::digest(&plaintext))
-                    == row.try_get::<String, _>("plaintext_digest")?,
+                && format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&plaintext))
+                ) == row.try_get::<String, _>("plaintext_digest")?,
             "provider_protocol_capsule_integrity_mismatch"
         );
         Ok(Some(value))
@@ -187,8 +192,10 @@ impl PgProviderProtocolCapsuleStore {
         let plaintext = serde_json::to_vec(&value)?;
         anyhow::ensure!(
             i64::try_from(plaintext.len())? == row.try_get::<i64, _>("plaintext_size_bytes")?
-                && format!("sha256:{:x}", Sha256::digest(&plaintext))
-                    == row.try_get::<String, _>("plaintext_digest")?,
+                && format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&plaintext))
+                ) == row.try_get::<String, _>("plaintext_digest")?,
             "provider_protocol_capsule_integrity_mismatch"
         );
         Ok(value)
@@ -364,8 +371,10 @@ impl ProviderProtocolCapsuleStore for PgProviderProtocolCapsuleStore {
         let plaintext = serde_json::to_vec(&value)?;
         anyhow::ensure!(
             i64::try_from(plaintext.len())? == row.try_get::<i64, _>("plaintext_size_bytes")?
-                && format!("sha256:{:x}", Sha256::digest(&plaintext))
-                    == row.try_get::<String, _>("plaintext_digest")?,
+                && format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&plaintext))
+                ) == row.try_get::<String, _>("plaintext_digest")?,
             "provider_protocol_capsule_integrity_mismatch"
         );
         let continuation = Self::continuation_from_value(&value)?;

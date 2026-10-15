@@ -166,10 +166,10 @@ fn provider_retry_partition(
     );
     let credential_owner_hash = format!(
         "{:x}",
-        Sha256::digest(format!(
+        base16ct::HexDisplay(&Sha256::digest(format!(
             "workspace:{}:owner:{}",
             instance.workspace_id, instance.created_by
-        ))
+        )))
     );
     orchestration_runtime::execution_engine::ai_native_recovery::ProviderRetryPartition::new(
         instance.id.to_string(),

@@ -188,7 +188,11 @@ async fn legacy_download_is_reexported_as_a_portable_bundle() {
         .unwrap();
     assert_eq!(
         imported_manifest.manifest().components()[0].content_digest,
-        ContentDigest::try_from(format!("{:x}", sha2::Sha256::digest(&bytes))).unwrap()
+        ContentDigest::try_from(format!(
+            "{:x}",
+            base16ct::HexDisplay(&sha2::Sha256::digest(&bytes))
+        ))
+        .unwrap()
     );
     tokio::fs::remove_dir_all(&root).await.unwrap();
     tokio::fs::remove_dir_all(&protected).await.unwrap();

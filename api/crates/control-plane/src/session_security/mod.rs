@@ -1,6 +1,6 @@
 use anyhow::Result;
 use argon2::{
-    password_hash::{PasswordHash, PasswordVerifier},
+    password_hash::{phc::PasswordHash, PasswordVerifier},
     Argon2,
 };
 use uuid::Uuid;

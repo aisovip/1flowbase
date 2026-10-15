@@ -1882,7 +1882,10 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
         domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
     let delivery_dependencies = mcp_result_delivery_dependencies(state.as_ref());
     let source_code = "界".repeat(17_416);
-    let source_sha256 = format!("{:x}", Sha256::digest(source_code.as_bytes()));
+    let source_sha256 = format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(source_code.as_bytes()))
+    );
     let delivered = deliver_oversized_result(
         &delivery_dependencies,
         &actor,
@@ -1938,7 +1941,10 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
     assert_eq!(reconstructed.chars().count(), 17_416);
     assert_eq!(reconstructed, source_code);
     assert_eq!(
-        format!("{:x}", Sha256::digest(reconstructed.as_bytes())),
+        format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(reconstructed.as_bytes()))
+        ),
         source_sha256
     );
 

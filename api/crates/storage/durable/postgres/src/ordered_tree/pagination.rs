@@ -91,22 +91,24 @@ impl Cursor {
     /// The CTE contains the exact membership filters used for fetching the page.
     /// Both queries run in the caller's repeatable-read snapshot.
     pub async fn validate(&self, conn: &mut PgConnection, cte: &str) -> Result<AnchorKey> {
-        let row: Option<(Vec<String>, Vec<Uuid>, String)> = sqlx::query_as(&format!(
-            "{cte} select rank_path, id_path, tree_path::text from candidates where id = $6"
-        ))
-        .bind(self.context.scope_id)
-        .bind(self.context.partition_id)
-        .bind(self.context.node_id)
-        .bind(self.context.max_depth.map(i64::from))
-        .bind(
-            self.context
-                .prefix
-                .as_ref()
-                .map(|prefix| format!("{}%", super::queries::escape_like_prefix(prefix))),
-        )
-        .bind(self.id)
-        .fetch_optional(conn)
-        .await?;
+        // SQL safety: The candidates CTE uses validated identifiers and internal SQL fragments; cursor values remain bound.
+        let row: Option<(Vec<String>, Vec<Uuid>, String)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                "{cte} select rank_path, id_path, tree_path::text from candidates where id = $6"
+            )))
+            .bind(self.context.scope_id)
+            .bind(self.context.partition_id)
+            .bind(self.context.node_id)
+            .bind(self.context.max_depth.map(i64::from))
+            .bind(
+                self.context
+                    .prefix
+                    .as_ref()
+                    .map(|prefix| format!("{}%", super::queries::escape_like_prefix(prefix))),
+            )
+            .bind(self.id)
+            .fetch_optional(conn)
+            .await?;
         let Some((ranks, ids, tree_path)) = row else {
             return Err(OrderedTreeQueryError::StaleCursor.into());
         };

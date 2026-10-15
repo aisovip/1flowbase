@@ -895,7 +895,10 @@ async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_work
                 artifact_bytes: archive.clone(),
                 source: "upload".into(),
                 trust: "unknown".into(),
-                expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&archive))),
+                expected_checksum: Some(format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&archive))
+                )),
                 signature_status: domain::ExtensionSignatureStatus::Verified,
                 signature_algorithm: Some("ed25519".into()),
                 signing_key_id: Some("fixture".into()),

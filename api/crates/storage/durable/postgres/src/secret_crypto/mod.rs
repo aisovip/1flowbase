@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
+    aead::{Aead, Generate, KeyInit, Payload},
     XChaCha20Poly1305,
 };
 use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
@@ -27,7 +27,7 @@ pub(crate) fn encrypt_secret_json_with_aad(
 
     let plaintext = serde_json::to_vec(secret_json)?;
     let cipher = XChaCha20Poly1305::new(&derive_aead_key(master_key));
-    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let nonce = chacha20poly1305::XNonce::generate();
     let ciphertext = cipher
         .encrypt(
             &nonce,
@@ -94,7 +94,8 @@ pub(crate) fn decrypt_secret_json_with_aad(
     if nonce.len() != 24 {
         bail!(anyhow!("invalid secret nonce length"));
     }
-    let nonce = chacha20poly1305::XNonce::from_slice(&nonce);
+    let nonce = chacha20poly1305::XNonce::try_from(nonce.as_slice())
+        .map_err(|_| anyhow!("invalid secret nonce length"))?;
     let ciphertext = encrypted_secret_json
         .get("ciphertext")
         .and_then(Value::as_str)
@@ -103,7 +104,7 @@ pub(crate) fn decrypt_secret_json_with_aad(
     let cipher = XChaCha20Poly1305::new(&derive_aead_key(master_key));
     let plaintext = cipher
         .decrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: ciphertext.as_slice(),
                 aad: associated_data,
@@ -114,8 +115,7 @@ pub(crate) fn decrypt_secret_json_with_aad(
 }
 
 fn derive_aead_key(master_key: &str) -> chacha20poly1305::Key {
-    let digest = Sha256::digest(master_key.as_bytes());
-    *chacha20poly1305::Key::from_slice(&digest)
+    Sha256::digest(master_key.as_bytes())
 }
 
 fn hex_encode(bytes: &[u8]) -> String {

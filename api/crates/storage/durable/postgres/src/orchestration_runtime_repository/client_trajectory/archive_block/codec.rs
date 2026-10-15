@@ -45,7 +45,7 @@ pub(super) fn decode(version: i16, bytes: &[u8], length: i64, expected: &[u8]) -
         raw.extend_from_slice(&buffer[..count]);
     }
     ensure!(
-        decoder.finish().is_empty(),
+        decoder.into_inner().is_empty(),
         "archive block compressed bytes trailing"
     );
     ensure!(raw.len() == length, "archive block raw length mismatch");

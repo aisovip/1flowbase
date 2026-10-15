@@ -36,7 +36,10 @@ pub fn record_trajectory_query_fingerprint(
     ))
 }
 fn fingerprint(value: impl std::fmt::Debug) -> String {
-    format!("{:x}", Sha256::digest(format!("{value:?}").as_bytes()))
+    format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(format!("{value:?}").as_bytes()))
+    )
 }
 pub fn validate_log_query_cursor_binding(
     version: u8,

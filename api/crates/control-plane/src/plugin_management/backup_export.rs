@@ -526,7 +526,7 @@ where
     {
         bail!("backup artifact changed while reading");
     }
-    let sha256 = format!("sha256:{:x}", hasher.finalize());
+    let sha256 = format!("sha256:{:x}", base16ct::HexDisplay(&hasher.finalize()));
     if let Some(expected) = entry.expected_checksum.as_deref() {
         if normalize_checksum(expected) != sha256 {
             bail!("backup artifact checksum mismatch");
@@ -550,7 +550,7 @@ fn normalize_checksum(value: &str) -> String {
 pub fn backup_artifact_component_id(entry: &BackupArtifactEntry) -> String {
     let mut hasher = Sha256::new();
     hasher.update(entry.identity.as_bytes());
-    format!("artifact-{:x}", hasher.finalize())
+    format!("artifact-{:x}", base16ct::HexDisplay(&hasher.finalize()))
 }
 
 #[async_trait]

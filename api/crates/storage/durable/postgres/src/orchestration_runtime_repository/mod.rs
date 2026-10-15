@@ -2436,7 +2436,8 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
     ) -> Result<Vec<ApplicationPublicConversationMessageRecord>> {
         let limit = input.limit.clamp(1, 200);
         let hidden_internal_run_filter = hidden_anthropic_claude_code_internal_run_sql("runs");
-        let rows = sqlx::query(&format!(
+        // SQL safety: The internal-run filter uses a fixed alias; conversation identifiers and limits remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             with conversation_messages as (
                 select
@@ -2511,7 +2512,7 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
             order by occurred_at asc, sequence asc, created_at asc, id asc
             "#,
             hidden_internal_run_filter = hidden_internal_run_filter
-        ))
+        )))
         .bind(input.application_id)
         .bind(input.api_key_id)
         .bind(&input.external_user)

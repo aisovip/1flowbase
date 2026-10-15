@@ -3,7 +3,8 @@ use crate::{app_state::ApiState, error_response::ApiError};
 use axum::http::HeaderMap;
 use control_plane::errors::ControlPlaneError as Error;
 use control_plane::ports::CacheStore;
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[derive(Serialize, Deserialize)]
@@ -67,7 +68,7 @@ fn key(token: &str) -> String {
 pub(super) async fn store(cache: &dyn CacheStore, ticket: &Ticket) -> Result<String, ApiError> {
     for _ in 0..3 {
         let mut bytes = [0; 32];
-        OsRng.fill_bytes(&mut bytes);
+        UnwrapErr(SysRng).fill_bytes(&mut bytes);
         let token = bytes
             .iter()
             .map(|byte| format!("{byte:02x}"))

@@ -48,7 +48,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversations(
             }
         }
     }
-    let build = || -> Result<QueryBuilder<'static, Postgres>> {
+    let build = || -> Result<QueryBuilder<Postgres>> {
         let mut sql = QueryBuilder::new(
             "with main as (select * from application_run_log_tasks where scope_id=",
         );

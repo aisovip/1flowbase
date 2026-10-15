@@ -148,10 +148,10 @@ pub(super) async fn insert_node_in_partition(
     tree_partition_id: Uuid,
     node: TestNode<'_>,
 ) {
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank, \"{}\") values ($1, $2, $3, $4, $5, $6)",
         model.physical_table_name, field.physical_column_name
-    ))
+    )))
     .bind(node.id)
     .bind(scope_id)
     .bind(tree_partition_id)
@@ -276,27 +276,27 @@ async fn subtree_impact_counts_leaf_nested_partition_and_cycle_with_typed_not_fo
 
     // Deliberately corrupt adjacency while retaining the last valid projection:
     // normal writers are now required to reject cycles at the database boundary.
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "alter table \"{}\" disable trigger ordered_tree_path_before",
         model.physical_table_name
-    ))
+    )))
     .execute(store.pool())
     .await
     .unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(leaf)
     .bind(scope_id)
     .bind(root)
     .execute(store.pool())
     .await
     .unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "alter table \"{}\" enable trigger ordered_tree_path_before",
         model.physical_table_name
-    ))
+    )))
     .execute(store.pool())
     .await
     .unwrap();
@@ -760,7 +760,7 @@ async fn prefix_expression_index_matches_query_shape_and_avoids_seq_scan() {
             && definition.contains("tree_partition_id")
     }));
 
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"
         insert into "{}" (id, scope_id, tree_partition_id, sibling_rank, "{}")
         select gen_random_uuid(), $1, $1, lpad(series::text, 8, '0') || 'U',
@@ -768,19 +768,22 @@ async fn prefix_expression_index_matches_query_shape_and_avoids_seq_scan() {
         from generate_series(1, 5000) series
         "#,
         model.physical_table_name, field.physical_column_name
-    ))
+    )))
     .bind(scope_id)
     .execute(store.pool())
     .await
     .unwrap();
-    sqlx::query(&format!("analyze \"{}\"", model.physical_table_name))
-        .execute(store.pool())
-        .await
-        .unwrap();
-    let plan: Vec<String> = sqlx::query_scalar(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "analyze \"{}\"",
+        model.physical_table_name
+    )))
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let plan: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "explain (analyze, costs off, format text) select id from \"{}\" where scope_id = $1 and tree_partition_id = $1 and (lower(\"{}\") collate \"C\") like lower($2) escape E'\\\\'",
         model.physical_table_name, field.physical_column_name
-    ))
+    )))
     .bind(scope_id)
     .bind("needle-4242%")
     .fetch_all(store.pool())

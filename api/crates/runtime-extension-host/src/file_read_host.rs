@@ -98,7 +98,10 @@ impl FileReadCall {
                         {
                             return Err(FileReadError::new("file_read_length_invalid"));
                         }
-                        Some(format!("{:x}", read.hash.clone().finalize()))
+                        Some(format!(
+                            "{:x}",
+                            base16ct::HexDisplay(&read.hash.clone()).finalize()
+                        ))
                     } else {
                         None
                     };

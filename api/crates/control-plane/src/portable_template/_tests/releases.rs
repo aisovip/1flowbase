@@ -91,7 +91,10 @@ fn legacy_checksum_excludes_empty_translation_field_and_v2_covers_translations()
     // or force a v1 package to v2 merely because the new reader parsed it.
     let legacy_wire = r#"{"schema_version":"1flowbase.portable-template/v1","pages":[],"applications":[],"data_models":[],"mcp_bundle":null,"plugins":[]}"#;
     let legacy: PortableTemplatePackage = serde_json::from_str(legacy_wire).unwrap();
-    let expected = format!("{:x}", Sha256::digest(legacy_wire.as_bytes()));
+    let expected = format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(legacy_wire.as_bytes()))
+    );
     assert_eq!(application_template_checksum(&legacy).unwrap(), expected);
     let mut explicit_empty = serde_json::to_value(&legacy).unwrap();
     explicit_empty["i18n_entries"] = serde_json::json!([]);

@@ -215,7 +215,7 @@ async fn build_run_archive_v1_entry(
 
 async fn archive_json_rows(
     store: &storage_durable_postgres::MainDurableStore,
-    query: &str,
+    query: &'static str,
     run_id: Uuid,
 ) -> Result<Vec<serde_json::Value>, ApiError> {
     Ok(sqlx::query_scalar::<_, serde_json::Value>(query)

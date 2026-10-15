@@ -2064,7 +2064,10 @@ fn search_query_binding(
 }
 
 fn digest_text(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(value.as_bytes()))
+    )
 }
 
 fn encode_search_cursor(
@@ -2194,7 +2197,7 @@ fn validate_page(
 }
 
 fn ensure_sha256(bytes: &[u8], expected: &str) -> Result<()> {
-    let actual = format!("sha256:{:x}", Sha256::digest(bytes));
+    let actual = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
     if actual != expected {
         bail!("official extension catalog page checksum mismatch");
     }

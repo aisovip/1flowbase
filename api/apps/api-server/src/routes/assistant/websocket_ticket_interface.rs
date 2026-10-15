@@ -3,7 +3,8 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::ports::CacheStore;
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use serde::{Deserialize, Serialize};
 use storage_durable_postgres::MainDurableStore;
 use time::Duration;
@@ -223,7 +224,7 @@ pub(super) async fn store_ticket(
 ) -> Result<String, ApiError> {
     for _ in 0..3 {
         let mut bytes = [0_u8; 32];
-        OsRng.fill_bytes(&mut bytes);
+        UnwrapErr(SysRng).fill_bytes(&mut bytes);
         let token = URL_SAFE_NO_PAD.encode(bytes);
         if cache
             .set_if_absent_json(

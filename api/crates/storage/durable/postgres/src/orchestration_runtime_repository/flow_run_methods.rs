@@ -269,7 +269,8 @@ impl PgControlPlaneStore {
             "#,
         );
         let mut tx = self.pool().begin().await?;
-        let inserted = sqlx::query(&query)
+        // SQL safety: The conflict target is selected from literal clauses by FlowRunMode; run data remain bound.
+        let inserted = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(Uuid::now_v7())
             .bind(input.application_id)
             .bind(input.flow_id)

@@ -303,7 +303,8 @@ impl PgControlPlaneStore {
             order by s.event_sequence {direction} limit $4
         "#
         );
-        let rows = sqlx::query(&sql)
+        // SQL safety: Trajectory SQL combines internal templates and closed ordering choices; cursor/filter values remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(flow_run_id)
             .bind(node_run_id)
             .bind(cursor.unwrap_or(0))

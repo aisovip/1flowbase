@@ -2,12 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
 };
 use async_trait::async_trait;
 use domain::{ActorContext, SessionRecord, UserStatus};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -475,7 +476,7 @@ fn generate_user_api_key_token(key_id: Uuid) -> (String, String) {
     let unbiased_limit = u8::MAX - (u8::MAX % API_KEY_SECRET_ALPHABET_LEN);
 
     while secret.len() < API_KEY_SECRET_LEN {
-        let random = OsRng.next_u32() as u8;
+        let random = UnwrapErr(SysRng).next_u32() as u8;
         if random >= unbiased_limit {
             continue;
         }
@@ -642,7 +643,10 @@ where
 }
 
 pub fn hash_api_key_token(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(token.as_bytes()))
+    )
 }
 
 pub struct SessionIssuer<S> {
@@ -880,9 +884,8 @@ fn validate_self_registration_input(account: &str, email: &str, password: &str) 
 }
 
 fn hash_password(password: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
     Ok(Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|error| anyhow::anyhow!("failed to hash self-registration password: {error}"))?
         .to_string())
 }

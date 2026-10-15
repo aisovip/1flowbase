@@ -10,9 +10,10 @@ fn agent_logs_exchange_has_its_own_closed_workspace_selector() {
         NetworkEgressConsumerSelector::from_storage("agent_logs_exchange", None).unwrap(),
         selector
     );
-    assert!(
-        NetworkEgressConsumerSelector::from_storage("agent_logs_exchange", Some(Uuid::now_v7()))
-            .is_err()
-    );
+    assert!(NetworkEgressConsumerSelector::from_storage(
+        "agent_logs_exchange",
+        Some(Uuid::now_v7())
+    )
+    .is_err());
     assert!(NetworkEgressConsumerSelector::from_storage("langfuse", None).is_err());
 }

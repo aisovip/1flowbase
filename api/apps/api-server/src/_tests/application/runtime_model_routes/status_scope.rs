@@ -418,9 +418,9 @@ async fn runtime_model_routes_use_default_scope_id_for_workspace_model_crud() {
     assert_eq!(grant_scope_id, domain::DEFAULT_SCOPE_ID);
     assert_ne!(grant_scope_id, domain::SYSTEM_SCOPE_ID);
 
-    let scope_id: uuid::Uuid = sqlx::query_scalar(&format!(
+    let scope_id: uuid::Uuid = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select scope_id from \"{physical_table_name}\" limit 1"
-    ))
+    )))
     .fetch_one(pool.pool())
     .await
     .unwrap();

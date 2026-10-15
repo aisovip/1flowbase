@@ -218,7 +218,7 @@ async fn list_runtime_model_metadata_marks_model_unavailable_when_table_is_missi
         .any(|model| model.model_id == created.id));
 
     let drop_statement = format!("drop table if exists \"{}\"", created.physical_table_name);
-    sqlx::query(&drop_statement)
+    sqlx::query(sqlx::AssertSqlSafe(drop_statement.as_str()))
         .execute(store.pool())
         .await
         .unwrap();

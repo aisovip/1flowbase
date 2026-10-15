@@ -20,7 +20,8 @@ pub(in crate::orchestration_runtime_repository) async fn page(
     let sql = format!(
         "select t.id from application_run_log_tasks a join application_run_log_tasks t on {membership} where a.application_id=$1 and a.id=$2 and ($3::uuid is null or t.id=$3) limit 1"
     );
-    let valid: Option<Uuid> = sqlx::query_scalar(&sql)
+    // SQL safety: Membership is static SQL; comparison and direction are closed literal selections, cursor values are bound.
+    let valid: Option<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(record_id)
         .bind(cursor)
@@ -45,7 +46,7 @@ pub(in crate::orchestration_runtime_repository) async fn page(
     let sql = format!(
         "select t.id from application_run_log_tasks a join application_run_log_tasks t on {membership} left join application_run_log_tasks c on c.id=$3 where a.application_id=$1 and a.id=$2 and ($3::uuid is null or (t.started_at,t.id) {comparison} (c.started_at,c.id)) order by t.started_at {direction},t.id {direction} limit $4"
     );
-    let mut ids: Vec<Uuid> = sqlx::query_scalar(&sql)
+    let mut ids: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(record_id)
         .bind(cursor)
@@ -60,7 +61,7 @@ pub(in crate::orchestration_runtime_repository) async fn page(
     let sql = format!(
         "select exists(select 1 from application_run_log_tasks t where {membership} and (t.started_at,t.id)<(f.started_at,f.id)) as has_before, exists(select 1 from application_run_log_tasks t where {membership} and (t.started_at,t.id)>(l.started_at,l.id)) as has_after from application_run_log_tasks a join application_run_log_tasks f on f.id=$3 join application_run_log_tasks l on l.id=$4 where a.application_id=$1 and a.id=$2"
     );
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(record_id)
         .bind(first)

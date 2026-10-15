@@ -33,7 +33,8 @@ pub(super) async fn merge(
     }
     let mut summary = PricingCatalogSyncSummary::default();
     for incoming in rules {
-        let existing = sqlx::query(&(PRICING_SELECT.to_owned() +
+        // SQL safety: Only static pricing projections and predicates are concatenated; catalog selectors remain bound.
+        let existing = sqlx::query(sqlx::AssertSqlSafe(PRICING_SELECT.to_owned() +
             " where source_kind='official' and provider_code=$1 and upstream_model_id=$2 order by (source_catalog_id=$3) desc nulls last, enabled desc, created_at, id for update"))
             .bind(&incoming.provider_code).bind(&incoming.upstream_model_id).bind(&incoming.source_catalog_id)
             .fetch_all(&mut *transaction).await?

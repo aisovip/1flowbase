@@ -36,7 +36,7 @@ fn trusted_artifact_verifier_rejects_checksum_signature_and_unknown_key_tamperin
             .to_public_key_pem(LineEnding::LF)
             .unwrap(),
     };
-    let checksum = format!("sha256:{:x}", Sha256::digest(bytes));
+    let checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
     let signature = STANDARD.encode(signing_key.sign(bytes).to_bytes());
 
     verify_trusted_ed25519_artifact(
@@ -610,7 +610,10 @@ fn create_signed_package_fixture(input: SignedFixtureInput<'_>) -> SignedPackage
     };
 
     SignedPackageFixture {
-        artifact_sha256: format!("sha256:{:x}", Sha256::digest(&package_bytes)),
+        artifact_sha256: format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(&package_bytes))
+        ),
         package_bytes,
         public_key,
     }
@@ -714,7 +717,7 @@ fn payload_sha256(root: &Path) -> String {
         hasher.update(content);
         hasher.update([0]);
     }
-    format!("{:x}", hasher.finalize())
+    format!("{:x}", base16ct::HexDisplay(&hasher.finalize()))
 }
 
 fn collect_payload_files(root: &Path, current: &Path, files: &mut Vec<(String, Vec<u8>)>) {

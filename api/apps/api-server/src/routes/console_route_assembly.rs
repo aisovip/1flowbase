@@ -198,7 +198,10 @@ where
             self.bindings
                 .push(ConsoleRouteAssemblyBinding { route, ownership });
         }
-        self.router = self.router.route(path, router);
+        self.router = self.router.route(
+            &crate::external_route_assembly::axum_route_path(path),
+            router,
+        );
         self
     }
 

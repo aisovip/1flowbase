@@ -163,9 +163,9 @@ async fn test_state_with_runtime_profile_state(
     let store = durable.store.clone();
     let (postgres_toolchain, postgres_toolchain_root) = isolated_postgres_toolchain(&store).await;
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
-    let salt = SaltString::generate(&mut rand_core::OsRng);
+
     let root_password_hash = Argon2::default()
-        .hash_password(config.bootstrap_root_password.as_bytes(), &salt)
+        .hash_password(config.bootstrap_root_password.as_bytes())
         .unwrap()
         .to_string();
 

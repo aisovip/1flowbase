@@ -744,7 +744,7 @@ async fn model_provider_repository_backfills_missing_context_window_override_tok
     )
     .unwrap();
 
-    sqlx::raw_sql(&migration_sql)
+    sqlx::raw_sql(sqlx::AssertSqlSafe(migration_sql.as_str()))
         .execute(store.pool())
         .await
         .unwrap();

@@ -46,7 +46,7 @@ pub fn trace_projection_native_message_watermark(
     }
     let mut hash = Sha256::new();
     hash.update(serde_json::to_vec(messages).expect("JSON values serialize"));
-    format!("{base}:{:x}", hash.finalize())
+    format!("{base}:{:x}", base16ct::HexDisplay(&hash.finalize()))
 }
 
 /// Task-level trace inputs: later member rounds, child tasks, and the formal

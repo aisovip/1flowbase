@@ -115,7 +115,7 @@ async fn root_2007_ac_010_lane_budgets_owned_transactions_shutdown() {
         .execute(&mut *blocker)
         .await
         .unwrap();
-    sqlx::query(&format!("create function root_2007_shutdown_barrier() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock({key}); return NEW; end $$")).execute(&pool).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("create function root_2007_shutdown_barrier() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock({key}); return NEW; end $$"))).execute(&pool).await.unwrap();
     sqlx::query("create constraint trigger root_2007_shutdown_barrier after insert on lifecycle_outbox deferrable initially deferred for each row execute function root_2007_shutdown_barrier()").execute(&pool).await.unwrap();
     let create_waiter = {
         let store = runtime.store.clone();

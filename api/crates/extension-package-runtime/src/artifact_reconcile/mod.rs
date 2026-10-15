@@ -35,7 +35,7 @@ pub async fn compute_manifest_fingerprint(
 }
 
 pub(crate) fn canonical_manifest_fingerprint(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 pub async fn reconcile_provider_artifact(
@@ -101,7 +101,10 @@ async fn compute_file_sha256(path: &Path) -> Result<String, PluginFrameworkError
     let bytes = tokio::fs::read(path)
         .await
         .map_err(|error| PluginFrameworkError::io(Some(path), error.to_string()))?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(bytes))
+    ))
 }
 
 fn normalize_sha256(value: &str) -> Result<String, PluginFrameworkError> {

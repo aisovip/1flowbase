@@ -72,7 +72,10 @@ fn official_package_risk_warnings(
     expected_checksum: &str,
     intake: &PackageIntakeResult,
 ) -> Vec<String> {
-    let actual = format!("sha256:{:x}", Sha256::digest(package_bytes));
+    let actual = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(package_bytes))
+    );
     let mut warnings = Vec::new();
     if actual != expected_checksum {
         warnings.push(PLUGIN_RISK_CHECKSUM_MISMATCH.to_string());
@@ -236,7 +239,7 @@ fn stable_plugin_unique_identifier(plugin_id: &str) -> String {
 
 fn stable_sha256_json(value: &serde_json::Value) -> String {
     let bytes = serde_json::to_vec(value).unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn prepare_installation_commit(

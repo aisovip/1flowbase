@@ -43,14 +43,14 @@ async fn insert_dynamic(
     parent: Option<Uuid>,
     rank: &str,
 ) {
-    sqlx::query(&format!("insert into \"{table}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $3, $4, $5)"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("insert into \"{table}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $3, $4, $5)")))
         .bind(id).bind(scope).bind(partition).bind(parent).bind(rank).execute(pool).await.unwrap();
 }
 
 async fn path(pool: &PgPool, table: &str, id: Uuid) -> String {
-    sqlx::query_scalar(&format!(
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select tree_path::text from \"{table}\" where id = $1"
-    ))
+    )))
     .bind(id)
     .fetch_one(pool)
     .await
@@ -189,9 +189,9 @@ async fn migration_backfills_dynamic_departments_and_frontstage_with_partition_i
             default.is_none(),
             "the backfill sentinel must not remain a write default"
         );
-        let empty_paths: i64 = sqlx::query_scalar(&format!(
+        let empty_paths: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "select count(*) from \"{table}\" where public.nlevel(tree_path) = 0"
-        ))
+        )))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -199,24 +199,24 @@ async fn migration_backfills_dynamic_departments_and_frontstage_with_partition_i
 
         // Old native writers still move and rename trees consistently.
         let mut tx = pool.begin().await.unwrap();
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "update \"{table}\" set parent_id = null, sibling_rank = 'k' where id = $1"
-        ))
+        )))
         .bind(child)
         .execute(&mut *tx)
         .await
         .unwrap();
-        let changed: String = sqlx::query_scalar(&format!(
+        let changed: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "select tree_path::text from \"{table}\" where id = $1"
-        ))
+        )))
         .bind(child)
         .fetch_one(&mut *tx)
         .await
         .unwrap();
         assert_eq!(changed, labels(&[child]));
-        let moved_descendant: String = sqlx::query_scalar(&format!(
+        let moved_descendant: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             "select tree_path::text from \"{table}\" where id = $1"
-        ))
+        )))
         .bind(grandchild)
         .fetch_one(&mut *tx)
         .await
@@ -295,28 +295,28 @@ async fn migration_rejects_cycles_missing_parents_and_reserved_column_conflicts(
             sqlx::query("insert into model_fields (id, data_model_id, scope_id, code, title, physical_column_name, field_kind) values ($1, $2, $3, 'tree_path', 'User path', 'user_path', 'string')")
                 .bind(Uuid::now_v7()).bind(model.id).bind(scope).execute(&pool).await.unwrap();
         } else if corruption == "column" {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "alter table \"{}\" add column tree_path text",
                 model.physical_table_name
-            ))
+            )))
             .execute(&pool)
             .await
             .unwrap();
         } else {
             if corruption == "missing_parent" {
-                sqlx::query(&format!(
+                sqlx::query(sqlx::AssertSqlSafe(format!(
                     "alter table \"{}\" drop constraint \"fk_ot_parent_{}\"",
                     model.physical_table_name,
                     model.id.simple()
-                ))
+                )))
                 .execute(&pool)
                 .await
                 .unwrap();
             }
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "update \"{}\" set parent_id = $1 where id = $2",
                 model.physical_table_name
-            ))
+            )))
             .bind(if corruption == "cycle" {
                 child
             } else {
@@ -376,9 +376,9 @@ async fn path_move_updates_whole_subtree_and_rolls_back_without_reordering_ident
     move_ordered_tree_node_in_transaction(&mut tx, &metadata, movement.clone())
         .await
         .unwrap();
-    let moved: String = sqlx::query_scalar(&format!(
+    let moved: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select tree_path::text from \"{table}\" where id = $1"
-    ))
+    )))
     .bind(leaf)
     .fetch_one(&mut *tx)
     .await
@@ -397,9 +397,9 @@ async fn path_move_updates_whole_subtree_and_rolls_back_without_reordering_ident
         path(&pool, table, leaf).await,
         labels(&[destination, branch, leaf])
     );
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{table}\" set sibling_rank = 'k' where id = $1"
-    ))
+    )))
     .bind(branch)
     .execute(&pool)
     .await
@@ -409,7 +409,7 @@ async fn path_move_updates_whole_subtree_and_rolls_back_without_reordering_ident
         labels(&[destination, branch, leaf])
     );
     for statement in [format!("update \"{table}\" set parent_id = $1 where id = $2"), format!("update \"{table}\" set tree_path = replace($1::text, '-', '')::public.ltree where id = $2")] {
-        assert!(sqlx::query(&statement).bind(leaf).bind(destination).execute(&pool).await.is_err());
+        assert!(sqlx::query(sqlx::AssertSqlSafe(statement.as_str())).bind(leaf).bind(destination).execute(&pool).await.is_err());
     }
     let foreign_scope = create_workspace(&store).await;
     let foreign_root = Uuid::now_v7();
@@ -423,9 +423,9 @@ async fn path_move_updates_whole_subtree_and_rolls_back_without_reordering_ident
         "U",
     )
     .await;
-    assert!(sqlx::query(&format!(
+    assert!(sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{table}\" set parent_id = $1 where id = $2"
-    ))
+    )))
     .bind(foreign_root)
     .bind(branch)
     .execute(&pool)
@@ -681,9 +681,9 @@ async fn concurrent_native_opposite_moves_preserve_committed_paths() {
         let pool = pool.clone();
         let table = model.physical_table_name.clone();
         tasks.push(tokio::spawn(async move {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "update \"{table}\" set parent_id = $1 where id = $2"
-            ))
+            )))
             .bind(parent)
             .bind(node)
             .execute(&pool)
@@ -756,32 +756,32 @@ async fn path_read_and_subtree_move_emit_explain_buffers_evidence() {
         )
         .await;
     }
-    sqlx::query(&format!("analyze \"{table}\""))
+    sqlx::query(sqlx::AssertSqlSafe(format!("analyze \"{table}\"")))
         .execute(&pool)
         .await
         .unwrap();
     let statement = format!("select count(*)::bigint from \"{table}\" node join \"{table}\" root on root.scope_id = $1 and root.tree_partition_id = $1 and root.id = $2 where node.scope_id = $1 and node.tree_partition_id = $1 and ARRAY[node.tree_path] OPERATOR(public.<@) root.tree_path");
-    let count: i64 = sqlx::query_scalar(&statement)
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(statement.as_str()))
         .bind(scope)
         .bind(branch)
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(count, 65);
-    let read: serde_json::Value = sqlx::query_scalar(&format!(
+    let read: serde_json::Value = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "explain (analyze, buffers, format json) {statement}"
-    ))
+    )))
     .bind(scope)
     .bind(branch)
     .fetch_one(&pool)
     .await
     .unwrap();
     let mut tx = pool.begin().await.unwrap();
-    let movement: serde_json::Value = sqlx::query_scalar(&format!("explain (analyze, buffers, format json) update \"{table}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = $2 and id = $3"))
+    let movement: serde_json::Value = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("explain (analyze, buffers, format json) update \"{table}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = $2 and id = $3")))
         .bind(destination).bind(scope).bind(branch).fetch_one(&mut *tx).await.unwrap();
-    let moved: String = sqlx::query_scalar(&format!(
+    let moved: String = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select tree_path::text from \"{table}\" where id = $1"
-    ))
+    )))
     .bind(branch_leaves[0])
     .fetch_one(&mut *tx)
     .await
@@ -824,10 +824,10 @@ async fn migration_indexes_recently_dead_versions_without_null_array_elements() 
         .fetch_one(&mut *old_snapshot)
         .await
         .unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{}\" set sibling_rank = 'k' where id = $1",
         model.physical_table_name
-    ))
+    )))
     .bind(root)
     .execute(&pool)
     .await

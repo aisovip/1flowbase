@@ -98,7 +98,7 @@ pub(super) fn generate_short_id() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
     let mut output = String::with_capacity(8);
     for _ in 0..8 {
-        let index = (OsRng.next_u32() as usize) % ALPHABET.len();
+        let index = (UnwrapErr(SysRng).next_u32() as usize) % ALPHABET.len();
         output.push(ALPHABET[index] as char);
     }
     output

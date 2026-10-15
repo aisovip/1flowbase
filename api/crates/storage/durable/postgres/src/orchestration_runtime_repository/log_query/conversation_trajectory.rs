@@ -50,7 +50,8 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_section(
 ) -> Result<Option<ClientTrajectorySection>> {
     namespace(store, app, conversation).await?;
     let sql = format!("select t.id {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and s.id=$3");
-    let owner: Option<Uuid> = sqlx::query_scalar(&sql)
+    // SQL safety: SQL combines static membership/time expressions and closed paging choices; search and cursor values remain bound.
+    let owner: Option<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(app)
         .bind(conversation)
         .bind(step)
@@ -172,7 +173,7 @@ async fn scan(
         order by {EVENT_TIME} {direction},s.id {direction},t.id {direction} limit 100");
     let mut hits = Vec::new();
     loop {
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(app)
             .bind(conversation)
             .bind(position.as_ref().map(|p| p.timestamp.as_str()))
@@ -254,7 +255,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
     // Validate focus even when following a cursor: it remains part of query meaning.
     let focus_time = if let Some(focus) = query.focus_record_id {
         let sql = format!("select coalesce(min({EVENT_TIME}),extract(epoch from t.started_at))::text {MEMBERS} left join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and t.id=$3 group by t.id");
-        let time: Option<Option<String>> = sqlx::query_scalar(&sql)
+        let time: Option<Option<String>> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(app)
             .bind(conversation)
             .bind(focus)
@@ -269,7 +270,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
     };
     let focus_step = if let Some(step_id) = query.focus_step_id {
         let sql = format!("select {EVENT_TIME}::text event_time,s.id step_id,t.id record_id {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and s.id=$3");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(app)
             .bind(conversation)
             .bind(step_id)
@@ -301,7 +302,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
         // A cursor position must identify an actual event in this exact namespace.
         // Never cast untrusted numeric cursor text: compare its canonical rendering.
         let sql = format!("select exists(select 1 {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and s.id=$3 and t.id=$4 and {EVENT_TIME}::text=$5)");
-        let valid: bool = sqlx::query_scalar(&sql)
+        let valid: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(app)
             .bind(conversation)
             .bind(page.position.step_id)
@@ -316,7 +317,7 @@ pub(in crate::orchestration_runtime_repository) async fn conversation_trajectory
     let initial_position = if page.is_none() {
         if let Some(target) = &focus_step {
             let sql=format!("select {EVENT_TIME}::text event_time,s.id step_id,t.id record_id {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} and ({EVENT_TIME},s.id,t.id)<($3::numeric,$4::uuid,$5::uuid) order by {EVENT_TIME} desc,s.id desc,t.id desc limit 1");
-            sqlx::query(&sql)
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(app)
                 .bind(conversation)
                 .bind(&target.timestamp)
@@ -502,7 +503,7 @@ async fn conversation_index(
     if simple {
         // Exact source order and identities only. No restored metadata/body projection.
         let sql=format!("select s.id,s.request_id,s.event_sequence,s.observed_at,s.metadata->>'category' category,s.metadata->>'protocol' protocol,s.flow_run_id,s.node_run_id,t.id record_id,(t.parent_task_run_id is not null or t.parent_source_task_id is not null) is_subagent {MEMBERS} join client_trajectory_steps s on s.record_id=t.id where {BOUNDARY} order by {EVENT_TIME},s.id,t.id");
-        for r in sqlx::query(&sql)
+        for r in sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(app)
             .bind(conversation)
             .fetch_all(store.pool())

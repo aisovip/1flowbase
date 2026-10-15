@@ -380,12 +380,13 @@ async fn template_creation_uses_backend_code_block_default() {
             ("ui_code_template_revisions", "template_id"),
             ("ui_code_template_defaults", "template_id"),
         ] {
-            let count: i64 =
-                sqlx::query_scalar(&format!("select count(*) from {table} where {column} = $1"))
-                    .bind(Uuid::parse_str(id).unwrap())
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap();
+            let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                "select count(*) from {table} where {column} = $1"
+            )))
+            .bind(Uuid::parse_str(id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
             assert_eq!(count, 0, "deleted template must leave no rows in {table}");
         }
         let response = app

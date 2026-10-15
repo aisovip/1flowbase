@@ -599,8 +599,11 @@ async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completi
         let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws"))
             .await
             .unwrap();
-        let create =
-            Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string());
+        let create = Message::Text(
+            json!({"type":"response.create","model":"model","input":[]})
+                .to_string()
+                .into(),
+        );
         socket.send(create.clone()).await.unwrap();
         dispatches.recv().await.unwrap();
         let mut first_run = run();
@@ -620,12 +623,12 @@ async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completi
             serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert_eq!(frame["type"], "response.completed");
         socket.send(create).await.unwrap();
-        socket.send(Message::Ping(vec![42])).await.unwrap();
+        socket.send(Message::Ping(vec![42].into())).await.unwrap();
         // Pong is a causal barrier proving the queued create was consumed while
         // the real Kernel terminal remains held, without using sleeps.
         assert_eq!(
             socket.next().await.unwrap().unwrap(),
-            Message::Pong(vec![42])
+            Message::Pong(vec![42].into())
         );
         assert!(
             dispatches.try_recv().is_err(),
@@ -715,7 +718,9 @@ async fn issue_2039_server_close_flushes_terminal_and_waits_for_peer_ack() {
             .unwrap();
         socket
             .send(Message::Text(
-                json!({"type":"response.create","model":"model","input":[]}).to_string(),
+                json!({"type":"response.create","model":"model","input":[]})
+                    .to_string()
+                    .into(),
             ))
             .await
             .unwrap();

@@ -149,7 +149,7 @@ async fn insert_selected(
     // Source remains qualified public SELECT only; no commands ever target a
     // public relation. No JSON/text reserialization of bytea, originals or bodies.
     let sql = format!("insert into {}({columns}) overriding system value select {values} from {} t where ({predicate}) on conflict do nothing",qualified(schema,&table.name),qualified("public",&table.name));
-    Ok(sqlx::query(&sql)
+    Ok(sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&mut *connection)
         .await?
         .rows_affected())
@@ -163,7 +163,9 @@ async fn missing(connection: &mut PgConnection, schema: &str, fk: &ForeignKey) -
         qualified(schema, &fk.parent),
         join_columns("c", "p", &fk.child_columns, &fk.parent_columns)
     );
-    Ok(sqlx::query_scalar(&sql).fetch_one(&mut *connection).await?)
+    Ok(sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+        .fetch_one(&mut *connection)
+        .await?)
 }
 
 pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<CopyReceipt> {
@@ -251,7 +253,7 @@ pub(super) async fn copy_sample(pool: &PgPool, schema: &str, runs: &[Uuid]) -> R
             );
             let predicate = format!("exists(select 1 from {} c where {} and {}) and not exists(select 1 from {} p where {})",qualified(schema,&fk.child),nonnull("c",&fk.child_columns),join_columns("c","t",&fk.child_columns,&fk.parent_columns),qualified(schema,&fk.parent),join_columns("p","t",&fk.parent_columns,&fk.parent_columns));
             if fk.parent == "flow_runs" {
-                let forbidden: i64 = sqlx::query_scalar(&format!("select count(*) from public.flow_runs t where ({predicate}) and not(t.id=any({}))",run_array(runs))).fetch_one(&mut *tx).await?;
+                let forbidden: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from public.flow_runs t where ({predicate}) and not(t.id=any({}))",run_array(runs)))).fetch_one(&mut *tx).await?;
                 ensure!(
                     forbidden == 0,
                     "finite closure requires an additional unapproved flow run"
@@ -352,10 +354,10 @@ async fn audit_connection(
     runs: &[Uuid],
 ) -> Result<()> {
     let ids = run_array(runs);
-    let counts: (i64, i64) = sqlx::query_as(&format!(
+    let counts: (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select count(*),count(*) filter(where not(id=any({ids}))) from {}",
         qualified(schema, "flow_runs")
-    ))
+    )))
     .fetch_one(&mut *connection)
     .await?;
     ensure!(
@@ -364,7 +366,7 @@ async fn audit_connection(
     );
     for table in tables(connection, schema).await? {
         if table.columns.iter().any(|c| c == "flow_run_id") {
-            let outside:i64=sqlx::query_scalar(&format!("select count(*) from {} where flow_run_id is not null and not(flow_run_id::text=any({ids}::text[]))",qualified(schema,&table.name))).fetch_one(&mut *connection).await?;
+            let outside:i64=sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {} where flow_run_id is not null and not(flow_run_id::text=any({ids}::text[]))",qualified(schema,&table.name)))).fetch_one(&mut *connection).await?;
             ensure!(
                 outside == 0,
                 "associated table has unapproved run owner: {}",
@@ -372,17 +374,17 @@ async fn audit_connection(
             );
         }
     }
-    let outside_tasks: i64 = sqlx::query_scalar(&format!(
+    let outside_tasks: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*) from {} where not(member_run_ids <@ {ids})",
         qualified(schema, "application_run_log_tasks")
-    ))
+    )))
     .fetch_one(&mut *connection)
     .await?;
     ensure!(
         outside_tasks == 0,
         "task member_run_ids exceed exact allowlist"
     );
-    let archive_owners:i64=sqlx::query_scalar(&format!("select count(*) from {} h left join {} c using(request_id) where c.request_id is null or h.flow_run_id is distinct from c.flow_run_id",qualified(schema,"client_trajectory_archive_heads"),qualified(schema,"client_trajectory_captures"))).fetch_one(&mut *connection).await?;
+    let archive_owners:i64=sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {} h left join {} c using(request_id) where c.request_id is null or h.flow_run_id is distinct from c.flow_run_id",qualified(schema,"client_trajectory_archive_heads"),qualified(schema,"client_trajectory_captures")))).fetch_one(&mut *connection).await?;
     ensure!(
         archive_owners == 0,
         "archive/capture request ownership mismatch"

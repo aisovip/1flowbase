@@ -306,8 +306,11 @@ pub(crate) async fn settle_credit_in_transaction(
     let account_id: Uuid = session.try_get("account_id")?;
     if session.try_get::<String, _>("status")? == "settled" {
         let row = sqlx::query(
-            &(CREDIT_LEDGER_SELECT.to_owned()
-                + " where billing_session_id=$1 and transaction_type='settle'"),
+            // SQL safety: SQL combines static ledger/pricing projections and column lists; monetary values remain bound.
+            sqlx::AssertSqlSafe(
+                CREDIT_LEDGER_SELECT.to_owned()
+                    + " where billing_session_id=$1 and transaction_type='settle'",
+            ),
         )
         .bind(input.billing_session_id)
         .fetch_one(&mut **tx)
@@ -350,7 +353,7 @@ pub(crate) async fn settle_credit_in_transaction(
     let reserved_after: String = account.try_get("reserved")?;
     let ledger_id = Uuid::now_v7();
     let key = format!("settle:{}", input.billing_session_id);
-    let ledger=sqlx::query(&(format!(r#"insert into runtime_credit_ledger
+    let ledger=sqlx::query(sqlx::AssertSqlSafe(format!(r#"insert into runtime_credit_ledger
         (id,transaction_id,account_id,workspace_id,user_id,billing_session_id,cost_ledger_id,transaction_type,
          amount,balance_after,reserved_after,credit_unit,reason,idempotency_key,status,metadata)
         values ($1,$2,$3,$4,$5,$6,$7,'settle',$8::numeric,$9::numeric,$10::numeric,'USD','model_token_usage',$11,'completed',$12)
@@ -425,10 +428,12 @@ impl BillingRepository for PgControlPlaneStore {
     }
 
     async fn get_pricing_rule(&self, id: Uuid) -> Result<Option<PricingRule>> {
-        let row = sqlx::query(&(PRICING_SELECT.to_owned() + " where id = $1"))
-            .bind(id)
-            .fetch_optional(self.pool())
-            .await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(
+            PRICING_SELECT.to_owned() + " where id = $1",
+        ))
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?;
         row.map(pricing_rule).transpose()
     }
 
@@ -438,8 +443,8 @@ impl BillingRepository for PgControlPlaneStore {
         upstream_model_id: &str,
         at: OffsetDateTime,
     ) -> Result<Vec<PricingRule>> {
-        let rows = sqlx::query(
-            &(PRICING_SELECT.to_owned()
+        let rows = sqlx::query(sqlx::AssertSqlSafe(
+            PRICING_SELECT.to_owned()
                 + r#"
             where (
                     (provider_code = $1 and upstream_model_id = $2)
@@ -447,8 +452,8 @@ impl BillingRepository for PgControlPlaneStore {
                   )
               and enabled = true
               and effective_from <= $3 and (effective_to is null or effective_to > $3)
-            order by priority desc, effective_from desc, id"#),
-        )
+            order by priority desc, effective_from desc, id"#,
+        ))
         .bind(provider_code)
         .bind(upstream_model_id)
         .bind(at)
@@ -462,15 +467,15 @@ impl BillingRepository for PgControlPlaneStore {
         upstream_model_id: &str,
         at: OffsetDateTime,
     ) -> Result<Vec<PricingRule>> {
-        let rows = sqlx::query(
-            &(PRICING_SELECT.to_owned()
+        let rows = sqlx::query(sqlx::AssertSqlSafe(
+            PRICING_SELECT.to_owned()
                 + r#" where (upstream_model_id = $1
                     or (provider_code = 'zero' and upstream_model_id = 'any'))
                 and enabled = true
                 and effective_from <= $2 and (effective_to is null or effective_to > $2)
                 order by case when upstream_model_id = $1 then 0 else 1 end,
-                    provider_code, priority desc, effective_from desc, id"#),
-        )
+                    provider_code, priority desc, effective_from desc, id"#,
+        ))
         .bind(upstream_model_id)
         .bind(at)
         .fetch_all(self.pool())
@@ -682,9 +687,9 @@ impl BillingRepository for PgControlPlaneStore {
             charge_enabled_default,
         )
         .await?;
-        if let Some(row) = sqlx::query(
-            &(CREDIT_LEDGER_SELECT.to_owned() + " where account_id=$1 and idempotency_key=$2"),
-        )
+        if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(
+            CREDIT_LEDGER_SELECT.to_owned() + " where account_id=$1 and idempotency_key=$2",
+        ))
         .bind(account.id)
         .bind(&input.idempotency_key)
         .fetch_optional(&mut *tx)
@@ -722,7 +727,7 @@ impl BillingRepository for PgControlPlaneStore {
         let reserved: String = row.try_get("reserved_amount")?;
         let ledger_id = Uuid::now_v7();
         let transaction_id = Uuid::now_v7();
-        let ledger = sqlx::query(&(format!(r#"insert into runtime_credit_ledger
+        let ledger = sqlx::query(sqlx::AssertSqlSafe(format!(r#"insert into runtime_credit_ledger
             (id,transaction_id,account_id,workspace_id,user_id,actor_user_id,actor_plugin_id,
              transaction_type,amount,balance_after,reserved_after,credit_unit,reason,source_type,
              source_id,idempotency_key,status,metadata)
@@ -887,7 +892,7 @@ impl BillingRepository for PgControlPlaneStore {
         let reserved_after: String = account.try_get("reserved")?;
         let ledger_id = Uuid::now_v7();
         let key = format!("release:{billing_session_id}");
-        let ledger=sqlx::query(&(format!(r#"insert into runtime_credit_ledger
+        let ledger=sqlx::query(sqlx::AssertSqlSafe(format!(r#"insert into runtime_credit_ledger
             (id,transaction_id,account_id,workspace_id,user_id,billing_session_id,transaction_type,amount,balance_after,reserved_after,credit_unit,reason,idempotency_key,status)
             values ($1,$2,$3,$4,$5,$6,'release',0,$7::numeric,$8::numeric,'USD',$9,$10,'completed') returning {}"#,CREDIT_LEDGER_COLUMNS)))
             .bind(ledger_id).bind(Uuid::now_v7()).bind(account_id).bind(workspace_id).bind(user_id).bind(billing_session_id)

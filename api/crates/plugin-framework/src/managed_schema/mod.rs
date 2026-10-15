@@ -268,7 +268,7 @@ fn reject_reserved(field: &str) -> Result<(), ManagedSchemaCompilationError> {
 
 fn owner_prefix(owner_id: &str) -> String {
     let digest = Sha256::digest(owner_id.as_bytes());
-    format!("{digest:x}")[..12].to_string()
+    format!("{:x}", base16ct::HexDisplay(&digest))[..12].to_string()
 }
 
 fn bounded_identifier(value: &str) -> String {
@@ -278,5 +278,5 @@ fn bounded_identifier(value: &str) -> String {
 fn fingerprint(owner: &PluginSchemaOwner, entries: &[ManagedSchemaPlanEntry]) -> String {
     let canonical =
         serde_json::to_vec(&(owner, entries)).expect("managed schema plan is always serializable");
-    format!("{:x}", Sha256::digest(canonical))
+    format!("{:x}", base16ct::HexDisplay(&Sha256::digest(canonical)))
 }

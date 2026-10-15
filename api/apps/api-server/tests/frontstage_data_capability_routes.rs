@@ -12,10 +12,7 @@ use api_server::{
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, RuntimeHostSystemPort},
 };
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
@@ -143,9 +140,9 @@ async fn fixture_state() -> (
     .await
     .unwrap();
     let store = durable.store.clone();
-    let salt = SaltString::generate(&mut rand_core::OsRng);
+
     let root_password_hash = Argon2::default()
-        .hash_password(config.bootstrap_root_password.as_bytes(), &salt)
+        .hash_password(config.bootstrap_root_password.as_bytes())
         .unwrap()
         .to_string();
     let bootstrap = BootstrapService::new(store.clone())

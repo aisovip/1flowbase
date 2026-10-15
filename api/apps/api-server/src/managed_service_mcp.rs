@@ -225,7 +225,7 @@ pub(crate) fn append_service(
             } else {
                 McpRiskLevel::High
             },
-            des_id: format!("managed:{digest:x}"),
+            des_id: format!("managed:{:x}", base16ct::HexDisplay(&digest)),
             des_id_required: false,
             status: McpToolStatus::Enabled,
             revision: 1,

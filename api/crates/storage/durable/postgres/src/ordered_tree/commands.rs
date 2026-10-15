@@ -223,9 +223,10 @@ pub(crate) async fn move_ordered_tree_node_in_transaction(
     )
     .await?;
 
-    let result = sqlx::query(&format!(
+    // SQL safety: Interpolated table names pass quote_identifier; node, scope and rank values remain bound.
+    let result = sqlx::query(sqlx::AssertSqlSafe(format!(
         "update {table_name} set parent_id = $1, sibling_rank = $2, updated_by = $3, updated_at = now() where scope_id = $4 and tree_partition_id = $5 and id = $6"
-    ))
+    )))
     .bind(position.parent_id)
     .bind(sibling_rank.as_str())
     .bind(nullable_actor(input.actor_user_id))
@@ -266,9 +267,9 @@ pub(crate) async fn delete_ordered_tree_leaf_in_transaction(
     {
         return Ok(false);
     }
-    let has_children: bool = sqlx::query_scalar(&format!(
+    let has_children: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3)"
-    ))
+    )))
     .bind(input.scope_id)
     .bind(input.tree_partition_id)
     .bind(input.node_id)
@@ -277,9 +278,9 @@ pub(crate) async fn delete_ordered_tree_leaf_in_transaction(
     if has_children {
         return Err(OrderedTreeCommandError::TreeNodeHasChildren.into());
     }
-    let result = sqlx::query(&format!(
+    let result = sqlx::query(sqlx::AssertSqlSafe(format!(
         "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
-    ))
+    )))
     .bind(input.scope_id)
     .bind(input.tree_partition_id)
     .bind(input.node_id)
@@ -314,9 +315,9 @@ pub(crate) async fn delete_ordered_tree_subtree_in_transaction(
     let table_name = quote_identifier(&metadata.physical_table_name)?;
     let mut deleted_count = 0_u64;
     for node_id in snapshot.node_ids_child_before_parent().iter().copied() {
-        let result = sqlx::query(&format!(
+        let result = sqlx::query(sqlx::AssertSqlSafe(format!(
             "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
-        ))
+        )))
         .bind(input.scope_id)
         .bind(input.tree_partition_id)
         .bind(node_id)
@@ -356,7 +357,7 @@ async fn load_ordered_tree_subtree_snapshot(
     tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<OrderedTreeSubtreeSnapshot> {
-    let node_ids_child_before_parent: Vec<Uuid> = sqlx::query_scalar(&format!(
+    let node_ids_child_before_parent: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         r#"
         select node.id from {table_name} node
         join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
@@ -364,7 +365,7 @@ async fn load_ordered_tree_subtree_snapshot(
           and ARRAY[node.tree_path] OPERATOR(public.<@) root.tree_path
         order by public.nlevel(node.tree_path) desc, node.id
         "#
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)
@@ -433,9 +434,9 @@ async fn node_exists(
     tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<bool> {
-    let row: Option<Uuid> = sqlx::query_scalar(&format!(
+    let row: Option<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select id from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3 for update"
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)
@@ -472,7 +473,7 @@ async fn ensure_acyclic_move(
     let Some(new_parent_id) = new_parent_id else {
         return Ok(());
     };
-    let creates_cycle: bool = sqlx::query_scalar(&format!(
+    let creates_cycle: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         r#"
         select exists(
             select 1 from {table_name} parent
@@ -481,7 +482,7 @@ async fn ensure_acyclic_move(
               and ARRAY[parent.tree_path] OPERATOR(public.<@) node.tree_path
         )
         "#
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(new_parent_id)
@@ -540,9 +541,9 @@ async fn ensure_anchor_group(
     let Some(anchor_id) = position.before_id.or(position.after_id) else {
         return Ok(());
     };
-    let anchor_parent: Option<Option<Uuid>> = sqlx::query_scalar(&format!(
+    let anchor_parent: Option<Option<Uuid>> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select parent_id from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3 for update"
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(anchor_id)
@@ -591,9 +592,9 @@ async fn load_siblings(
     parent_id: Option<Uuid>,
     excluded_node_id: Option<Uuid>,
 ) -> Result<Vec<Sibling>> {
-    let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select id, sibling_rank from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id is not distinct from $3 and ($4::uuid is null or id <> $4) order by sibling_rank collate \"C\", id for update"
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(parent_id)
@@ -619,9 +620,9 @@ async fn rebalance_siblings(
 ) -> Result<()> {
     let replacements = rebalance(siblings.len())?;
     for sibling in siblings.iter() {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "update {table_name} set sibling_rank = $1 where scope_id = $2 and tree_partition_id = $3 and id = $4"
-        ))
+        )))
         .bind(format!("~{}", sibling.id.simple()))
         .bind(scope_id)
         .bind(tree_partition_id)
@@ -630,9 +631,9 @@ async fn rebalance_siblings(
         .await?;
     }
     for (sibling, replacement) in siblings.iter_mut().zip(replacements) {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "update {table_name} set sibling_rank = $1 where scope_id = $2 and tree_partition_id = $3 and id = $4"
-        ))
+        )))
         .bind(replacement.as_str())
         .bind(scope_id)
         .bind(tree_partition_id)

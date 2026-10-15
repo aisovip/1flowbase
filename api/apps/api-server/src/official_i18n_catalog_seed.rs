@@ -98,7 +98,10 @@ pub(crate) fn inspect_catalog_seed(seed_bytes: &[u8]) -> Result<CatalogSeedInspe
     Ok(CatalogSeedInspection {
         catalog_version: CatalogVersion::new(seed.manifest.catalog_version)?,
         semantic_sha256: CatalogDigest::new(seed.manifest.semantic_sha256)?,
-        seed_sha256: CatalogDigest::new(format!("sha256:{:x}", Sha256::digest(seed_bytes)))?,
+        seed_sha256: CatalogDigest::new(format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(seed_bytes))
+        ))?,
     })
 }
 
@@ -108,7 +111,10 @@ pub(crate) fn decode_downloaded_catalog_seed(
 ) -> Result<VerifiedOfficialCatalogSeed> {
     let seed: CatalogSeed =
         serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
-    let actual_seed_sha256 = format!("sha256:{:x}", Sha256::digest(seed_bytes));
+    let actual_seed_sha256 = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(seed_bytes))
+    );
     if actual_seed_sha256 != expected.seed_sha256.as_str() {
         bail!("official Seed asset checksum mismatch");
     }
@@ -365,7 +371,10 @@ fn digest_stable_json(value: &Value) -> Result<String> {
 fn digest_canonical_json(value: &Value) -> Result<String> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    Ok(format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(bytes))
+    ))
 }
 
 fn sort_json(value: &Value) -> Result<Value> {

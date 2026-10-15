@@ -51,7 +51,10 @@ async fn create_runtime_block(
 }
 
 fn source_sha256(source: &str) -> String {
-    format!("{:x}", Sha256::digest(source.as_bytes()))
+    format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(source.as_bytes()))
+    )
 }
 
 fn assert_error(payload: &Value, code: &str) {

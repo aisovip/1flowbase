@@ -249,7 +249,7 @@ async fn mcp_bundle_library_routes_require_session_and_reject_missing_csrf_as_un
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn bundle_zip(interface_id: &str, source_version: &str, duplicate_binding: bool) -> Vec<u8> {

@@ -52,7 +52,7 @@ impl ManagedWorkers {
         let deadline_unix_ms = i64::try_from(now_ms + i128::from(budget))
             .map_err(|_| invalid("managed event deadline overflow"))?;
         let sequence = NEXT_EVENT_CALL
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .map_err(|_| invalid("managed event call sequence exhausted"))?;
         let frame = ManagedEventHostFrame {
             protocol: MANAGED_EVENT_PROTOCOL_V2.into(),

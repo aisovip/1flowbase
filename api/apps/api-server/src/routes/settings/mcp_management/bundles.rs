@@ -784,7 +784,10 @@ pub(crate) fn parse_bundle_archive(
         let content = entries
             .get(&file.path)
             .ok_or(ControlPlaneError::InvalidInput("mcp_bundle_files"))?;
-        let actual_sha256 = format!("sha256:{:x}", Sha256::digest(content));
+        let actual_sha256 = format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(content))
+        );
         if actual_sha256 != file.sha256 {
             return Err(ControlPlaneError::InvalidInput("mcp_bundle_checksum"));
         }
@@ -851,7 +854,10 @@ pub(crate) fn build_bundle_archive(
         .map(|(path, content, kind)| domain::McpBundleFile {
             path: path.clone(),
             kind: *kind,
-            sha256: format!("sha256:{:x}", Sha256::digest(content)),
+            sha256: format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&Sha256::digest(content))
+            ),
         })
         .collect();
     let manifest = serde_json::to_vec_pretty(&package.manifest)
@@ -891,7 +897,7 @@ fn bundle_file_kind_rank(kind: domain::McpBundleFileKind) -> u8 {
 fn bundle_file_path(directory: &str, stable_id: &str) -> String {
     format!(
         "{directory}/{:x}.json",
-        Sha256::digest(stable_id.as_bytes())
+        base16ct::HexDisplay(&Sha256::digest(stable_id.as_bytes()))
     )
 }
 

@@ -18,7 +18,7 @@ pub fn provider_media_content_ref(block: &Value) -> Option<String> {
 
     let canonical = canonical_json(block);
     let encoded = serde_json::to_vec(&canonical).ok()?;
-    let digest = format!("{:x}", Sha256::digest(encoded));
+    let digest = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(encoded)));
     Some(format!(
         "{MEDIA_REF_PREFIX}{}",
         &digest[..MEDIA_REF_DIGEST_LEN]

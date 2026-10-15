@@ -43,10 +43,10 @@ pub(super) async fn snapshot(
             row.try_get::<String, _>("kind")? == "r",
             "physical replay requires explicit partition costing: {name}"
         );
-        let (count, values): (i64, i64) = sqlx::query_as(&format!(
+        let (count, values): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "select count(*),coalesce(sum(pg_column_size(t)),0)::bigint from {} t",
             qualified(schema, &name)
-        ))
+        )))
         .fetch_one(pool)
         .await?;
         let total: i64 = row.try_get("total_bytes")?;
@@ -111,10 +111,10 @@ pub(super) async fn compact_isolated_layout(
         // Same full finite closure policy on both samples and their own empty schemas.
         // VACUUM FULL rebuilds heap/TOAST and the table's indexes. It is an
         // isolated-layout measurement only, never a live-data reclaim claim.
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "vacuum (full,analyze) {}",
             qualified(schema, &name)
-        ))
+        )))
         .execute(&mut *connection)
         .await?;
     }

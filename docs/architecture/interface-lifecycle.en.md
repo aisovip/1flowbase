@@ -235,3 +235,9 @@ Existing entry points include [HTTP/MCP paired fixtures](../../api/apps/api-serv
 ## AI Native traces and protocol diagnostics
 
 Mapping, AI Native and provider plugins retain their execution and translation responsibilities. Capture switches, completeness, semantic/raw readers and historical sources are maintained in [AI Gateway evidence](ai-gateway-observation.en.md#ai-native-traces-and-protocol-diagnostics).
+
+### Preserve protocols and fingerprints during framework upgrades
+
+HTTP framework path syntax belongs to the protocol adapter. Canonical Interface, authorization catalogs and frozen bindings retain their canonical route templates; the assembly boundary translates them to Axum `{parameter}` / `{*rest}` mount syntax. Framework migration must preserve external URLs, authorization identity and invocation plans. Exercise real parameter and wildcard extraction instead of relying only on catalog string comparisons.
+
+Dependency updates preserve the existing SHA-256 inputs, digest bytes and lowercase hexadecimal representation of packages, registries, bindings, plans, backups and key fingerprints. The original owner retains normalization and algorithm semantics; a new digest array type only requires an encoding adaptation. Password PHC strings, AEAD nonce/AAD/ciphertext and stored signatures remain compatible, with historical fixtures and boundary regressions providing evidence.

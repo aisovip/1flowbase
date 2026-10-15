@@ -380,7 +380,7 @@ async fn client_semantic_locator_hash_and_content_scope_negatives_reject_wrong_v
     let target = json!("collision target");
     let hash = format!(
         "sha256:{:x}",
-        Sha256::digest(serde_json::to_vec(&target).unwrap())
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&target).unwrap()))
     );
     sqlx::query("insert into runtime_canonical_contents(id,scope_id,application_id,content_hash,content,byte_size) select $1,scope_id,application_id,$2,$3,$4 from flow_runs where id=$5")
         .bind(Uuid::now_v7()).bind(hash).bind(json!("wrong immutable original"))

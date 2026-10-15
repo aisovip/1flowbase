@@ -5,7 +5,8 @@ use crate::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use control_plane_contracts::ports::mcp_oauth::{McpOAuthGrant, McpOAuthRepository};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -88,7 +89,7 @@ pub fn hash(value: &str) -> String {
 }
 pub fn random_token() -> String {
     let mut bytes = [0; 32];
-    OsRng.fill_bytes(&mut bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 pub fn now() -> i64 {

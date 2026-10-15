@@ -57,7 +57,7 @@ async fn count(pool: &sqlx::PgPool, table: &str) -> i64 {
     assert!(table
         .bytes()
         .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
-    sqlx::query_scalar(&format!("select count(*) from {table}"))
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
         .fetch_one(pool)
         .await
         .unwrap()
@@ -373,7 +373,7 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         assert!(table
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
-        sqlx::query(&format!("create trigger count_effect after insert or update on {table} for each row execute function count_effect_mutation()")).execute(&pool).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("create trigger count_effect after insert or update on {table} for each row execute function count_effect_mutation()"))).execute(&pool).await.unwrap();
     }
     let barrier = Arc::new(tokio::sync::Barrier::new(2));
     let first = async {
@@ -399,8 +399,8 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     assert_eq!(count(&pool, &tables[1].1).await, 1);
     assert_eq!(count(&pool, "plugin_data_idempotency_receipts").await, 2);
     for (_, table) in &tables {
-        let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(&format!(
-            "select model_id,status,result_reference from {table}"
+        let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(sqlx::AssertSqlSafe(
+            format!("select model_id,status,result_reference from {table}"),
         ))
         .fetch_all(&pool)
         .await

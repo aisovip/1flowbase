@@ -428,7 +428,7 @@ async fn count_archive_upload_chunks(pool: &sqlx::PgPool, session_id: &str) -> i
 }
 
 fn sha256_bytes_for_test(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn read_zip_entries(body: &[u8]) -> Vec<(String, Vec<u8>)> {
@@ -439,7 +439,7 @@ fn read_zip_entries(body: &[u8]) -> Vec<(String, Vec<u8>)> {
         let mut file = archive.by_index(index).unwrap();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
-        entries.push((file.name().to_string(), contents));
+        entries.push((file.name().unwrap().into_owned(), contents));
     }
 
     entries

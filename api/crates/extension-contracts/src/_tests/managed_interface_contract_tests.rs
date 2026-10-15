@@ -148,3 +148,33 @@ fn root_2014_managed_observers_cannot_deny_patch_or_replace_result() {
         assert!(response.validate_for(&host).is_err());
     }
 }
+
+#[test]
+fn managed_fingerprints_preserve_standard_sha256_hex_vectors() {
+    for (input, expected) in [
+        (
+            b"".as_slice(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ),
+        (
+            b"abc".as_slice(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ),
+    ] {
+        let expected = format!("sha256:{expected}");
+        assert_eq!(
+            ManagedArtifactFingerprint::from_bytes(input).as_str(),
+            expected
+        );
+        assert_eq!(
+            ManagedBindingFingerprint::from_bytes(input).as_str(),
+            expected
+        );
+        assert!(serde_json::from_value::<ManagedArtifactFingerprint>(json!(
+            expected.to_uppercase()
+        ))
+        .is_err());
+        let decoded: ManagedArtifactFingerprint = serde_json::from_value(json!(expected)).unwrap();
+        assert_eq!(decoded.as_str(), expected);
+    }
+}

@@ -268,9 +268,10 @@ async fn apply_operation(
                 }
             } else {
                 let table = quote_identifier(physical_table)?;
-                sqlx::query(&format!(
+                // SQL safety: Names pass quote_identifier; PostgreSQL types and nullability come from closed internal mappings.
+                sqlx::query(sqlx::AssertSqlSafe(format!(
                     "create table {table} (id uuid primary key, scope_id uuid not null, created_at timestamptz not null default now(), updated_at timestamptz not null default now())"
-                ))
+                )))
                 .execute(&mut **transaction)
                 .await?;
             }
@@ -417,10 +418,10 @@ async fn ensure_column(
     let table = quote_identifier(table)?;
     let column = quote_identifier(column)?;
     let nullability = if nullable { "" } else { " not null" };
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "alter table {table} add column {column} {}{nullability}",
         postgres_type(field_type)
-    ))
+    )))
     .execute(&mut **transaction)
     .await?;
     Ok(ManagedSchemaPreviewAction::Create)

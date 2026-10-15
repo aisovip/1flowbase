@@ -155,7 +155,7 @@ async fn empty_file_has_verified_eof_and_close_releases_reader() {
         .await
         .unwrap();
     assert!(
-        matches!(response, FileReadResponse::Chunk { eof:true, sha256:Some(hash), .. } if hash == format!("{:x}",Sha256::digest([])))
+        matches!(response, FileReadResponse::Chunk { eof:true, sha256:Some(hash), .. } if hash == format!("{:x}",base16ct::HexDisplay(&Sha256::digest([]))))
     );
     call.execute(serde_json::json!({"operation":"close","ticket":ticket}))
         .await

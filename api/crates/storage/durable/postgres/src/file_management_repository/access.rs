@@ -21,7 +21,8 @@ pub(super) async fn get_file_record_for_access(
     let statement = format!(
         "select to_jsonb(record) as record from {table} record where id = $1 and scope_id = $2"
     );
-    let row = sqlx::query(&statement)
+    // SQL safety: The physical table name passes quote_identifier; record and scope values remain bound.
+    let row = sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
         .bind(record_id)
         .bind(scope_id)
         .fetch_optional(store.pool())

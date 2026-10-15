@@ -223,8 +223,11 @@ async fn portable_manifest_resolves_without_the_target_environment_key() {
     derivation.update(b"1flowbase/system-backup/key/v1\0");
     derivation.update(source_master_key);
     let backup_key = derivation.finalize().to_vec();
-    let backup_fingerprint =
-        KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&backup_key))).unwrap();
+    let backup_fingerprint = KeyFingerprint::try_from(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(&backup_key))
+    ))
+    .unwrap();
     let manifest = BackupManifest::try_new_portable(
         BackupSetId::new(),
         OffsetDateTime::UNIX_EPOCH,

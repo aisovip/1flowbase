@@ -86,7 +86,8 @@ async fn load_template(
     template_id: Uuid,
 ) -> Result<Option<UiCodeTemplate>> {
     let query = format!("{TEMPLATE_SELECT} where t.id = $1");
-    sqlx::query(&query)
+    // SQL safety: SQL combines only static template/projection fragments; component and template data remain bound.
+    sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
         .bind(template_id)
         .fetch_optional(&mut **tx)
         .await?
@@ -317,7 +318,7 @@ impl UiManagementRepository for PgControlPlaneStore {
     }
     async fn list_ui_code_templates(&self) -> Result<Vec<UiCodeTemplate>> {
         let query = format!("{TEMPLATE_SELECT} order by t.name, t.id");
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .fetch_all(self.pool())
             .await?
             .into_iter()
@@ -464,7 +465,7 @@ impl UiManagementRepository for PgControlPlaneStore {
             "{} where scope_id = $1 order by name, component_code",
             component_record_select()
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(SYSTEM_SCOPE_ID)
             .fetch_all(self.pool())
             .await?
@@ -478,7 +479,7 @@ impl UiManagementRepository for PgControlPlaneStore {
             "{} where scope_id = $1 and id = $2",
             component_record_select()
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(SYSTEM_SCOPE_ID)
             .bind(id)
             .fetch_optional(self.pool())
@@ -512,7 +513,7 @@ impl UiManagementRepository for PgControlPlaneStore {
             values ($1,$2,$3,$4,$5,$6,$7,'custom',$8,$9,$10,$11,$12,$13,$14,$14)
             returning {COMPONENT_RECORD_COLUMNS}"#
         );
-        let row = sqlx::query(&query)
+        let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(id)
             .bind(SYSTEM_SCOPE_ID)
             .bind(&input.component_code)
@@ -578,7 +579,7 @@ impl UiManagementRepository for PgControlPlaneStore {
             upstream_version=$10, version=$11, keywords=$12, updated_by=$13, updated_at=now()
             where scope_id=$1 and id=$2 and origin='custom' returning {COMPONENT_RECORD_COLUMNS}"#
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(SYSTEM_SCOPE_ID)
             .bind(id)
             .bind(&patch.name)
@@ -628,7 +629,7 @@ impl UiComponentCatalogRepository for PgControlPlaneStore {
             "{} where scope_id=$1 and origin='official' order by source, \"group\", component_code",
             component_record_select()
         );
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(SYSTEM_SCOPE_ID)
             .fetch_all(self.pool())
             .await?

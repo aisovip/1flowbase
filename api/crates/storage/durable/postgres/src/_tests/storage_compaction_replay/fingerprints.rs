@@ -32,7 +32,7 @@ impl Recorder {
     fn finish(self) -> Signature {
         Signature {
             entries: self.entries,
-            sha256: format!("{:x}", self.digest.finalize()),
+            sha256: format!("{:x}", base16ct::HexDisplay(&self.digest.finalize())),
         }
     }
 }
@@ -167,7 +167,7 @@ pub(super) async fn archive_anchors(
     runs: &[Uuid],
 ) -> Result<Signature> {
     let sql = format!("select jsonb_build_object('part_id',p.part_id,'request_id',p.request_id,'first_sequence',p.first_sequence,'last_sequence',p.last_sequence) anchor from {} p join {} h using(request_id) where h.flow_run_id=any({}) order by p.request_id,p.first_sequence,p.part_id",qualified(schema,"client_trajectory_archive_parts"),qualified(schema,"client_trajectory_archive_heads"),run_array(runs));
-    let mut stream = sqlx::query(&sql).fetch(pool);
+    let mut stream = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).fetch(pool);
     let mut recorder = Recorder::default();
     while let Some(row) = stream.try_next().await? {
         let anchor: Value = row.try_get("anchor")?;
@@ -189,11 +189,14 @@ pub(super) async fn events(
     sqlx::query("set transaction read only")
         .execute(&mut *tx)
         .await?;
-    sqlx::query(&format!("set local search_path to {}", ident(schema)))
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "set local search_path to {}",
+        ident(schema)
+    )))
+    .execute(&mut *tx)
+    .await?;
     let sql=format!("select to_jsonb(e)-array['payload','raw_json_payloads','observation_body_content_id','observation_body_manifest_id']::text[] headers,{}.runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) original from {} e where e.flow_run_id=any({}) order by e.flow_run_id,e.sequence,e.id",ident(schema),qualified(schema,"runtime_events"),run_array(runs));
-    let mut rows = sqlx::query(&sql).fetch(&mut *tx);
+    let mut rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).fetch(&mut *tx);
     let mut originals = Recorder::default();
     let mut native = Recorder::default();
     while let Some(row) = rows.try_next().await? {
@@ -246,7 +249,7 @@ pub(super) async fn retained(pool: &PgPool, schema: &str, tables: &[Table]) -> R
             "select to_jsonb(v) value from (select {columns} from {}) v",
             qualified(schema, &table.name)
         );
-        let mut stream = sqlx::query(&sql).fetch(pool);
+        let mut stream = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).fetch(pool);
         let mut hashes = Vec::new();
         let mut column_hashes: BTreeMap<String, Vec<Vec<u8>>> = table
             .columns

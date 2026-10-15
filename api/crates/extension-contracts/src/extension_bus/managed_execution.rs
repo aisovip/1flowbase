@@ -44,7 +44,10 @@ macro_rules! managed_fingerprint {
         pub struct $name(String);
         impl $name {
             pub fn from_bytes(bytes: &[u8]) -> Self {
-                Self(format!("sha256:{:x}", Sha256::digest(bytes)))
+                Self(format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(bytes))
+                ))
             }
             pub fn as_str(&self) -> &str {
                 &self.0

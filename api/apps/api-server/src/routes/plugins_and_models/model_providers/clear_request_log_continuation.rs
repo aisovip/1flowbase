@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::errors::ControlPlaneError;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -82,7 +82,7 @@ pub(super) fn verify(
 
 fn signature(master_secret: &str, payload: &[u8]) -> Result<Vec<u8>, ApiError> {
     let key = derive_key(master_secret)?;
-    let mut mac = <HmacSha256 as Mac>::new_from_slice(&key)
+    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&key)
         .map_err(|_| anyhow::anyhow!("request log continuation signing key is invalid"))?;
     mac.update(SIGNING_CONTEXT);
     mac.update(payload);
@@ -91,7 +91,7 @@ fn signature(master_secret: &str, payload: &[u8]) -> Result<Vec<u8>, ApiError> {
 
 fn verify_signature(master_secret: &str, payload: &[u8], signature: &[u8]) -> Result<(), ApiError> {
     let key = derive_key(master_secret)?;
-    let mut mac = <HmacSha256 as Mac>::new_from_slice(&key)
+    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&key)
         .map_err(|_| anyhow::anyhow!("request log continuation signing key is invalid"))?;
     mac.update(SIGNING_CONTEXT);
     mac.update(payload);
@@ -99,7 +99,7 @@ fn verify_signature(master_secret: &str, payload: &[u8], signature: &[u8]) -> Re
 }
 
 fn derive_key(master_secret: &str) -> Result<[u8; 32], ApiError> {
-    let mut derivation = <HmacSha256 as Mac>::new_from_slice(master_secret.as_bytes())
+    let mut derivation = <HmacSha256 as KeyInit>::new_from_slice(master_secret.as_bytes())
         .map_err(|_| anyhow::anyhow!("provider master key is invalid"))?;
     derivation.update(KEY_DERIVATION_CONTEXT);
     let derived = derivation.finalize().into_bytes();

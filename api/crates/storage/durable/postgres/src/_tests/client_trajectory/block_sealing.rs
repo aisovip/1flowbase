@@ -217,7 +217,7 @@ async fn raw_blocks_atomic_publication_faults_preserve_inline_originals_and_rece
         assert_eq!(counts, (0,2), "rollback must remove inserted block and partial locator switches");
         assert_eq!(store.append_client_trajectory_archive(&input).await.unwrap().persisted_through, 2);
         let table = if trigger.contains("on client_trajectory_archive_blocks") { "client_trajectory_archive_blocks" } else { "client_trajectory_archive_parts" };
-        sqlx::raw_sql(&format!("drop trigger fixture_block_fault on {table}")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("drop trigger fixture_block_fault on {table}"))).execute(&pool).await.unwrap();
     }
     assert_eq!(
         store

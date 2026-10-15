@@ -166,7 +166,10 @@ fn compile_graph(
     if let Some(authority) = authority {
         let canonical = serde_json::to_vec(&(fingerprint.as_str(), authority))
             .expect("typed managed authority is serializable");
-        fingerprint = ExtensionGraphFingerprint::new(format!("{:x}", Sha256::digest(canonical)));
+        fingerprint = ExtensionGraphFingerprint::new(format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(canonical))
+        ));
     }
 
     Ok(EffectiveExtensionGraph::new(

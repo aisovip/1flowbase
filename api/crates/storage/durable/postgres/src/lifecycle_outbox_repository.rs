@@ -530,7 +530,8 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         // The extra row makes truncation explicit. Ownership filtering cannot turn this window
         // into a complete-history claim when a different installation reused the contribution ID.
         let sql = format!("select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} and ($4::uuid is null or (o.event_id,d.subscriber_id COLLATE \"C\") > ($4,$5::text COLLATE \"C\")) order by o.event_id,d.subscriber_id COLLATE \"C\" limit $3");
-        let rows = sqlx::query(&sql)
+        // SQL safety: MANAGED_HISTORY_SCOPE is a static fragment; installation, cursor and ownership values remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(installation_id)
             .bind(workspace_id)
             .bind((MANAGED_DELIVERY_PAGE_LIMIT + 1) as i64)
@@ -597,7 +598,7 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
             return Ok(None);
         }
         let sql = format!("select exists(select 1 {MANAGED_HISTORY_SCOPE} and o.event_id=$3 and d.subscriber_id=$4 and o.graph_fingerprint=$5 and d.handler_id=$6 and d.handler_version=$7)");
-        let matches: bool = sqlx::query_scalar(&sql)
+        let matches: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(installation_id)
             .bind(workspace_id)
             .bind(input.event_id)
@@ -633,7 +634,7 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
             let mut transaction = self.pool().begin().await?;
             sqlx::query("set local statement_timeout = '5s'").execute(&mut *transaction).await?;
             let sql = format!("select o.graph_fingerprint,d.handler_id,d.handler_version {MANAGED_HISTORY_SCOPE} and d.status <> 'delivered' order by o.event_id,d.subscriber_id limit $3");
-            let mut rows = sqlx::query(&sql).bind(installation_id).bind(workspace_id)
+            let mut rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(installation_id).bind(workspace_id)
                 .bind((MAX_MANAGED_BACKLOG_ROWS + 1) as i64).fetch(&mut *transaction);
             let mut inspected = 0;
             while let Some(row) = rows.try_next().await? {

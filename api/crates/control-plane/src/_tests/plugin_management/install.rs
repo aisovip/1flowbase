@@ -172,7 +172,10 @@ async fn official_catalog_type_mismatch_is_rejected_before_installation() {
             minimum_host_version: "0.1.0".into(),
             source_kind: "official_registry".into(),
             file_name: "mismatched.1flowbasepkg".into(),
-            expected_checksum: format!("sha256:{:x}", Sha256::digest(&package_bytes)),
+            expected_checksum: format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&package_bytes))
+            ),
             package_bytes,
             compatibility_override: None,
             risk_override: Some(PluginRiskOverride {
@@ -775,7 +778,13 @@ async fn plugin_management_service_lists_official_catalog_and_installs_latest_re
     assert_eq!(install.installation.source_kind, "official_registry");
     assert_eq!(
         install.installation.expected_checksum.as_deref(),
-        Some(format!("sha256:{:x}", Sha256::digest(&expected_package_bytes)).as_str())
+        Some(
+            format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&expected_package_bytes))
+            )
+            .as_str()
+        )
     );
     assert_eq!(
         install.installation.signature_status,

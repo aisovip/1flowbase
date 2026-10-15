@@ -55,7 +55,7 @@
 
 ## Upstream Lint Toolchain
 
-Rust 1.99 的 `double_must_use` 会命中 `async-trait` 生成方法（参见 [上游同症状](https://github.com/wildcard/caro/issues/1498)）；本项目 trait 未声明该属性。线上 Clippy 暂固定已通过的 1.98.1，保留 `-D warnings`；编译和行为测试继续使用 stable，不批量改写 trait 或忽略项目源码 lint。上游修复后，以完整线上 Clippy 证据更新该 pin。
+编译、行为测试和 Clippy 使用当前 stable；保留项目代码 `-D warnings`。旧 async-trait 生成代码的 `double_must_use` 已由 [0.1.92](https://github.com/dtolnay/async-trait/releases/tag/0.1.92) 修复，不再为此保留 Rust 1.98.1 临时固定。工具链调整必须用候选绑定的完整线上 Clippy 证据验收；不得忽略项目自身告警。
 
 ## Hard Stops
 

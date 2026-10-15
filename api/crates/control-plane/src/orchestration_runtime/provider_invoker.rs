@@ -570,8 +570,8 @@ where
 
         // Host seals exact effective provider configuration without persisting credentials.
         let native_inference_binding = json!({
-            "provider_configuration_digest": format!("sha256:{:x}", Sha256::digest(
-                serde_json::to_vec(&input.provider_config)?)),
+            "provider_configuration_digest": format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(
+                serde_json::to_vec(&input.provider_config)?))),
             "provider_instance_id": instance.id.to_string(),
             "node_id": input.trace_context.get("node_id"),
             "provider_code": input.provider_code,
@@ -2364,7 +2364,12 @@ where
             .filter(|input| input.is_object())
             .ok_or_else(|| anyhow!("notification bindings.input must resolve to an object"))?;
         match sender
-            .send(&context.data_model.actor, crate::notifications::NotificationSource::Workflow, instance_id, input.clone())
+            .send(
+                &context.data_model.actor,
+                crate::notifications::NotificationSource::Workflow,
+                instance_id,
+                input.clone(),
+            )
             .await
         {
             Ok(result) => Ok(

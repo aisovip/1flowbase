@@ -719,7 +719,7 @@ fn pack_tar_gz(root: &Path) -> Vec<u8> {
 fn sha256_directory_tree(root: &Path) -> String {
     let mut hasher = Sha256::new();
     hash_dir_recursive(root, root, &mut hasher);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{:x}", base16ct::HexDisplay(&hasher.finalize()))
 }
 
 fn hash_dir_recursive(root: &Path, current: &Path, hasher: &mut Sha256) {

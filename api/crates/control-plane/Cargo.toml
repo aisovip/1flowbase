@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+rand.workspace = true
+base16ct.workspace = true
 flate2.workspace = true
 tar.workspace = true
 url.workspace = true
@@ -39,5 +41,5 @@ uuid.workspace = true
 runtime-core = { path = "../runtime-core" }
 
 [dev-dependencies]
-ed25519-dalek = { version = "2", features = ["pem"] }
+ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 tokio = { workspace = true, features = ["test-util"] }

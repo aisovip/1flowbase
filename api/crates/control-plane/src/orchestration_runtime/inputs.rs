@@ -41,7 +41,7 @@ pub(crate) fn build_compiled_plan_input(
 
 pub(crate) fn flow_document_hash(document: &serde_json::Value) -> String {
     let bytes = serde_json::to_vec(document).unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 pub(crate) fn flow_document_schema_version(

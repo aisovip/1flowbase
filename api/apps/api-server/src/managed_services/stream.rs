@@ -488,7 +488,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
             // Multiple frames may remain in flight; only browser subscriber ACK releases credit.
             tokio::select! {
                 _ = projection_cancel.changed() => break,
-                result = projection_out.send((Message::Text(frame),None)) => if result.is_err() { break; },
+                result = projection_out.send((Message::Text(frame.into()),None)) => if result.is_err() { break; },
             }
         }
         let _ = projection_done.send(());
@@ -548,7 +548,11 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
                 let (delivered, received) = oneshot::channel();
                 if outgoing
                     .send((
-                        Message::Text(json!({"type":"complete","output":output}).to_string()),
+                        Message::Text(
+                            json!({"type":"complete","output":output})
+                                .to_string()
+                                .into(),
+                        ),
                         Some(delivered),
                     ))
                     .await
@@ -578,7 +582,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
                 }
                 if completed.is_none() {
                     let (delivered, received) = oneshot::channel();
-                    if outgoing.send((Message::Text(json!({"type":"error","message":failure}).to_string()),Some(delivered))).await.is_ok() {
+                    if outgoing.send((Message::Text(json!({"type":"error","message":failure}).to_string().into()),Some(delivered))).await.is_ok() {
                         let _ = tokio::time::timeout(std::time::Duration::from_secs(5),received).await;
                     }
                     break;

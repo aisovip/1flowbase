@@ -686,7 +686,8 @@ async fn list_workspace_translations(
     let sql = format!(
         "select key, locale, translation from {table} where workspace_id = $1 order by key, locale"
     );
-    sqlx::query(&sql)
+    // SQL safety: Table arguments are internal static table names; translation and workspace values remain bound.
+    sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(workspace_id)
         .fetch_all(pool)
         .await?
@@ -715,7 +716,7 @@ async fn upsert_workspace_translation(
         set translation = excluded.translation, updated_at = now()
         "#
     );
-    sqlx::query(&sql)
+    sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(input.workspace_id)
         .bind(input.value.identity().key())
         .bind(input.value.locale().as_str())
@@ -740,7 +741,7 @@ async fn delete_workspace_translation(
     )
     .await?;
     let sql = format!("delete from {table} where workspace_id = $1 and key = $2 and locale = $3");
-    let deleted = sqlx::query(&sql)
+    let deleted = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(input.workspace_id)
         .bind(input.identity.key())
         .bind(input.locale.as_str())

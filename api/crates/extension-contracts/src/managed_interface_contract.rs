@@ -67,10 +67,10 @@ impl ManagedProjectionContract {
         canonical.sort_all_objects();
         let fingerprint = format!(
             "sha256:{:x}",
-            Sha256::digest(
+            base16ct::HexDisplay(&Sha256::digest(
                 serde_json::to_vec(&(&self.contract_id, &self.contract_version, canonical,))
                     .map_err(|_| invalid_schema())?
-            )
+            ))
         );
         Ok(CompiledManagedProjection {
             validator,

@@ -22,7 +22,7 @@ impl BlockCodeCache {
             "frontstage:block-source-digest:v1:{}:{}:{:x}:{}",
             node.workspace_id,
             node.page_id,
-            identity.finalize(),
+            base16ct::HexDisplay(&identity.finalize()),
             node.updated_at.unix_timestamp_nanos(),
         )
     }

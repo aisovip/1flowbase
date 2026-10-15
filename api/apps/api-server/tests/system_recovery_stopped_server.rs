@@ -10,7 +10,7 @@ use std::{
 };
 
 use api_server::system_backup::{EnvironmentBackupKeyProvider, LocalBackupRepository};
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHasher};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::{
@@ -39,7 +39,6 @@ use domain::{
     RecoveryJobState, RecoveryStepKind,
 };
 use postgres_test_support::PostgresTestDatabase;
-use rand_core::OsRng;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -658,11 +657,11 @@ impl RecoveryScenario {
             !target_exists,
             "failed compensation must not claim a target DB"
         );
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "alter database {} rename to {}",
             quote_identifier(&rollback),
             quote_identifier(target)
-        ))
+        )))
         .execute(&pool)
         .await
         .unwrap();
@@ -823,9 +822,9 @@ impl RecoveryScenario {
         .await
         .unwrap();
         let store = runtime.store;
-        let salt = SaltString::generate(&mut OsRng);
+
         let root_password_hash = Argon2::default()
-            .hash_password(b"stopped-server-password", &salt)
+            .hash_password(b"stopped-server-password")
             .unwrap()
             .to_string();
         let bootstrap = BootstrapService::new(store.clone())
@@ -861,7 +860,10 @@ impl RecoveryScenario {
         tokio::fs::write(&artifact_path, artifact_bytes)
             .await
             .unwrap();
-        let artifact_checksum = format!("sha256:{:x}", Sha256::digest(artifact_bytes));
+        let artifact_checksum = format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(artifact_bytes))
+        );
         let installation_id = Uuid::now_v7();
         ExtensionInstallationRepository::upsert_extension_installation(
             &store,
@@ -1014,9 +1016,11 @@ impl RecoveryScenario {
             storage_durable_postgres::current_migration_head().unwrap(),
             "the recovery fixture database must match the current embedded migration chain"
         );
-        let master_key_fingerprint =
-            KeyFingerprint::try_from(format!("{:x}", Sha256::digest(PROVIDER_SECRET.as_bytes())))
-                .unwrap();
+        let master_key_fingerprint = KeyFingerprint::try_from(format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(PROVIDER_SECRET.as_bytes()))
+        ))
+        .unwrap();
         if matches!(health, ScenarioHealth::NonRootTarget) {
             sqlx::query("update roles set code = 'broken_root' where code = 'root'")
                 .execute(store.pool())

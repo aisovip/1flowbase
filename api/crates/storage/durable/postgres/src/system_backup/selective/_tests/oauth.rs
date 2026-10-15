@@ -11,10 +11,10 @@ const OAUTH_TABLES: [&str; 3] = [
 async fn oauth_rows(db: &PgPool) -> BTreeMap<String, Vec<Value>> {
     let mut result = BTreeMap::new();
     for table in OAUTH_TABLES {
-        let mut rows = sqlx::query_scalar::<_, Value>(&format!(
+        let mut rows = sqlx::query_scalar::<_, Value>(sqlx::AssertSqlSafe(format!(
             "select to_jsonb(t) from {} t",
             schema::quote(table).unwrap()
-        ))
+        )))
         .fetch_all(db)
         .await
         .unwrap();

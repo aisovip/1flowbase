@@ -1988,8 +1988,11 @@ impl RegistryCompiler {
         digest.update(
             serde_json::to_vec(&schema_identity).expect("static projection schemas serialize"),
         );
-        let fingerprint = RegistryFingerprint::new(format!("sha256:{:x}", digest.finalize()))
-            .expect("schema fingerprint has a valid identity");
+        let fingerprint = RegistryFingerprint::new(format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&digest.finalize())
+        ))
+        .expect("schema fingerprint has a valid identity");
         Ok(Arc::new(CompiledInterfaceRegistry {
             managed_contracts,
             graph_fingerprint: self.graph_fingerprint,
@@ -2324,8 +2327,11 @@ fn registry_fingerprint(
                 .as_bytes(),
         );
     }
-    RegistryFingerprint::new(format!("sha256:{:x}", digest.finalize()))
-        .expect("SHA-256 registry fingerprint must be a valid identity")
+    RegistryFingerprint::new(format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&digest.finalize())
+    ))
+    .expect("SHA-256 registry fingerprint must be a valid identity")
 }
 
 fn binding_fingerprint(binding: &ProtocolBinding) -> BindingFingerprint {
@@ -2364,8 +2370,11 @@ fn binding_fingerprint(binding: &ProtocolBinding) -> BindingFingerprint {
         digest.update([0]);
         digest.update(part.as_bytes());
     }
-    BindingFingerprint::new(format!("sha256:{:x}", digest.finalize()))
-        .expect("SHA-256 binding fingerprint must be a valid identity")
+    BindingFingerprint::new(format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&digest.finalize())
+    ))
+    .expect("SHA-256 binding fingerprint must be a valid identity")
 }
 
 fn plan_fingerprint(
@@ -2402,8 +2411,11 @@ fn plan_fingerprint(
     }
     digest.update([0]);
     digest.update(extension_plan.as_str().as_bytes());
-    PlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
-        .expect("SHA-256 plan fingerprint must be a valid identity")
+    PlanFingerprint::new(format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&digest.finalize())
+    ))
+    .expect("SHA-256 plan fingerprint must be a valid identity")
 }
 
 /// Frozen explicit schema metadata from the actual selected Rust handler binding.

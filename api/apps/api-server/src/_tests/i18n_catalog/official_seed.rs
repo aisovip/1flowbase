@@ -11,7 +11,10 @@ fn ac_002_decodes_digest_verified_build_time_official_seed() {
     // Renaming backend metadata must not rewrite this asset, even with refreshed digests.
     use sha2::{Digest, Sha256};
     assert_eq!(
-        format!("{:x}", Sha256::digest(OFFICIAL_SEED_BYTES)),
+        format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(OFFICIAL_SEED_BYTES))
+        ),
         "c489ef1b7c86e71e961bd687511e1576c058535db3a78c1df6859ae768a63e04"
     );
     let release = seed.bind_to_workspace(uuid::Uuid::now_v7()).unwrap();
