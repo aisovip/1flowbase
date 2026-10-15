@@ -20,7 +20,11 @@ pub mod model_definition;
 pub mod model_provider;
 pub mod network_egress;
 pub mod plugin;
+#[cfg(feature = "responses-history-migration")]
+pub mod responses_history_migration;
 pub mod runtime;
+#[cfg(feature = "responses-history-migration")]
+pub use responses_history_migration::*;
 pub mod system_backup;
 pub mod ui_management;
 

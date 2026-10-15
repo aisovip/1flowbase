@@ -80,6 +80,8 @@ use json_storage::{
     original_optional_text, original_required_text,
 };
 mod record_mappers;
+#[cfg(feature = "responses-history-migration")]
+mod responses_history_migration;
 mod sequencing;
 
 use detail_queries::*;
