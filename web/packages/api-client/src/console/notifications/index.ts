@@ -5,7 +5,13 @@ export interface NotificationAuthorizationDescriptor {
   actions: Array<{ code: string; label: string; kind: 'qr_code' }>;
   managed_secret_keys: string[];
 }
+export interface NotificationDeliveryWindowView {
+  status: 'unknown' | 'waiting_for_message' | 'active' | 'expired';
+  last_received_at_ms?: number;
+  expires_at_ms?: number;
+}
 export interface NotificationAuthorizationView {
+  delivery_window?: NotificationDeliveryWindowView;
   status: 'unauthorized' | 'pending' | 'authorized' | 'invalid';
   user_action?: {
     kind: 'qr_code';

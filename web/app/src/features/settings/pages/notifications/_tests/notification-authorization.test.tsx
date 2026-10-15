@@ -8,9 +8,13 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type {
   NotificationAuthorizationView,
+  NotificationDeliveryWindowView,
   NotificationInstance,
   NotificationType
 } from '@1flowbase/api-client';
+import { NotificationAuthorization } from '../NotificationAuthorization';
+import { formatDateTime } from '../../../../../shared/i18n/format';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { NotificationInstanceDrawer } from '../NotificationInstanceDrawer';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 
@@ -75,6 +79,7 @@ let commands: Array<{
 }>;
 let poll: () => Promise<NotificationAuthorizationView>;
 let begin: NotificationAuthorizationView;
+let maintained: NotificationAuthorizationView;
 const saved = vi.fn();
 function respond(data: unknown) {
   return new Response(JSON.stringify({ data, meta: null }), {
@@ -99,6 +104,14 @@ beforeEach(() => {
   commands = [];
   poll = async () => ({ status: 'authorized' });
   begin = pending;
+  maintained = {
+    status: 'authorized',
+    delivery_window: {
+      status: 'active',
+      last_received_at_ms: 1_860_000_000_000,
+      expires_at_ms: 1_860_086_400_000
+    }
+  };
   saved.mockReset();
   useAuthStore.setState({ csrfToken: 'csrf' });
   vi.stubGlobal(
@@ -113,6 +126,7 @@ beforeEach(() => {
       if (path.endsWith('/authorization')) {
         if (body.type === 'begin') return respond(begin);
         if (body.type === 'poll') return respond(await poll());
+        if (body.type === 'maintain') return respond(maintained);
         if (body.type === 'cancel') return respond({ status: 'unauthorized' });
       }
       return respond({
@@ -124,7 +138,8 @@ beforeEach(() => {
     })
   );
 });
-afterEach(() => {
+afterEach(async () => {
+  await appI18n.changeLanguage('zh_Hans');
   vi.restoreAllMocks();
   vi.useRealTimers();
   resetAuthStore();
@@ -179,9 +194,7 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
     await vi.advanceTimersByTimeAsync(1);
   });
   expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
-  expect(
-    screen.getByText('授权已完成，渠道启用后可发送消息。')
-  ).toBeInTheDocument();
+  expect(screen.getByText('授权已完成。')).toBeInTheDocument();
   expect(screen.getByText('通知实例已停用')).toBeInTheDocument();
   expect(commands.some((command) => command.body.status === 'enabled')).toBe(
     false
@@ -316,5 +329,177 @@ test('authorization errors remain safe and do not claim a backend status change'
   expect(
     screen.queryByText(/SECRET_TOKEN|raw provider exception/)
   ).not.toBeInTheDocument();
+  expect(saved).not.toHaveBeenCalled();
+});
+
+const windowTimes = {
+  last_received_at_ms: 1_760_000_000_000,
+  expires_at_ms: 1_760_086_400_000
+};
+const subscriptionCases: Array<{
+  delivery_window: NotificationDeliveryWindowView;
+  label: string;
+  english: string;
+}> = [
+  {
+    delivery_window: { status: 'unknown' },
+    label: '订阅状态待确认',
+    english: 'Subscription status unconfirmed'
+  },
+  {
+    delivery_window: { status: 'unknown', ...windowTimes },
+    label: '订阅状态待确认',
+    english: 'Subscription status unconfirmed'
+  },
+  {
+    delivery_window: { status: 'waiting_for_message' },
+    label: '等待用户消息',
+    english: 'Waiting for a user message'
+  },
+  {
+    delivery_window: { status: 'active', ...windowTimes },
+    label: '订阅有效/可发送',
+    english: 'Subscription active / ready to send'
+  },
+  {
+    delivery_window: { status: 'expired', ...windowTimes },
+    label: '订阅已过期',
+    english: 'Subscription expired'
+  }
+];
+
+test.each(subscriptionCases)(
+  'shows independent backend subscription state $label and its supplied times',
+  async ({ delivery_window, label, english }) => {
+    render(
+      <NotificationAuthorization
+        instance_id={instance.id}
+        descriptor={type.authorization!}
+        authorization={{ status: 'authorized', delivery_window }}
+        onChanged={saved}
+      />
+    );
+    expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
+    expect(screen.getByText(`通知订阅: ${label}`)).toBeInTheDocument();
+    if (delivery_window.last_received_at_ms !== undefined) {
+      expect(
+        screen.getByText(
+          `最近消息时间: ${formatDateTime(new Date(windowTimes.last_received_at_ms))}`
+        )
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          `可用期限: ${formatDateTime(new Date(windowTimes.expires_at_ms))}`
+        )
+      ).toBeInTheDocument();
+    } else {
+      expect(
+        screen.queryByText(/最近消息时间:|可用期限:/)
+      ).not.toBeInTheDocument();
+    }
+    // The same old timestamps can be active, expired or unknown: only backend status decides.
+    expect(
+      screen.getByText(
+        '请向机器人发送任意消息以开启或续期24小时通知订阅窗口，然后刷新订阅状态。渠道仍需启用后才能发送通知。'
+      )
+    ).toBeInTheDocument();
+    expect(commands).toHaveLength(0);
+    await act(async () => {
+      await appI18n.changeLanguage('en_US');
+    });
+    expect(
+      screen.getByText(`Notification subscription: ${english}`)
+    ).toBeInTheDocument();
+  }
+);
+
+test('manual Maintain refresh updates the window without reauthorizing, enabling or polling', async () => {
+  vi.useFakeTimers();
+  render(
+    <NotificationAuthorization
+      instance_id={instance.id}
+      descriptor={type.authorization!}
+      authorization={{
+        status: 'authorized',
+        delivery_window: { status: 'expired', ...windowTimes }
+      }}
+      onChanged={saved}
+    />
+  );
+  expect(screen.getByText('通知订阅: 订阅已过期')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '刷新订阅状态' }));
+  await act(async () => {});
+  expect(screen.getByText('通知订阅: 订阅有效/可发送')).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      `可用期限: ${formatDateTime(new Date(maintained.delivery_window!.expires_at_ms!))}`
+    )
+  ).toBeInTheDocument();
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({
+    path: '/api/console/notifications/instances/instance-1/authorization',
+    body: { type: 'maintain' }
+  });
+  expect(saved).toHaveBeenCalledOnce();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15000);
+  });
+  expect(commands).toHaveLength(1);
+});
+
+test.each(['unauthorized', 'pending', 'invalid'] as const)(
+  'does not offer subscription refresh for %s authorization',
+  (status) => {
+    render(
+      <NotificationAuthorization
+        instance_id={instance.id}
+        descriptor={type.authorization!}
+        authorization={{ status }}
+        onChanged={saved}
+      />
+    );
+    expect(
+      screen.queryByRole('button', { name: '刷新订阅状态' })
+    ).not.toBeInTheDocument();
+  }
+);
+
+test('authorization without a delivery window keeps generic messaging without inventing a subscription', () => {
+  render(
+    <NotificationAuthorization
+      instance_id={instance.id}
+      descriptor={type.authorization!}
+      authorization={{ status: 'authorized' }}
+      onChanged={saved}
+    />
+  );
+  expect(screen.getByText('授权已完成。')).toBeInTheDocument();
+  expect(screen.queryByText(/通知订阅:|24小时/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/微信/)).not.toBeInTheDocument();
+});
+
+test('failed Maintain preserves authorization and subscription evidence without leaking errors', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('SECRET_TOKEN');
+    })
+  );
+  render(
+    <NotificationAuthorization
+      instance_id={instance.id}
+      descriptor={type.authorization!}
+      authorization={{
+        status: 'authorized',
+        delivery_window: { status: 'unknown', ...windowTimes }
+      }}
+      onChanged={saved}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: '刷新订阅状态' }));
+  await screen.findByText('授权操作未完成，请重试。');
+  expect(screen.getByText('授权状态: 已授权')).toBeInTheDocument();
+  expect(screen.getByText('通知订阅: 订阅状态待确认')).toBeInTheDocument();
+  expect(screen.queryByText('SECRET_TOKEN')).not.toBeInTheDocument();
   expect(saved).not.toHaveBeenCalled();
 });
