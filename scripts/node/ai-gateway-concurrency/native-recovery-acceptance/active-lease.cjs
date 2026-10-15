@@ -17,6 +17,30 @@ async function bounded(promise, label) {
   } finally { clearTimeout(timer); }
 }
 
+function callbackRoundIdentity(sql) {
+  return JSON.parse(sql(`select jsonb_build_object(
+    'callback_task_id', a.callback_task_id,
+    'markers', coalesce((select jsonb_agg(jsonb_build_object(
+      'sequence', e.sequence, 'round', p.value->>'response_round_id',
+      'generation', p.value->>'stream_generation_id') order by e.sequence)
+      from runtime_events e cross join lateral
+        (select runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as value) p
+      where e.flow_run_id=a.flow_run_id and e.event_type='flow_started'
+        and p.value->>'response_round_id'=a.callback_task_id::text), '[]'::jsonb),
+    'anchor_generations', coalesce((select jsonb_agg(p.value->>'stream_generation_id')
+      from runtime_events e cross join lateral
+        (select runtime_event_original_payload(e.payload,e.raw_json_payloads,e.flow_run_id) as value) p
+      where e.flow_run_id=a.flow_run_id and e.event_type='runtime_stream_opened'), '[]'::jsonb))
+    from flow_run_callback_resume_attempts a;`));
+}
+
+function assertCallbackRoundIdentity(identity) {
+  assert.equal(identity.markers.length, 1, 'Original WS resume must persist exactly one real callback round marker');
+  assert.equal(identity.markers[0].round, identity.callback_task_id);
+  assert.ok(identity.markers[0].generation, 'Callback marker must carry its real generation identity');
+  assert.ok(identity.anchor_generations.includes(identity.markers[0].generation), 'Marker generation must belong to a committed anchor');
+}
+
 async function run() {
   const artifactRoot = path.resolve(process.env.NRA_ARTIFACT_DIR || 'tmp/test-governance/callback-active-lease');
   fs.mkdirSync(artifactRoot, { recursive: true });
@@ -68,6 +92,17 @@ async function run() {
     evidence.before = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'attempt_age_seconds',extract(epoch from now()-a.updated_at),'claim_status',c.status,'lease_live',c.lease_expires_at>now(),'callback_status',t.status) from flow_run_callback_resume_attempts a join flow_run_callback_tasks t on t.id=a.callback_task_id join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
     assert.equal(evidence.before.lease_live, true);
     assert.equal(evidence.before.callback_status, 'completed');
+    let waitingForIdentity = true;
+    try {
+      evidence.roundIdentityBefore = await bounded((async () => {
+        while (waitingForIdentity) {
+          const identity = callbackRoundIdentity(sql);
+          if (identity.markers.length) return identity;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      })(), 'Original WS resume did not persist its real callback round identity');
+    } finally { waitingForIdentity = false; }
+    assertCallbackRoundIdentity(evidence.roundIdentityBefore);
     save();
     socket.terminate();
     await new Promise(resolve => socket.readyState === WebSocket.CLOSED ? resolve() : socket.once('close', resolve));
@@ -112,6 +147,17 @@ async function run() {
     evidence.events = decodeSseChunks([Buffer.from(raw)]).filter(record => !record.done).map(record => record.data);
     assert.equal(evidence.events.filter(event => event.type === 'response.completed').length, 1);
     assert.ok(!evidence.events.some(event => ['error', 'response.failed'].includes(event.type)));
+    const terminal = evidence.events.find(event => event.type === 'response.completed');
+    const text = terminal.response.output.filter(item => item.type === 'message')
+      .flatMap(item => item.content || []).filter(part => part.type === 'output_text').map(part => part.text).join('');
+    assert.equal(text, 'LEASE_COMPLETED', 'Attached terminal must contain the original continuation output');
+    const outputItems = evidence.events.filter(event => event.type === 'response.output_item.done');
+    assert.equal(outputItems.filter(event => event.item?.id === 'item_lease_active').length, 1,
+      'Original provider output must be delivered exactly once');
+    evidence.roundIdentityAfter = callbackRoundIdentity(sql);
+    assertCallbackRoundIdentity(evidence.roundIdentityAfter);
+    assert.deepEqual(evidence.roundIdentityAfter, evidence.roundIdentityBefore,
+      'HTTP attachment must reuse the original WS round and generation');
     evidence.upstream = mock.trace;
     assert.equal(mock.trace.length, 2, 'Seed and exactly one continuation; retry must not invoke provider again');
     evidence.after = JSON.parse(sql("select jsonb_build_object('attempts',(select count(*) from flow_run_callback_resume_attempts),'claims',(select count(*) from flow_run_resume_claims),'completed_callbacks',(select count(*) from flow_run_callback_tasks where status='completed'));"));

@@ -1291,6 +1291,17 @@ async fn live_compatible_round_start(
     }
 }
 
+fn callback_round_replay_established(
+    replay: &[RuntimeEventEnvelope],
+    round_id: uuid::Uuid,
+) -> bool {
+    replay.iter().any(|event| {
+        (event.event_type == "flow_started"
+            && event.payload["response_round_id"] == json!(round_id))
+            || event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+    })
+}
+
 async fn open_compatible_turn_with_invoker(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
@@ -1302,12 +1313,18 @@ async fn open_compatible_turn_with_invoker(
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
     let turn_action = action.name();
     let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
-    let (live_round_start, durable_round_replay) =
+    let (live_round_start, mut durable_round_replay) =
         if let Some(round_id) = ignored_waiting_callback_task_id {
             compatible_round_replay(&dependencies, &initial_run, round_id).await?
         } else {
             (None, Vec::new())
         };
+    let durable_round_established = ignored_waiting_callback_task_id
+        .is_some_and(|round_id| callback_round_replay_established(&durable_round_replay, round_id));
+    if !durable_round_established {
+        // Diagnostic tails and their synthetic start do not establish a round.
+        durable_round_replay.clear();
+    }
     if let Err(error) = dependencies
         .native
         .runtime_event_stream
@@ -1329,7 +1346,7 @@ async fn open_compatible_turn_with_invoker(
     let from_sequence = if let Some(sequence) = live_round_start {
         Some(sequence)
     } else if let Some(round_id) = ignored_waiting_callback_task_id {
-        if durable_round_replay.is_empty() {
+        if !durable_round_established {
             let mut started = debug_stream_events::flow_started(initial_run.id);
             started.payload["response_round_id"] = json!(round_id);
             let started = dependencies

@@ -2443,6 +2443,56 @@ fn openai_chat_projects_answer_presentation_delta_not_provider_raw_delta() {
     assert_eq!(presentation_events.len(), 1);
 }
 
+#[test]
+fn callback_diagnostic_tail_and_synthetic_start_do_not_establish_a_round() {
+    let run_id = Uuid::now_v7();
+    let round_id = Uuid::now_v7();
+    let mut replay = vec![RuntimeEventEnvelope::new(
+        run_id,
+        0,
+        debug_stream_events::flow_started(run_id),
+    )];
+    for sequence in [41, 45] {
+        replay.push(RuntimeEventEnvelope::new(
+            run_id,
+            sequence,
+            RuntimeEventPayload {
+                event_type: "client_protocol_trajectory".into(),
+                source: RuntimeEventSource::Runtime,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: true,
+                trace_visible: true,
+                payload: json!({"type": "client_protocol_trajectory"}),
+            },
+        ));
+    }
+    assert!(
+        !callback_round_replay_established(&replay, round_id),
+        "nonempty diagnostic replay must not suppress the real callback marker"
+    );
+    replay[0].payload["response_round_id"] = json!(Uuid::now_v7());
+    assert!(
+        !callback_round_replay_established(&replay, round_id),
+        "a foreign round marker must not establish the requested callback"
+    );
+    replay[0].payload["response_round_id"] = json!(round_id);
+    assert!(callback_round_replay_established(&replay, round_id));
+}
+
+#[test]
+fn legacy_completed_callback_replay_remains_established_without_a_tagged_marker() {
+    let run_id = Uuid::now_v7();
+    let replay = vec![RuntimeEventEnvelope::new(
+        run_id,
+        7,
+        debug_stream_events::flow_finished(run_id, json!({})),
+    )];
+    assert!(
+        callback_round_replay_established(&replay, Uuid::now_v7()),
+        "generation-filtered completed legacy rounds must stay replayable"
+    );
+}
+
 #[path = "forwarding/_tests/live_delivery_batch.rs"]
 mod live_delivery_batch;
 
