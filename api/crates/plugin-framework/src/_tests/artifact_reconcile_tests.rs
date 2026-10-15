@@ -61,7 +61,10 @@ node_contributions: []
         .unwrap();
         fs::write(&package_path, b"fixture package bytes").unwrap();
 
-        let package_sha256 = format!("{:x}", Sha256::digest(b"fixture package bytes"));
+        let package_sha256 = format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(b"fixture package bytes"))
+        );
 
         Self {
             root,

@@ -535,7 +535,7 @@ fn payload_sha256(root: &Path) -> Result<String, PluginFrameworkError> {
         hasher.update(content);
         hasher.update([0]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(format!("{:x}", base16ct::HexDisplay(&hasher.finalize())))
 }
 
 fn collect_payload_files(
@@ -572,7 +572,7 @@ fn collect_payload_files(
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn normalize_sha256(value: &str) -> Result<String, PluginFrameworkError> {

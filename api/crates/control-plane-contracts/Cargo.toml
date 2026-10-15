@@ -2,12 +2,14 @@
 name = "control-plane-contracts"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [features]
 responses-history-migration = []
 
 [dependencies]
+base16ct.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 domain = { path = "../domain" }

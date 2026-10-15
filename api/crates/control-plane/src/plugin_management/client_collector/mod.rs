@@ -62,7 +62,13 @@ pub fn inspect_client_collector_archive<R: Read>(
                 domain::ClientCollectorReleaseManifest,
             >(&manifest_bytes)?);
         }
-        members.insert(name, (format!("{:x}", hash.finalize()), size));
+        members.insert(
+            name,
+            (
+                format!("{:x}", base16ct::HexDisplay(&hash.finalize())),
+                size,
+            ),
+        );
     }
     // Consume the gzip trailer as well, so a truncated/corrupt stream cannot validate.
     std::io::copy(&mut archive.into_inner(), &mut std::io::sink())?;
@@ -317,7 +323,7 @@ fn open_validated_collector(
         }
         hash.update(&buffer[..read]);
     }
-    let checksum = format!("sha256:{:x}", hash.finalize());
+    let checksum = format!("sha256:{:x}", base16ct::HexDisplay(&hash.finalize()));
     if record.local_checksum.as_deref() != Some(checksum.as_str())
         || record
             .expected_checksum

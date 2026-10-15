@@ -348,15 +348,17 @@ pub async fn install_current_node_artifact(
     post,
     path = "/api/console/settings/model-providers/plugins/families/{provider_code}/upgrade-latest",
     operation_id = "model_provider_settings_upgrade_plugin_family",
+    request_body = Option<UpgradeLatestPluginFamilyBody>,
     responses((status = 200, body = PluginTaskResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn upgrade_latest(
     State(state): State<Arc<ApiState>>,
     Path(provider_code): Path<String>,
     headers: HeaderMap,
-    body: Option<Json<UpgradeLatestPluginFamilyBody>>,
+    body: Result<Json<UpgradeLatestPluginFamilyBody>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let body = body.map(|Json(body)| body);
+    // Preserve this endpoint's optional-body fallback across the Axum upgrade.
+    let body = body.ok().map(|Json(body)| body);
     let output = super::invoke_plugin_interface(
         state,
         headers,

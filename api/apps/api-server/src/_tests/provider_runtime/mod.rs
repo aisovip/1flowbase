@@ -1258,7 +1258,7 @@ async fn publisher_cutover_provider_runtime_consumes_legacy_manifest_compatibili
         Some("missing_publisher_namespace_v1".to_string());
     installation.artifact.manifest_fingerprint = Some(format!(
         "sha256:{:x}",
-        Sha256::digest(legacy_raw.as_bytes())
+        base16ct::HexDisplay(&Sha256::digest(legacy_raw.as_bytes()))
     ));
     let runtime = ApiProviderRuntime::new(Arc::new(
         ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),

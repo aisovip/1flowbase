@@ -78,7 +78,10 @@ async fn delivery_1545_d6_installed_i18n_catalog_previews_and_activates_local_ar
                 artifact_bytes: bytes.clone(),
                 source: "official".into(),
                 trust: "official".into(),
-                expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&bytes))),
+                expected_checksum: Some(format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&bytes))
+                )),
                 signature_status: domain::ExtensionSignatureStatus::Verified,
                 signature_algorithm: Some("ed25519".into()),
                 signing_key_id: Some("official-key".into()),

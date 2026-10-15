@@ -706,7 +706,10 @@ impl DigestWriter {
     }
 
     fn finish(self) -> (String, usize) {
-        (format!("sha256:{:x}", self.hash.finalize()), self.bytes)
+        (
+            format!("sha256:{:x}", base16ct::HexDisplay(&self.hash.finalize())),
+            self.bytes,
+        )
     }
 }
 

@@ -11,7 +11,7 @@ type Cleanup = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<()>> + Sen
 
 pub enum PreparedPublishedCallback {
     Execution(Box<PreparedPublishedCallbackExecution>),
-    NoExecution(ResumePublishedCallbackResult),
+    NoExecution(Box<ResumePublishedCallbackResult>),
 }
 
 /// A single execution claim owner. Move it from host setup into execution; do not clone.
@@ -186,12 +186,12 @@ where
                         .ok_or(ControlPlaneError::Conflict(
                             "callback_resume_reservation_missing",
                         ))?;
-                    return Ok(PreparedPublishedCallback::NoExecution(
+                    return Ok(PreparedPublishedCallback::NoExecution(Box::new(
                         ResumePublishedCallbackResult {
                             run: self.native_result_for_flow_run(&run).await?,
                             attempt,
                         },
-                    ));
+                    )));
                 }
                 let result = self
                     .finish_callback_resume_result(
@@ -199,10 +199,10 @@ where
                         callback,
                         attempt,
                         &command,
-                        Ok(run),
+                        Ok(*run),
                     )
                     .await?;
-                return Ok(PreparedPublishedCallback::NoExecution(result));
+                return Ok(PreparedPublishedCallback::NoExecution(Box::new(result)));
             }
             PreparedCallbackTask::Execution(execution) => execution,
         };
@@ -256,7 +256,7 @@ where
         {
             // A replacement execution must never receive this owner's unfenced
             // legacy result finalization. Drop performs only token/version CAS cleanup.
-            return Err(result.err().expect("ownership failure was checked"));
+            return Err(result.expect_err("ownership failure was checked"));
         }
         // The execution method has fenced and settled its claim. A later projection
         // failure must not re-admit already executed work through Drop cleanup.

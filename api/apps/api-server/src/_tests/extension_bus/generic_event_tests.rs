@@ -269,7 +269,7 @@ impl Fixture {
         assert!(table
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
-        sqlx::query_scalar(&format!("select count(*) from {table}"))
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {table}")))
             .fetch_one(self.store.pool())
             .await
             .unwrap()

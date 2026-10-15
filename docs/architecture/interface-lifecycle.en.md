@@ -235,3 +235,13 @@ Existing entry points include [HTTP/MCP paired fixtures](../../api/apps/api-serv
 ## AI Native traces and protocol diagnostics
 
 Mapping, AI Native and provider plugins retain their execution and translation responsibilities. Capture switches, completeness, semantic/raw readers and historical sources are maintained in [AI Gateway evidence](ai-gateway-observation.en.md#ai-native-traces-and-protocol-diagnostics).
+
+### Preserve protocols and fingerprints during framework upgrades
+
+HTTP framework path syntax belongs to the protocol adapter. Canonical Interface, authorization catalogs and frozen bindings retain their canonical route templates; the assembly boundary translates them to Axum `{parameter}` / `{*rest}` mount syntax. Framework migration must preserve external URLs, authorization identity and invocation plans. Exercise real parameter and wildcard extraction instead of relying only on catalog string comparisons.
+
+Dependency updates preserve the existing SHA-256 inputs, digest bytes and lowercase hexadecimal representation of packages, registries, bindings, plans, backups and key fingerprints. The original owner retains normalization and algorithm semantics; a new digest array type only requires an encoding adaptation. Password PHC strings, AEAD nonce/AAD/ciphertext and stored signatures remain compatible, with historical fixtures and boundary regressions providing evidence.
+
+SQLx dynamic SQL safety assertions belong to the PostgreSQL adapter and do not replace authorization or validation. Existing identifier quoting, closed semantic mappings and catalog ownership continue to produce SQL structure; business values remain bound parameters. Explicit native SQL execution retains caller-owned authorization without new capability or capacity limits. The Native Template owner's single physical connection and exact transaction-depth check enforce one transaction, rather than assume deployment capacity. Dependency migration must preserve savepoint bookkeeping and owner-controlled completion instead of issuing raw COMMIT statements.
+
+The workflow executor owns a heap-pinned child future at the LLM node boundary and awaits it within the original call, keeping nested provider/tool async state out of the workflow future. This controls state layout without spawning a background task or transferring cancellation, node lifecycle, error projection or invocation completion ownership. Address dependency-related stack use at the actual execution boundary rather than increasing thread stacks or bypassing behavioral assertions.

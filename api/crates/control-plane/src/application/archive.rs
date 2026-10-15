@@ -266,7 +266,10 @@ pub(crate) fn normalized_application_archive_digest(
         workflow_trigger_config: &entry.workflow_trigger_config,
     };
     let encoded = serde_json::to_vec(&canonicalize_archive_json(serde_json::to_value(content)?))?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(encoded))
+    ))
 }
 
 fn canonicalize_archive_json(value: serde_json::Value) -> serde_json::Value {

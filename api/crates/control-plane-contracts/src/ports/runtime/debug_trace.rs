@@ -488,7 +488,10 @@ impl ToolCallbackResultInput {
             .ok_or_else(|| anyhow::anyhow!("tool callback result is missing tool_call_id"))?
             .to_string();
         let canonical = canonical_json(&payload);
-        let result_fingerprint = format!("{:x}", Sha256::digest(canonical.as_bytes()));
+        let result_fingerprint = format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(canonical.as_bytes()))
+        );
         Ok(Self {
             tool_call_id,
             result_payload: payload,

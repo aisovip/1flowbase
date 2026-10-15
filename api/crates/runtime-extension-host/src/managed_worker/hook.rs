@@ -94,7 +94,7 @@ impl ManagedWorkers {
         let deadline_unix_ms = i64::try_from(now_ms + i128::from(budget_ms))
             .map_err(|_| invalid("managed hook deadline overflow"))?;
         let sequence = NEXT_HOOK_CALL
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
             .map_err(|_| invalid("managed hook call sequence exhausted"))?;

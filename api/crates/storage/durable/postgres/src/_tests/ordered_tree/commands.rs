@@ -173,10 +173,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .unwrap()
     .node_id;
     tx.rollback().await.unwrap();
-    let create_rollback_count: i64 = sqlx::query_scalar(&format!(
+    let create_rollback_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(rolled_back_create)
@@ -201,10 +201,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .unwrap()
     .node_id;
     tx.commit().await.unwrap();
-    let create_commit_count: i64 = sqlx::query_scalar(&format!(
+    let create_commit_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(committed_root)
@@ -223,10 +223,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     let alternate_parent =
         create_node(&store, &metadata, scope_id, position(None, None, None)).await;
     let leaf = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
-    let before_move: (Option<Uuid>, String) = sqlx::query_as(&format!(
+    let before_move: (Option<Uuid>, String) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(committed_child)
@@ -249,10 +249,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .await
     .unwrap();
     tx.rollback().await.unwrap();
-    let after_move_rollback: (Option<Uuid>, String) = sqlx::query_as(&format!(
+    let after_move_rollback: (Option<Uuid>, String) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(committed_child)
@@ -274,10 +274,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .await
     .unwrap());
     tx.rollback().await.unwrap();
-    let leaf_after_rollback: i64 = sqlx::query_scalar(&format!(
+    let leaf_after_rollback: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(leaf)
@@ -307,10 +307,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
         }
     );
     tx.rollback().await.unwrap();
-    let subtree_after_mismatch: i64 = sqlx::query_scalar(&format!(
+    let subtree_after_mismatch: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(vec![committed_root, committed_child])
@@ -334,10 +334,10 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .unwrap();
     assert_eq!(deleted.deleted_count, 2);
     tx.commit().await.unwrap();
-    let subtree_after_commit: i64 = sqlx::query_scalar(&format!(
+    let subtree_after_commit: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(vec![committed_root, committed_child])
@@ -415,10 +415,10 @@ async fn subtree_snapshot_matches_delete_ids_count_order_and_partition() {
     .await
     .unwrap();
     assert_eq!(deleted.deleted_count, snapshot.affected_count());
-    let remaining_snapshot_ids: i64 = sqlx::query_scalar(&format!(
+    let remaining_snapshot_ids: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(snapshot.node_ids_child_before_parent())
@@ -426,10 +426,10 @@ async fn subtree_snapshot_matches_delete_ids_count_order_and_partition() {
     .await
     .unwrap();
     assert_eq!(remaining_snapshot_ids, 0);
-    let unrelated_in_tx: bool = sqlx::query_scalar(&format!(
+    let unrelated_in_tx: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select exists(select 1 from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(unrelated)
@@ -439,10 +439,10 @@ async fn subtree_snapshot_matches_delete_ids_count_order_and_partition() {
     assert!(unrelated_in_tx);
     tx.rollback().await.unwrap();
 
-    let restored: i64 = sqlx::query_scalar(&format!(
+    let restored: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(vec![root, child, grandchild, unrelated])
@@ -576,10 +576,10 @@ async fn subtree_snapshot_lock_prevents_concurrent_structure_drift_until_transac
 
     let created = waiting_create.await.unwrap().unwrap().node_id;
     waiting_move.await.unwrap().unwrap();
-    let rows: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(&format!(
+    let rows: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select id, parent_id from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(vec![root, child, moving_root, created])
@@ -674,10 +674,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         .await
         .unwrap_err();
     assert_eq!(typed_error(error), OrderedTreeCommandError::NodeNotFound);
-    let database_error = sqlx::query(&format!(
+    let database_error = sqlx::query(sqlx::AssertSqlSafe(format!(
         "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $2, $3, 'z')",
         model.physical_table_name
-    ))
+    )))
     .bind(Uuid::now_v7())
     .bind(scope_id)
     .bind(partition_parent)
@@ -703,10 +703,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         .await
         .unwrap_err();
     assert_eq!(typed_error(error), OrderedTreeCommandError::ParentNotFound);
-    let ordered_ids: Vec<Uuid> = sqlx::query_scalar(&format!(
+    let ordered_ids: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select id from \"{}\" where scope_id = $1 and tree_partition_id = scope_id and parent_id is null order by sibling_rank collate \"C\", id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_all(store.pool())
     .await
@@ -761,20 +761,20 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         assert_eq!(typed_error(error), OrderedTreeCommandError::Cycle);
     }
 
-    let cross_scope_parent = sqlx::query(&format!(
+    let cross_scope_parent = sqlx::query(sqlx::AssertSqlSafe(format!(
         "insert into \"{}\" (id, scope_id, tree_partition_id, sibling_rank) values ($1, $2, $2, 'U')",
         model.physical_table_name
-    ))
+    )))
     .bind(Uuid::now_v7())
     .bind(other_scope_id)
     .execute(store.pool())
     .await
     .unwrap();
     assert_eq!(cross_scope_parent.rows_affected(), 1);
-    let cross_scope_parent_id: Uuid = sqlx::query_scalar(&format!(
+    let cross_scope_parent_id: Uuid = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select id from \"{}\" where scope_id = $1",
         model.physical_table_name
-    ))
+    )))
     .bind(other_scope_id)
     .fetch_one(store.pool())
     .await
@@ -794,10 +794,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         .unwrap_err();
     assert_eq!(typed_error(error), OrderedTreeCommandError::ParentNotFound);
 
-    let before_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(&format!(
+    let before_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_all(store.pool())
     .await
@@ -815,10 +815,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         )
         .await
         .unwrap();
-    let after_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(&format!(
+    let after_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_all(store.pool())
     .await
@@ -862,10 +862,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         .unwrap_err();
     assert_eq!(typed_error(error).code(), "tree_node_has_children");
 
-    let count_before: i64 = sqlx::query_scalar(&format!(
+    let count_before: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_one(store.pool())
     .await
@@ -886,10 +886,10 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         typed_error(error),
         OrderedTreeCommandError::ExpectedAffectedCountMismatch { .. }
     ));
-    let count_after: i64 = sqlx::query_scalar(&format!(
+    let count_after: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_one(store.pool())
     .await
@@ -994,10 +994,10 @@ async fn create_rebalances_dense_target_siblings_before_retry() {
     let metadata = metadata(&model);
     let left = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
     let right = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{}\" set sibling_rank = case id when $1 then $3 else $4 end where scope_id = $2 and tree_partition_id = scope_id and id = any($5)",
         model.physical_table_name
-    ))
+    )))
     .bind(left)
     .bind(scope_id)
     .bind("U".repeat(33))
@@ -1014,10 +1014,10 @@ async fn create_rebalances_dense_target_siblings_before_retry() {
         position(None, Some(right), None),
     )
     .await;
-    let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "select id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by sibling_rank collate \"C\", id",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .fetch_all(store.pool())
     .await
@@ -1069,10 +1069,10 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
         })
     };
     tokio::task::yield_now().await;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "update \"{}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = scope_id and id = $3",
         model.physical_table_name
-    ))
+    )))
     .bind(parent)
     .bind(scope_id)
     .bind(anchor)
@@ -1113,10 +1113,10 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
     };
     tokio::task::yield_now().await;
     let raced_child = Uuid::now_v7();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $2, $3, 'k')",
         model.physical_table_name
-    ))
+    )))
     .bind(raced_child)
     .bind(scope_id)
     .bind(parent)
@@ -1132,10 +1132,10 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
             actual: 3,
         }
     );
-    let still_present: i64 = sqlx::query_scalar(&format!(
+    let still_present: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id and id = any($2)",
         model.physical_table_name
-    ))
+    )))
     .bind(scope_id)
     .bind(vec![parent, anchor, raced_child])
     .fetch_one(store.pool())

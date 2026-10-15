@@ -421,7 +421,8 @@ async fn execute_database_statement(
     pool: &PgPool,
     statement: &str,
 ) -> Result<(), RecoveryStepTargetError> {
-    sqlx::query(statement)
+    // Callers construct only recovery DDL with quote_identifier for every database name.
+    sqlx::query(sqlx::AssertSqlSafe(statement))
         .execute(pool)
         .await
         .map_err(|_| RecoveryStepTargetError::Unavailable)?;

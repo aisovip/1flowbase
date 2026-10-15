@@ -25,9 +25,12 @@ impl PostgresTestSchema {
         sqlx::query("create extension if not exists ltree with schema public")
             .execute(&mut connection)
             .await?;
-        sqlx::query(&format!(r#"create schema "{schema_name}""#))
-            .execute(&mut connection)
-            .await?;
+        // SQL safety: temporary schema/database names are generated from fixed prefixes and UUID hex.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            r#"create schema "{schema_name}""#
+        )))
+        .execute(&mut connection)
+        .await?;
         connection.close().await?;
         // PgConnectOptions::to_url_lossy does not serialize startup options.
         // Keep the explicit encoded option in the caller-visible connection URL.
@@ -92,9 +95,11 @@ impl PostgresTestDatabase {
         let database_name = format!("test_backup_{}", Uuid::now_v7().simple());
         let admin_options = PgConnectOptions::from_str(admin_database_url)?;
         let mut connection = PgConnection::connect_with(&admin_options).await?;
-        sqlx::query(&format!(r#"create database "{database_name}""#))
-            .execute(&mut connection)
-            .await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            r#"create database "{database_name}""#
+        )))
+        .execute(&mut connection)
+        .await?;
         connection.close().await?;
         let database_url = admin_options
             .clone()
@@ -156,7 +161,7 @@ impl Drop for PostgresTestDatabase {
                         .bind(&database_name)
                         .execute(&mut connection)
                         .await?;
-                        sqlx::query(&format!(r#"drop database if exists "{database_name}""#))
+                        sqlx::query(sqlx::AssertSqlSafe(format!(r#"drop database if exists "{database_name}""#)))
                             .execute(&mut connection)
                             .await?;
                         connection.close().await

@@ -85,6 +85,9 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
     let message = Uuid::now_v7();
     sqlx::query("insert into system_notifications(id,workspace_id,instance_id,recipient_user_id,title,content) values($1,$2,$3,$4,'Inbox','Original inbox')")
         .bind(message).bind(workspace.id).bind(instance).bind(actor).execute(&db).await.unwrap();
+    let send_log = Uuid::now_v7();
+    sqlx::query("INSERT INTO notification_send_logs(id,workspace_id,actor_user_id,instance_id,source,status,title) VALUES($1,$2,$3,$4,'api','success','Original send')")
+        .bind(send_log).bind(workspace.id).bind(actor).bind(instance).execute(&db).await.unwrap();
     let repository = PgSelectiveBackupRepository::new(db.clone());
     let bytes = capture(&repository, select("notifications", true, false)).await;
     let full_bytes = capture(&repository, select("notifications", true, true)).await;
@@ -97,6 +100,26 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         preview.selected_tables,
         vec!["notification_instances".to_owned()]
     );
+    let full_preview = repository
+        .preflight(reader(full_bytes.clone()), "source", "target")
+        .await
+        .unwrap();
+    assert!(
+        full_preview.failures.is_empty(),
+        "{:?}",
+        full_preview.failures
+    );
+    assert!(full_preview
+        .selected_tables
+        .contains(&"notification_send_logs".to_owned()));
+    assert!(full_preview
+        .selected_tables
+        .contains(&"system_notifications".to_owned()));
+    sqlx::query("UPDATE notification_send_logs SET title='Target send' WHERE id=$1")
+        .bind(send_log)
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::query("update notification_instances set display_name='Changed' where id=$1")
         .bind(instance)
         .execute(&db)
@@ -182,6 +205,17 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         .await
         .unwrap();
     assert_eq!(inbox, "Target inbox");
+    let target_send: String =
+        sqlx::query_scalar("SELECT title FROM notification_send_logs WHERE id=$1")
+            .bind(send_log)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        target_send, "Target send",
+        "config-only restore and rolled-back full restore must preserve send history"
+    );
+
     sqlx::query("update system_notifications set read_at=now() where id=$1")
         .bind(message)
         .execute(&db)
@@ -198,6 +232,17 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
             .await
             .unwrap();
     assert_eq!(content, "Original inbox");
+    let original_send: String =
+        sqlx::query_scalar("SELECT title FROM notification_send_logs WHERE id=$1")
+            .bind(send_log)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        original_send, "Original send",
+        "data restore must restore durable send history"
+    );
+
     assert!(
         unread,
         "data restore must restore the unread acknowledgement state"

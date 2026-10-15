@@ -100,7 +100,7 @@ async fn inventory_reads_registered_file_tables_and_live_runtime_debug_reference
             .await
             .unwrap();
     let file_record_id = Uuid::now_v7();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"
         insert into "{physical_table_name}" (
             id, scope_id, created_by, updated_by,
@@ -108,7 +108,7 @@ async fn inventory_reads_registered_file_tables_and_live_runtime_debug_reference
         ) values ($1, $2, $3, $3, 'empty.bin', 0, 'application/octet-stream',
                   'workspace/files/empty.bin', '{{}}'::jsonb, $4)
         "#
-    ))
+    )))
     .bind(file_record_id)
     .bind(workspace.id)
     .bind(actor.id)

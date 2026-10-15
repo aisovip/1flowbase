@@ -508,7 +508,8 @@ impl PgControlPlaneStore {
         let sql = trace_node_select_sql(
             "where flow_run_id = $1 and parent_trace_node_id is null order by order_key asc, trace_node_id asc",
         );
-        let rows = sqlx::query(&sql)
+        // SQL safety: trace_node_select_sql receives only internal literal predicates; locator and paging values remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(flow_run_id)
             .fetch_all(self.pool())
             .await?;
@@ -586,7 +587,7 @@ impl PgControlPlaneStore {
             .as_ref()
             .map(|cursor| cursor.order_key.as_str());
         let cursor_trace_node_id = input.cursor.as_ref().map(|cursor| cursor.trace_node_id);
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(input.flow_run_id)
             .bind(input.parent_trace_node_id)
             .bind(cursor_order_key)
@@ -626,7 +627,7 @@ impl PgControlPlaneStore {
         trace_node_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunTraceNodeRecord>> {
         let sql = trace_node_select_sql("where flow_run_id = $1 and trace_node_id = $2");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(flow_run_id)
             .bind(trace_node_id)
             .fetch_optional(self.pool())
@@ -641,7 +642,7 @@ impl PgControlPlaneStore {
         stable_locator: &str,
     ) -> Result<Option<domain::ApplicationRunTraceNodeRecord>> {
         let sql = trace_node_select_sql("where flow_run_id = $1 and stable_locator = $2");
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(flow_run_id)
             .bind(stable_locator)
             .fetch_optional(self.pool())

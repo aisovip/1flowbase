@@ -21,21 +21,23 @@ fn failed(message: &str) -> CapabilityStdioResponse {
 pub fn prepare_authorizable_notification(
     request: CapabilityStdioRequest,
     descriptor: &NotificationTypeDescriptor,
-) -> Result<(Value, NotificationRuntimeInput), CapabilityStdioResponse> {
+) -> Result<(Value, NotificationRuntimeInput), Box<CapabilityStdioResponse>> {
     if request.method != CapabilityStdioMethod::Execute {
-        return Err(failed("notification requires the execute method"));
+        return Err(Box::new(failed("notification requires the execute method")));
     }
     if descriptor.validate().is_err() {
-        return Err(failed("notification descriptor violates its contract"));
+        return Err(Box::new(failed(
+            "notification descriptor violates its contract",
+        )));
     }
     let config = request.input["config_payload"].clone();
     let input: NotificationRuntimeInput =
         serde_json::from_value(request.input["input_payload"].clone())
-            .map_err(|_| failed("notification operation violates its contract"))?;
+            .map_err(|_| Box::new(failed("notification operation violates its contract")))?;
     if descriptor.validate_config(&config).is_err() || input.validate(descriptor).is_err() {
-        return Err(failed(
+        return Err(Box::new(failed(
             "notification configuration or operation violates its contract",
-        ));
+        )));
     }
     Ok((config, input))
 }
@@ -81,7 +83,7 @@ where
 {
     let (config, input) = match prepare_authorizable_notification(request, descriptor) {
         Ok(validated) => validated,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let result = handler(config, input.clone()).await;
     complete_authorizable_notification(&input, descriptor, result)

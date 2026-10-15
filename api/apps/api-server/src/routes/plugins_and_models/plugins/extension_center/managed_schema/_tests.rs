@@ -128,9 +128,9 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         .all(|c| c.is_ascii_alphanumeric() || c == '_'));
     let host_id = uuid::Uuid::now_v7();
     let preserved_value = uuid::Uuid::now_v7();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "insert into \"{table}\" (id, scope_id, \"{column}\") values ($1,$2,$3)"
-    ))
+    )))
     .bind(host_id)
     .bind(domain::SYSTEM_SCOPE_ID)
     .bind(preserved_value)
@@ -159,12 +159,13 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         assert!(ownership
             .iter()
             .all(|record| record.active && record.owner_version == "1.0.0"));
-        let stored: uuid::Uuid =
-            sqlx::query_scalar(&format!("select \"{column}\" from \"{table}\" where id=$1"))
-                .bind(host_id)
-                .fetch_one(state.store.pool())
-                .await
-                .unwrap();
+        let stored: uuid::Uuid = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select \"{column}\" from \"{table}\" where id=$1"
+        )))
+        .bind(host_id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
         assert_eq!(stored, preserved_value);
         retain_managed_schema(&dependencies, state.bootstrap_workspace_id, &identity)
             .await

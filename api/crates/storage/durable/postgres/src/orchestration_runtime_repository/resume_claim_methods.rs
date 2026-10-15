@@ -210,16 +210,17 @@ impl PgControlPlaneStore {
             .await?;
         }
         let existing = if let Some(callback_task_id) = input.callback_task_id {
-            sqlx::query(&format!(
+            // SQL safety: RESUME_CLAIM_COLUMNS is static SQL; claim input remains bound.
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "select {RESUME_CLAIM_COLUMNS} from flow_run_resume_claims where callback_task_id = $1 for update"
-            ))
+            )))
             .bind(callback_task_id)
             .fetch_optional(&mut *tx)
             .await?
         } else {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "select {RESUME_CLAIM_COLUMNS} from flow_run_resume_claims where checkpoint_id = $1 and resume_kind = 'human' for update"
-            ))
+            )))
             .bind(input.checkpoint_id)
             .fetch_optional(&mut *tx)
             .await?
@@ -246,9 +247,9 @@ impl PgControlPlaneStore {
                 ResumeClaimKind::Callback => "waiting_callback",
             };
             if existing.status == ResumeClaimStatus::Succeeded || flow_status != waiting_status {
-                let row = sqlx::query(&format!(
+                let row = sqlx::query(sqlx::AssertSqlSafe(format!(
                     "update flow_run_resume_claims set status = 'succeeded', completed_at = coalesce(completed_at, now()), updated_at = now() where id = $1 returning {RESUME_CLAIM_COLUMNS}"
-                ))
+                )))
                 .bind(existing.id)
                 .fetch_one(&mut *tx)
                 .await?;
@@ -268,9 +269,9 @@ impl PgControlPlaneStore {
                 });
             }
             let claim_token = Uuid::now_v7();
-            let row = sqlx::query(&format!(
+            let row = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "update flow_run_resume_claims set status = 'processing',\n                claim_token = $2,\n                generation = generation + 1,\n                lease_expires_at = now() + interval '5 minutes',\n                error_payload = null,\n                completed_at = null,\n                updated_at = now(),\n                raw_json_payloads = (flow_run_resume_claims.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', null))\n            where id = $1 returning {RESUME_CLAIM_COLUMNS}"
-            ))
+            )))
             .bind(existing.id)
             .bind(claim_token)
             .fetch_one(&mut *tx)
@@ -285,9 +286,9 @@ impl PgControlPlaneStore {
         }
 
         let claim_token = Uuid::now_v7();
-        let row = sqlx::query(&format!(
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "insert into flow_run_resume_claims (id, scope_id, application_id, flow_run_id, checkpoint_id, callback_task_id, resume_kind, status, request_payload, claim_token, lease_expires_at, raw_json_payloads) select $1, $2, $3, flow_runs.id, flow_run_checkpoints.id, $6, $7, 'processing', ($8::jsonb -> 0), $9, now() + interval '5 minutes', jsonb_strip_nulls(jsonb_build_object('request_payload', ($8::jsonb -> 1))) from flow_runs join flow_run_checkpoints on flow_run_checkpoints.id = $5 and flow_run_checkpoints.flow_run_id = flow_runs.id where flow_runs.id = $4 and flow_runs.scope_id = $2 and flow_runs.application_id = $3 and flow_runs.status = $10 returning {RESUME_CLAIM_COLUMNS}"
-        ))
+        )))
         .bind(Uuid::now_v7())
         .bind(input.scope_id)
         .bind(input.application_id)
@@ -338,9 +339,9 @@ impl PgControlPlaneStore {
             return Err(anyhow!("resume claim cannot finish as processing"));
         }
         let mut tx = self.pool().begin().await?;
-        let row = sqlx::query(&format!(
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "update flow_run_resume_claims set status = $4,\n                error_payload = case when status = 'processing' then ($5::jsonb -> 0) else error_payload end,\n                completed_at = coalesce(completed_at, $6),\n                updated_at = now(),\n                raw_json_payloads = (flow_run_resume_claims.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', case when status = 'processing' then ($5::jsonb -> 1) else flow_run_resume_claims.raw_json_payloads -> 'error_payload' end))\n            where id = $1 and claim_token = $2 and generation = $3 and status in ('processing', $4) returning {RESUME_CLAIM_COLUMNS}"
-        ))
+        )))
         .bind(input.claim_id)
         .bind(input.claim_token)
         .bind(input.expected_generation)

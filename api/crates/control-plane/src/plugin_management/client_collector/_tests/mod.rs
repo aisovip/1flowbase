@@ -35,7 +35,7 @@ fn fixture_manifest() -> domain::ClientCollectorManifest {
             .map(|name| domain::ClientCollectorAsset {
                 name: name.into(),
                 size: 6,
-                sha256: format!("{:x}", Sha256::digest(b"opaque")),
+                sha256: format!("{:x}", base16ct::HexDisplay(&Sha256::digest(b"opaque"))),
             })
             .collect(),
     };
@@ -75,7 +75,7 @@ fn refresh_release_asset(manifest: &mut domain::ClientCollectorManifest) {
         .find(|asset| asset.name == "release.json")
         .unwrap();
     asset.size = bytes.len() as u64;
-    asset.sha256 = format!("{:x}", Sha256::digest(bytes));
+    asset.sha256 = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
 }
 fn archive(
     manifest: &domain::ClientCollectorManifest,

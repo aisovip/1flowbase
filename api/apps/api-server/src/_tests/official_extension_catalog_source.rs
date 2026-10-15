@@ -1053,7 +1053,10 @@ async fn delivery_1560_d5_f01b_duplicate_runtime_plugin_id_fails_closed() {
     documents.insert(page_path.to_string(), page_bytes.clone());
     let index_path = "/runtime-extensions/catalog/v1/index.json";
     let mut index = serde_json::from_slice::<Value>(&documents[index_path]).unwrap();
-    index["pages"][1]["checksum"] = json!(format!("sha256:{:x}", Sha256::digest(&page_bytes)));
+    index["pages"][1]["checksum"] = json!(format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(&page_bytes))
+    ));
     documents.insert(index_path.to_string(), serde_json::to_vec(&index).unwrap());
     let fixture = CatalogHttpFixture {
         documents: Arc::new(documents),
@@ -1450,7 +1453,7 @@ fn catalog_index(
                 "page": page,
                 "cursor": cursor,
                 "entry_count": serde_json::from_slice::<Value>(bytes).unwrap()["entries"].as_array().unwrap().len(),
-                "checksum": format!("sha256:{:x}", Sha256::digest(bytes)),
+                "checksum": format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes))),
                 "locator": format!("{base_url}/{category}/catalog/v1/pages/{page}.json")
             })
         })
@@ -1470,7 +1473,7 @@ fn catalog_index(
         "search_index": {
             "schema_version": "1flowbase.extension-catalog-search/v1",
             "entry_count": page_references.iter().map(|page| page["entry_count"].as_u64().unwrap()).sum::<u64>(),
-            "checksum": format!("sha256:{:x}", Sha256::digest(search)),
+            "checksum": format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(search))),
             "locator": format!("{base_url}/{category}/catalog/v1/search-index.json")
         }
     }))
@@ -1481,7 +1484,7 @@ fn catalog_search_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec
     let mut entries = Vec::new();
     for (page, cursor, bytes) in pages {
         let page_document = serde_json::from_slice::<Value>(bytes).unwrap();
-        let page_checksum = format!("sha256:{:x}", Sha256::digest(bytes));
+        let page_checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
         for entry in page_document["entries"].as_array().unwrap() {
             let mut search_entry = entry.clone();
             search_entry
@@ -1584,7 +1587,7 @@ fn artifact_bytes(category: &str, artifact: &str) -> Vec<u8> {
 fn artifact_checksum(category: &str, artifact: &str) -> String {
     format!(
         "sha256:{:x}",
-        Sha256::digest(artifact_bytes(category, artifact))
+        base16ct::HexDisplay(&Sha256::digest(artifact_bytes(category, artifact)))
     )
 }
 

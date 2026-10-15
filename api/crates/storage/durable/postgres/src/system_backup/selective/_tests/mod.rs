@@ -650,7 +650,10 @@ async fn notification_backup_keeps_channel_configuration_separate_from_inbox_his
     );
     assert_eq!(
         notification.data_tables,
-        vec!["system_notifications".to_owned()]
+        vec![
+            "notification_send_logs".to_owned(),
+            "system_notifications".to_owned()
+        ]
     );
     let configuration = capture(&repository, select("notifications", true, false)).await;
     let preview = repository

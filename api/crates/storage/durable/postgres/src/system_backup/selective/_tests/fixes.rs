@@ -75,9 +75,9 @@ async fn structure_only_validates_physical_schema_without_exporting_or_creating_
         .await
         .unwrap();
     let table = schema::quote(&model.physical_table_name).unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "alter table {table} add column incompatible_fixture text"
-    ))
+    )))
     .execute(&db)
     .await
     .unwrap();
@@ -98,7 +98,7 @@ async fn structure_only_validates_physical_schema_without_exporting_or_creating_
         .restore(reader(bytes.clone()), "key", "key", true)
         .await
         .is_err());
-    sqlx::query(&format!("drop table {table}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("drop table {table}")))
         .execute(&db)
         .await
         .unwrap();

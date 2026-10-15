@@ -15,7 +15,9 @@ fn items() -> Vec<Value> {
 fn frozen_proof(version: u32, items: &[Value]) -> Value {
     let mut digest = format!(
         "{:x}",
-        Sha256::digest(format!("1flowbase.responses.history.v{version}"))
+        base16ct::HexDisplay(&Sha256::digest(format!(
+            "1flowbase.responses.history.v{version}"
+        )))
     );
     for item in items {
         let mut normalized = match version {
@@ -30,7 +32,7 @@ fn frozen_proof(version: u32, items: &[Value]) -> Value {
         hash.update(digest.as_bytes());
         hash.update((bytes.len() as u64).to_be_bytes());
         hash.update(bytes);
-        digest = format!("{:x}", hash.finalize());
+        digest = format!("{:x}", base16ct::HexDisplay(&hash.finalize()));
     }
     json!({"version":version,"item_count":items.len(),"digest":digest})
 }

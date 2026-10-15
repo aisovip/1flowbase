@@ -226,7 +226,7 @@ impl PgControlPlaneStore {
         for candidate in &candidates {
             let mut canonical = Vec::new();
             write_canonical_runtime_json(&candidate.payload, &mut canonical)?;
-            let source_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
+            let source_hash = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&canonical)));
             let source_bytes = u64::try_from(canonical.len())?;
             let lock_key = format!(
                 "{}:{}:{}",

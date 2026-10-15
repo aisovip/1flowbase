@@ -63,7 +63,8 @@ async fn generate_false_executes_bridge_and_standard_continuation_stays_provider
                     "input": [{"role": "developer", "content": "provider-owned prefix"}],
                     "generate": false
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             ))
             .await
             .unwrap();
@@ -84,7 +85,8 @@ async fn generate_false_executes_bridge_and_standard_continuation_stays_provider
                     "previous_response_id": "resp_provider_1",
                     "input": "new delta"
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             ))
             .await
             .unwrap();
@@ -148,7 +150,7 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
         }));
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws")).await.unwrap();
-        socket.send(Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string())).await.unwrap();
+        socket.send(Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string().into())).await.unwrap();
         let first: Value = serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert_eq!(first["type"], "response.failed");
         assert_eq!(first["response"]["error"]["code"], "original-provider-error");

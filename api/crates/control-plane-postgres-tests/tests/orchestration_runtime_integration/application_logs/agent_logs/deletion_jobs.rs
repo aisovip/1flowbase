@@ -311,7 +311,10 @@ async fn agent_logs_delete_job_stop_does_not_wait_for_inflight_batch_commit() {
         .await
         .unwrap();
     let trigger=format!("create function delay_job_delete() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(hashtextextended('fixture-delete-stop:{}',0)); return null; end $$; create constraint trigger fixture_delay_job_delete after delete on client_trajectory_sections deferrable initially deferred for each row execute function delay_job_delete();",job.job_id);
-    sqlx::raw_sql(&trigger).execute(store.pool()).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(trigger.as_str()))
+        .execute(store.pool())
+        .await
+        .unwrap();
     let worker_store = store.clone();
     let worker =
         tokio::spawn(async move { worker_store.advance_agent_logs_delete_job(job.job_id).await });

@@ -1619,7 +1619,7 @@ fn hash_identity(parts: &[&str]) -> String {
         digest.update(part.len().to_be_bytes());
         digest.update(part.as_bytes());
     }
-    format!("{:x}", digest.finalize())
+    format!("{:x}", base16ct::HexDisplay(&digest.finalize()))
 }
 
 fn termination_code(kind: TerminationKind) -> &'static str {

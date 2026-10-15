@@ -44,10 +44,7 @@ impl ApplicationLogsRequest {
         {
             match (record_ids, log_conversation_ids) {
                 (Some(ids), None) | (None, Some(ids))
-                    if !ids.is_empty() && ids.iter().all(|id| !id.is_empty()) =>
-                {
-                    ()
-                }
+                    if !ids.is_empty() && ids.iter().all(|id| !id.is_empty()) => {}
                 _ => return Err(HostServiceError::new("application_logs_selector_invalid")),
             }
         }

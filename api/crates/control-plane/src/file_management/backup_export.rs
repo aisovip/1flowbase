@@ -312,7 +312,7 @@ fn object_descriptor(
     hasher.update(object.identity().storage_id.as_bytes());
     hasher.update([0]);
     hasher.update(object.identity().object_path.as_bytes());
-    let digest = format!("{:x}", hasher.finalize());
+    let digest = format!("{:x}", base16ct::HexDisplay(&hasher.finalize()));
     let component_id = BackupComponentId::try_from(format!("object/{digest}"))
         .map_err(|_| BackupObjectExportError::InvalidInventoryRecord)?;
     let source_identity = BackupSourceIdentity::try_from(format!(

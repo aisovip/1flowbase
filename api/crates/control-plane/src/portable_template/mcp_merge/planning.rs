@@ -29,11 +29,11 @@ fn fresh_tool_id(
 ) -> Result<String> {
     let hash = format!(
         "{:x}",
-        Sha256::digest(serde_json::to_vec(&(
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&(
             scope.workspace_id,
             &scope.template_id,
             source
-        ))?)
+        ))?))
     );
     let prefix = format!("template_{}", &hash[..32]);
     for suffix in 0..=occupied.len() {

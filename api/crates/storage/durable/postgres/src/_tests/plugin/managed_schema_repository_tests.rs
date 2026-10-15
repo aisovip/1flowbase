@@ -21,9 +21,9 @@ async fn store() -> (PgControlPlaneStore, PgPool) {
 }
 
 async fn register_business_table(pool: &PgPool, table: &str) {
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create table \"{table}\" (id uuid primary key, value text)"
-    ))
+    )))
     .execute(pool)
     .await
     .unwrap();

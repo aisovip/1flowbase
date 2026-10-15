@@ -343,7 +343,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
     }
 
     for table_name in ["historical_main_records", "historical_external_records"] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             create table {table_name} (
                 id uuid primary key,
@@ -355,7 +355,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
                 payload text not null
             )
             "#
-        ))
+        )))
         .execute(&pool)
         .await
         .unwrap();

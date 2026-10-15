@@ -22,7 +22,8 @@ pub(super) fn authenticate(
     anyhow::ensure!(
         plaintext == slot.payload
             && slot.plaintext_size_bytes == i64::try_from(bytes.len())?
-            && slot.plaintext_digest == format!("sha256:{:x}", Sha256::digest(&bytes)),
+            && slot.plaintext_digest
+                == format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes))),
         "responses_history_capsule_integrity"
     );
     Ok(())
@@ -110,7 +111,8 @@ pub(super) async fn apply(
                     &after.slot_key,
                 ),
             )?;
-            after.plaintext_digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+            after.plaintext_digest =
+                format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
             after.plaintext_size_bytes = i64::try_from(bytes.len())?;
             after.payload = change.after_payload.clone();
             replace(tx, flow, &change.before, &after).await?;

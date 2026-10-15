@@ -609,12 +609,12 @@ fn resolve_values<'a>(
         .collect()
 }
 
-fn push_scope(query: &mut QueryBuilder<'_, Postgres>, workspace_id: Uuid) {
+fn push_scope(query: &mut QueryBuilder<Postgres>, workspace_id: Uuid) {
     query.push("scope_id = ").push_bind(workspace_id);
 }
 
 fn push_filters(
-    query: &mut QueryBuilder<'_, Postgres>,
+    query: &mut QueryBuilder<Postgres>,
     target: &ResolvedTarget,
     filters: &[PluginDataFilter],
 ) -> Result<(), PluginDataError> {
@@ -654,7 +654,7 @@ fn push_filters(
 }
 
 fn push_value(
-    query: &mut QueryBuilder<'_, Postgres>,
+    query: &mut QueryBuilder<Postgres>,
     value: &PluginDataValue,
 ) -> Result<(), PluginDataError> {
     match value {
@@ -692,7 +692,7 @@ fn push_value(
 }
 
 fn push_value_separated(
-    separated: &mut sqlx::query_builder::Separated<'_, '_, Postgres, &str>,
+    separated: &mut sqlx::query_builder::Separated<'_, Postgres, &str>,
     value: &PluginDataValue,
 ) -> Result<(), PluginDataError> {
     match value {

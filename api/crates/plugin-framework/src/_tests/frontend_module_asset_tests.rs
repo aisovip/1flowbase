@@ -212,7 +212,7 @@ fn d2_ac_004_registered_asset_requires_existing_digest_matching_bytes() {
     fs::create_dir_all(root.join("assets")).unwrap();
     let bytes = b"export function Fixture() {}\n";
     fs::write(root.join("assets/native.js"), bytes).unwrap();
-    let sha256 = format!("{:x}", Sha256::digest(bytes));
+    let sha256 = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
 
     let valid = FrontendModuleAssetManifest {
         path: "assets/native.js".into(),
@@ -255,7 +255,7 @@ fn settings_pages_reuse_canonical_module_validation_and_asset_discovery() {
     fs::create_dir_all(root.join("assets")).unwrap();
     let bytes = b"export function Fixture() {}\n";
     fs::write(root.join("assets/native.js"), bytes).unwrap();
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
     let module = valid_module(
         "@fixture/native",
         "1.0.0",

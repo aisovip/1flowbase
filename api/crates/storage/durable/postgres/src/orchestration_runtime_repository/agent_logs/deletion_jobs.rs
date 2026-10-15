@@ -55,9 +55,10 @@ pub(in crate::orchestration_runtime_repository) async fn create(
         .await?;
     let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type='agent_logs')").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
     anyhow::ensure!(supported, "agent_logs.application_type");
-    if let Some(row) = sqlx::query(&format!(
+    // SQL safety: JOB_COLUMNS is static SQL; deletion job selectors remain bound.
+    if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(format!(
         "select {JOB_COLUMNS} from application_log_deletion_jobs j where j.id=$1"
-    ))
+    )))
     .bind(input.job_id)
     .fetch_optional(&mut *tx)
     .await?
@@ -84,9 +85,9 @@ pub(in crate::orchestration_runtime_repository) async fn create(
     let total=sqlx::query("insert into application_log_deletion_records(job_id,record_id) select $1,id from application_run_log_tasks where application_id=$2 and scope_id=$3 and source_kind='imported' and ($4::timestamptz is null or started_at >= $4) and ($5::timestamptz is null or started_at < $5) and ingested_at < $6").bind(input.job_id).bind(app).bind(scope_id).bind(from).bind(to).bind(boundary).execute(&mut *tx).await?.rows_affected();
     sqlx::query("update application_log_deletion_jobs set total_records=$2,status=case when $2=0 then 'succeeded' else 'queued' end where id=$1").bind(input.job_id).bind(i64::try_from(total)?).execute(&mut *tx).await?;
     let job = map_job(
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "select {JOB_COLUMNS} from application_log_deletion_jobs j where j.id=$1"
-        ))
+        )))
         .bind(input.job_id)
         .fetch_one(&mut *tx)
         .await?,
@@ -101,7 +102,7 @@ pub(in crate::orchestration_runtime_repository) async fn get(
     scope: Uuid,
     id: Option<Uuid>,
 ) -> Result<Option<AgentLogsDeleteJob>> {
-    sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where application_id=$1 and scope_id=$2 and ($3::uuid is null or id=$3) order by created_at desc,id desc limit 1"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where application_id=$1 and scope_id=$2 and ($3::uuid is null or id=$3) order by created_at desc,id desc limit 1")))
         .bind(app).bind(scope).bind(id).fetch_optional(store.pool()).await?.map(map_job).transpose()
 }
 pub(in crate::orchestration_runtime_repository) async fn stop(
@@ -117,7 +118,7 @@ pub(in crate::orchestration_runtime_repository) async fn stop(
 pub(in crate::orchestration_runtime_repository) async fn next(
     store: &PgControlPlaneStore,
 ) -> Result<Option<AgentLogsDeleteJob>> {
-    sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where status in ('queued','running') order by updated_at,id limit 1"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where status in ('queued','running') order by updated_at,id limit 1")))
         .fetch_optional(store.pool()).await?.map(map_job).transpose()
 }
 pub(in crate::orchestration_runtime_repository) async fn advance(
@@ -125,7 +126,7 @@ pub(in crate::orchestration_runtime_repository) async fn advance(
     id: Uuid,
 ) -> Result<()> {
     let mut tx = store.pool().begin().await?;
-    let row=sqlx::query(&format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where id=$1 and status in ('queued','running') for no key update of j skip locked")).bind(id).fetch_optional(&mut *tx).await?;
+    let row=sqlx::query(sqlx::AssertSqlSafe(format!("select {JOB_COLUMNS} from application_log_deletion_jobs j where id=$1 and status in ('queued','running') for no key update of j skip locked"))).bind(id).fetch_optional(&mut *tx).await?;
     let Some(row) = row else {
         return Ok(());
     };

@@ -89,6 +89,21 @@ test('rejects legacy stream owner and direct workflow authentication', () => {
   assert.ok(violations.some((value) => value.includes('direct authentication or CSRF bypass')));
 });
 
+test('registry compilation may extract services but its adapter cannot retain global state', () => {
+  const root = fixture({
+    [sources[4]]: 'compile_registry(Arc::clone(state));',
+    [sources[5]]: 'fn compile_registry(state: Arc<ApiState>) { PublicProvidersAdapter { store: state.store.clone() } } struct PublicProvidersAdapter { store: MainDurableStore }',
+  });
+  try {
+    assert.deepEqual(inspectInterfaceLifecycleBoundary(root), []);
+    const route = path.join(root, 'api/apps/api-server/src/routes/retained_adapter.rs');
+    fs.writeFileSync(route, 'struct LogsAdapter { state: Arc<ApiState> }');
+    assert.ok(inspectInterfaceLifecycleBoundary(root).some((item) => item.includes('retained_adapter.rs Interface adapter retains')));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rejects a direct authentication owner outside the exact protocol/control allowlist', () => {
   const root = fixture({
     [sources[5]]: 'require_session(&state); struct PublicProvidersAdapter { store: MainDurableStore }',
@@ -147,6 +162,7 @@ test('rejects client streams which bypass the typed kernel or discard the princi
   const production = fs.readFileSync(path.join(productionRoot, sources[8]), 'utf8');
   for (const [before, after] of [
     ['invoke_typed_stream_with_principal(Arc::clone(&state)', 'bypass_stream(Arc::clone(&state)'],
+    ['invoke_typed_stream_with_principal_inner(state, binding_id, principal, input).await', 'bypass_stream(state, binding_id, principal, input).await'],
     ['principal.into_envelope(binding_id, authentication_activation, input)', 'unverified_envelope(input)'],
     ['.invoke_server_stream_with_dispatch_target::<', '.bypass_dispatch::<'],
   ]) {

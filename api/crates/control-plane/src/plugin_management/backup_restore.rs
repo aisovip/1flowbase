@@ -435,7 +435,7 @@ fn artifact_paths(
     let mut hasher = Sha256::new();
     hasher.update(component.component_id.as_str().as_bytes());
     hasher.update(target.as_os_str().as_encoded_bytes());
-    let identity = format!("{:x}", hasher.finalize());
+    let identity = format!("{:x}", base16ct::HexDisplay(&hasher.finalize()));
     let prefix = format!(
         ".1flowbase-recovery-{}-{identity}",
         context.recovery_job_id.as_uuid()
@@ -500,5 +500,6 @@ async fn remove_file_if_exists(path: &Path) -> Result<(), RecoveryStepTargetErro
 }
 
 fn digest(value: sha2::digest::Output<Sha256>) -> Result<ContentDigest, RecoveryStepTargetError> {
-    ContentDigest::try_from(format!("{value:x}")).map_err(|_| RecoveryStepTargetError::Integrity)
+    ContentDigest::try_from(format!("{:x}", base16ct::HexDisplay(&value)))
+        .map_err(|_| RecoveryStepTargetError::Integrity)
 }

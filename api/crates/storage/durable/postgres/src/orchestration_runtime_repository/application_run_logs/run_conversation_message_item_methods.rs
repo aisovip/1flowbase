@@ -299,7 +299,8 @@ impl PgControlPlaneStore {
                 "display_sequence desc, id desc",
                 "$5",
             );
-            sqlx::query(&sql)
+            // SQL safety: Message-item SQL uses internal literal predicates, ordering and placeholders; all message selectors remain bound.
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
@@ -313,7 +314,7 @@ impl PgControlPlaneStore {
                 "display_sequence asc, id asc",
                 "$5",
             );
-            sqlx::query(&sql)
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
@@ -327,7 +328,7 @@ impl PgControlPlaneStore {
                 "display_sequence desc, id desc",
                 "$4",
             );
-            sqlx::query(&sql)
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
@@ -431,10 +432,10 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<i64> {
-        sqlx::query_scalar::<_, i64>(&format!(
+        sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(format!(
             "{} select count(*)::bigint from task_message_items",
             application_run_task_message_items_cte(),
-        ))
+        )))
         .bind(application_id)
         .bind(flow_run_id)
         .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
@@ -640,7 +641,7 @@ impl PgControlPlaneStore {
             display_sequence_filter.replace("display_sequence", "task_sequence"),
         );
 
-        let exists = sqlx::query_scalar::<_, bool>(&sql)
+        let exists = sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(application_id)
             .bind(flow_run_id)
             .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)

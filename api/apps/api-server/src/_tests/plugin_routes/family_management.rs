@@ -423,3 +423,71 @@ async fn plugin_routes_upgrade_family_to_latest_official_version() {
         .unwrap();
     assert_eq!(upgrade_response.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn plugin_upgrade_endpoints_preserve_optional_json_body_fallback() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    for endpoint in [
+        "/api/console/plugins/families/optional_body_missing/upgrade-latest",
+        "/api/console/settings/model-providers/plugins/families/optional_body_missing/upgrade-latest",
+    ] {
+        let mut expected = None;
+        for (content_type, body) in [
+            (None, ""),
+            (Some("application/json"), ""),
+            (Some("application/json"), "{malformed"),
+            (Some("application/json"), "[]"),
+            (Some("text/plain"), "ignored"),
+            (Some("application/json"), "{}"),
+        ] {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri(endpoint)
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf);
+            if let Some(content_type) = content_type {
+                request = request.header("content-type", content_type);
+            }
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            // Missing family proves extraction reached the business handler, rather
+            // than an Axum 400/415/422 rejection or an authorization failure.
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{endpoint}: {body}");
+            let payload: Value = serde_json::from_slice(
+                &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            )
+            .unwrap();
+            if let Some(expected) = &expected {
+                assert_eq!(&payload, expected, "{endpoint}: {body}");
+            } else {
+                expected = Some(payload);
+            }
+        }
+    }
+}
+
+#[test]
+fn plugin_upgrade_openapi_preserves_optional_request_body() {
+    use utoipa::OpenApi;
+
+    let document = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
+    for path in [
+        "/api/console/plugins/families/{provider_code}/upgrade-latest",
+        "/api/console/settings/model-providers/plugins/families/{provider_code}/upgrade-latest",
+    ] {
+        let body = &document["paths"][path]["post"]["requestBody"];
+        assert!(body.is_object(), "{path} request body is documented");
+        assert_ne!(
+            body["required"], true,
+            "{path} request body remains optional"
+        );
+        assert!(body
+            .to_string()
+            .contains("#/components/schemas/UpgradeLatestPluginFamilyBody"));
+    }
+}

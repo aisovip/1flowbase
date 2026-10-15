@@ -294,7 +294,7 @@ fn fingerprint(
         ))
     })?;
     let digest = Sha256::digest(payload);
-    Ok(format!("sha256:{digest:x}"))
+    Ok(format!("sha256:{:x}", base16ct::HexDisplay(&digest)))
 }
 
 fn canonical_catalog_indexes(

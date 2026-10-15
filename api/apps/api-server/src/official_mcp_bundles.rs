@@ -255,7 +255,7 @@ impl ApiOfficialMcpBundleRegistry {
         let bytes =
             crate::routes::mcp_management::bundles::build_bundle_archive(package.clone())
                 .map_err(|error| anyhow!("failed to package built-in Frontstage MCP: {error}"))?;
-        let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
         if read_receipt(&self.root, organization, bundle_id, version)?
             .is_some_and(|receipt| receipt.checksum == checksum)
             && bundle_path(&self.root, organization, bundle_id, version).is_file()
@@ -804,7 +804,7 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
             .ok_or_else(|| anyhow!("local MCP bundle release has no artifact path on this node"))?;
         let bytes = fs::read(local_path).context("failed to read local MCP bundle artifact")?;
         if receipt.key_id == "1flowbase-builtin" {
-            let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+            let checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
             if checksum != receipt.checksum {
                 bail!("built-in MCP bundle checksum mismatch");
             }

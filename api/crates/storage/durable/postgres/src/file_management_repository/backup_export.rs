@@ -145,7 +145,8 @@ async fn load_file_table_records(
         "#,
         file_table.physical_table_name
     );
-    let rows = sqlx::query(&statement)
+    // SQL safety: Physical table names pass validate_identifier before inventory SQL is constructed.
+    let rows = sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
         .fetch_all(&mut **transaction)
         .await
         .with_context(|| {

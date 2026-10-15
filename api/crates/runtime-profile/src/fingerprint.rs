@@ -10,7 +10,7 @@ pub struct HostFingerprintInput {
 pub fn build_host_fingerprint(input: HostFingerprintInput) -> String {
     let normalized = normalize_fingerprint_identifiers(input);
     let digest = Sha256::digest(normalized.join("|").as_bytes());
-    let encoded = format!("{digest:x}");
+    let encoded = format!("{:x}", base16ct::HexDisplay(&digest));
     format!("host_{}", &encoded[..32])
 }
 

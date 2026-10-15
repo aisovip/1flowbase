@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
-    network_egress_pool::{GLOBAL_NETWORK_EGRESS_POOL_ID, ensure_global_network_egress_pool},
+    network_egress_pool::{ensure_global_network_egress_pool, GLOBAL_NETWORK_EGRESS_POOL_ID},
     ports::{
         CreateNetworkEgressRouteInput, NetworkEgressPoolRepository, NetworkEgressRepository,
         NetworkEgressRouteRepository, UpdateNetworkEgressRouteInput,

@@ -5,10 +5,7 @@ mod plugins;
 
 use std::{fs, io::Write, path::Path, sync::Arc};
 
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},

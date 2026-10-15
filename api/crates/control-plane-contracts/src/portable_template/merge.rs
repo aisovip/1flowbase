@@ -103,6 +103,6 @@ pub fn template_resource_fingerprint(value: &Value) -> Result<String> {
     }
     Ok(format!(
         "{:x}",
-        Sha256::digest(serde_json::to_vec(&canonical(value))?)
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&canonical(value))?))
     ))
 }

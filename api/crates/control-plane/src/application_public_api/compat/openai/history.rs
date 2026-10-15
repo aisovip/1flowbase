@@ -34,7 +34,10 @@ impl History {
         Self {
             version: CURRENT_VERSION,
             item_count: 0,
-            digest: format!("{:x}", Sha256::digest(b"1flowbase.responses.history.v3")),
+            digest: format!(
+                "{:x}",
+                base16ct::HexDisplay(&Sha256::digest(b"1flowbase.responses.history.v3"))
+            ),
         }
     }
 
@@ -203,7 +206,7 @@ fn append_digest(previous: &str, domain: &[u8], item: &Value) -> Result<String> 
     hash.update(previous.as_bytes());
     hash.update((byte_count.0 as u64).to_be_bytes());
     write_canonical_json(item, &mut DigestWriter(&mut hash))?;
-    Ok(format!("{:x}", hash.finalize()))
+    Ok(format!("{:x}", base16ct::HexDisplay(&hash.finalize())))
 }
 
 struct ByteCounter(usize);

@@ -39,7 +39,9 @@ pub(super) fn responses_session_identity(
     ];
     let identity = format!(
         "{:x}",
-        Sha256::digest(serde_json::to_vec(&parts).expect("session identity serializes"))
+        base16ct::HexDisplay(&Sha256::digest(
+            serde_json::to_vec(&parts).expect("session identity serializes")
+        ))
     );
     Ok(identity)
 }

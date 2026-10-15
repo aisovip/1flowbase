@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use argon2::{
-    password_hash::{PasswordHash, PasswordVerifier},
+    password_hash::{phc::PasswordHash, PasswordVerifier},
     Argon2,
 };
 use control_plane::{errors::ControlPlaneError, system_recovery::ConfirmedRecoveryIntent};

@@ -304,7 +304,10 @@ fn load_dependency_artifacts(
 }
 
 fn verify_dependency_integrity(source: &str, dependency: &CompiledCodeDependency) -> Result<()> {
-    let actual = format!("{:x}", Sha256::digest(source.as_bytes()));
+    let actual = format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(source.as_bytes()))
+    );
     for expected in [&dependency.artifact_hash, &dependency.integrity] {
         let normalized = normalize_sha256(expected);
         if normalized.as_deref() != Some(actual.as_str()) {

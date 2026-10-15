@@ -25,7 +25,7 @@ pub(crate) struct ManifestFile {
     pub sha256: String,
 }
 pub(crate) fn checksum(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 fn safe_path(path: &str) -> Result<()> {
     ensure!(
@@ -153,7 +153,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<PortableTemplatePackage> {
     let mut names = BTreeSet::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().trim_end_matches('/').to_owned();
+        let name = entry.name()?.trim_end_matches('/').to_owned();
         safe_path(&name)?;
         ensure!(
             names.insert(name.clone()),
@@ -238,7 +238,7 @@ fn identity(value: &Value, field: &str) -> Result<String> {
         {
             id.to_owned()
         } else {
-            format!("{:x}", Sha256::digest(id.as_bytes()))
+            format!("{:x}", base16ct::HexDisplay(&Sha256::digest(id.as_bytes())))
         },
     )
 }
@@ -306,14 +306,14 @@ pub(crate) fn source_files(package: &PortableTemplatePackage) -> Result<BTreeMap
             let locale = identity(entry, "locale")?;
             let hash = format!(
                 "{:x}",
-                Sha256::digest(serde_json::to_vec(&[
+                base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&[
                     entry["key"]
                         .as_str()
                         .context("application_template_archive_identity")?,
                     entry["locale"]
                         .as_str()
                         .context("application_template_archive_identity")?,
-                ])?)
+                ])?))
             );
             *entry = put(
                 &mut files,
@@ -339,12 +339,12 @@ pub(crate) fn source_files(package: &PortableTemplatePackage) -> Result<BTreeMap
                     let path = if kind == "tools" {
                         let hash = format!(
                             "{:x}",
-                            Sha256::digest(
+                            base16ct::HexDisplay(&Sha256::digest(
                                 resource[field]
                                     .as_str()
                                     .context("application_template_archive_identity")?
                                     .as_bytes()
-                            )
+                            ))
                         );
                         format!("mcp/tools/{}/{id}.json", &hash[..2])
                     } else {

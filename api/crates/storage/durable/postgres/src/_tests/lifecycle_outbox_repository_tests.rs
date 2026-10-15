@@ -936,7 +936,7 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         large_ids[512], subscriber, subscriber
     );
     let remove_trigger = "drop trigger fail_later_pause_batch on lifecycle_outbox_deliveries; drop function fail_later_pause_batch();";
-    sqlx::raw_sql(&failure_trigger)
+    sqlx::raw_sql(sqlx::AssertSqlSafe(failure_trigger.as_str()))
         .execute(store.pool())
         .await
         .unwrap();
@@ -1013,7 +1013,7 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         desired_state: domain::PluginDesiredState::Disabled,
         actor_user_id: user,
     };
-    sqlx::raw_sql(&failure_trigger)
+    sqlx::raw_sql(sqlx::AssertSqlSafe(failure_trigger.as_str()))
         .execute(store.pool())
         .await
         .unwrap();

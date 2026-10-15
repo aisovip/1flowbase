@@ -406,7 +406,10 @@ fn model_visible_digest(input: &ProviderInvocationInput) -> String {
         &input.model_parameters,
     );
     let encoded = serde_json::to_vec(&projection).unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(encoded))
+    format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(encoded))
+    )
 }
 
 fn build_receipt(
@@ -442,7 +445,10 @@ fn build_receipt(
         point_id: PROVIDER_INPUT_PIPELINE_POINT_ID.to_string(),
         before_digest,
         after_digest,
-        receipt_digest: format!("sha256:{:x}", Sha256::digest(encoded)),
+        receipt_digest: format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(encoded))
+        ),
         contributions,
     }
 }

@@ -218,7 +218,7 @@ fn test_root(label: &str) -> PathBuf {
 }
 
 fn checksum(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn command(

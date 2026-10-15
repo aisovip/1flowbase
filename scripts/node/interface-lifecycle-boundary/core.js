@@ -116,7 +116,12 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     }
   }
   const clientStream = rustFunctionBody(compatibility, 'invoke_client_stream_with_principal');
-  const typedStream = rustFunctionBody(compatibility, 'invoke_typed_stream_with_principal');
+  const typedStreamWrapper = rustFunctionBody(compatibility, 'invoke_typed_stream_with_principal');
+  // The reservation release wrapper awaits the same principal-bearing invocation.
+  // Only follow this explicit edge; an unrelated inner function is not evidence.
+  const typedStream = /invoke_typed_stream_with_principal_inner\(state,\s*binding_id,\s*principal,\s*input\)\.await/u.test(typedStreamWrapper)
+    ? rustFunctionBody(compatibility, 'invoke_typed_stream_with_principal_inner')
+    : typedStreamWrapper;
   if (!clientStream.includes('invoke_typed_stream_with_principal(')
       || !clientStream.includes('project_stream_invocation(')
       || !typedStream.includes('principal.into_envelope(')
@@ -158,12 +163,16 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
       }
     }
   }
-  if (/compile_[A-Za-z0-9_]*registry\s*\(\s*(?:Arc::clone\(state\)|state\.clone\(\))/u.test(contributions)
-      || /(?:Arc::clone\(state\)|state\.clone\(\))\s+as\s+Arc<dyn\s+\w*Port>/u.test(contributions)) {
+  // Composition may extract typed services from state while compiling a registry.
+  // Reject actual Port erasure and retained adapter state, not the compiler input.
+  if (/(?:Arc::clone\(state\)|state\.clone\(\))\s+as\s+Arc<dyn\s+\w*Port>/u.test(contributions)) {
     violations.push('Composition Root casts the global ApiState directly to a family Port');
   }
   for (const [relativePath, source] of rustSourcesUnder(repoRoot, 'api/apps/api-server/src/routes')) {
     violations.push(...inspectAuthenticationInvocationBoundary(relativePath, source));
+    if (/struct\s+\w*Adapter\s*\{[^}]*\b(?:Weak\s*<\s*)?(?:Arc\s*<\s*)?ApiState\b/su.test(source)) {
+      violations.push(`${relativePath} Interface adapter retains the global ApiState container`);
+    }
     const stateTypes = ['ApiState'];
     for (const match of source.matchAll(/type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:crate::app_state::)?ApiState\s*;/gu)) {
       stateTypes.push(match[1]);

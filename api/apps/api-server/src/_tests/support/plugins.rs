@@ -122,7 +122,10 @@ impl OfficialExtensionCatalogSourcePort for InMemoryOfficialExtensionCatalogSour
         Ok(OfficialExtensionArtifactDescriptor {
             locator_kind: "platform_release_asset".to_string(),
             locator: "https://example.test/openai_compatible-0.2.0.1flowbasepkg".to_string(),
-            expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&bytes))),
+            expected_checksum: Some(format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&bytes))
+            )),
             signature: None,
             platform: Some(OfficialExtensionArtifactPlatform {
                 os: "linux".to_string(),
@@ -231,7 +234,7 @@ fn build_official_mcp_bundle() -> Vec<u8> {
         "files": [{
             "path": "tools/runtime-profile.json",
             "kind": "tool",
-            "sha256": format!("sha256:{:x}", Sha256::digest(&tool))
+            "sha256": format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&tool)))
         }]
     }))
     .unwrap();
@@ -277,7 +280,7 @@ impl OfficialPluginSourcePort for InMemoryOfficialPluginSource {
                     rust_target: "x86_64-unknown-linux-musl".to_string(),
                     download_url: "https://example.com/openai-compatible.1flowbasepkg"
                         .to_string(),
-                    checksum: format!("sha256:{:x}", Sha256::digest(&package_bytes)),
+                    checksum: format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&package_bytes))),
                     signature_algorithm: None,
                     signing_key_id: None,
                 },

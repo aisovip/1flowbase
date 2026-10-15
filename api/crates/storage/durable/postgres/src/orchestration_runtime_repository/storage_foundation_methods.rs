@@ -59,7 +59,7 @@ fn canonical_runtime_json_identity(value: &Value) -> Result<(String, i64)> {
     };
     write_canonical_runtime_json(value, &mut output)?;
     Ok((
-        format!("sha256:{:x}", output.hash.finalize()),
+        format!("sha256:{:x}", base16ct::HexDisplay(&output.hash.finalize())),
         output.length,
     ))
 }

@@ -91,7 +91,10 @@ globalThis.__dependencies.zod = {
 };
 "#;
     let artifact_path = write_js_dependency_artifact_for_test("zod", artifact_source);
-    let artifact_hash = format!("sha256:{:x}", Sha256::digest(artifact_source.as_bytes()));
+    let artifact_hash = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(artifact_source.as_bytes()))
+    );
     service
         .replace_js_dependency_selection_for_tests(&ReplaceApplicationJsDependencySelectionInput {
             actor_user_id: seeded.actor_user_id,

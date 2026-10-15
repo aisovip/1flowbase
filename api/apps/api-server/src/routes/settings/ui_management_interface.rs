@@ -181,7 +181,8 @@ impl UiManagementAdapter {
                     ))?;
                 use sha2::{Digest, Sha256};
                 if asset.media_type != declared.media_type
-                    || format!("{:x}", Sha256::digest(&asset.bytes)) != declared.sha256
+                    || format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&asset.bytes)))
+                        != declared.sha256
                 {
                     return Err(control_plane::errors::ControlPlaneError::Conflict(
                         "settings_module_asset_integrity",

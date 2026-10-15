@@ -59,7 +59,8 @@ impl PgSelectiveBackupRepository {
                     schema::quote(&column)?
                 );
                 identity_ids.extend(
-                    sqlx::query_scalar::<_, uuid::Uuid>(&sql)
+                    // SQL safety: Schema names pass schema::quote; upsert_sql quotes schema metadata and row values remain bound as JSON.
+                    sqlx::query_scalar::<_, uuid::Uuid>(sqlx::AssertSqlSafe(sql.as_str()))
                         .fetch_all(&mut *tx)
                         .await?,
                 );
@@ -138,7 +139,7 @@ impl PgSelectiveBackupRepository {
                 ""
             };
             let sql = format!("select to_jsonb(t) as row from {name} t{filter} order by {order}");
-            let mut query = sqlx::query(&sql);
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
             if table.prerequisite {
                 query = query.bind(identity_ids.iter().copied().collect::<Vec<_>>());
             }
@@ -336,11 +337,12 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
                 sqlx::query("savepoint selective_row")
                     .execute(&mut *tx)
                     .await?;
-                match sqlx::query(
+                match sqlx::query(sqlx::AssertSqlSafe(
                     statements
                         .get(record.table.as_str())
-                        .context("unknown archive table")?,
-                )
+                        .context("unknown archive table")?
+                        .as_str(),
+                ))
                 .bind(&record.row)
                 .execute(&mut *tx)
                 .await

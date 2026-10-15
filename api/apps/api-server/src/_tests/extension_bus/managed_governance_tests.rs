@@ -516,7 +516,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .execute(&mut *blocker)
         .await
         .unwrap();
-    sqlx::query(&format!("create function root_2007_publication_barrier() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock({lock_key}); return NEW; end $$")).execute(&pool).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("create function root_2007_publication_barrier() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock({lock_key}); return NEW; end $$"))).execute(&pool).await.unwrap();
     sqlx::query("create constraint trigger root_2007_publication_barrier after insert on lifecycle_outbox deferrable initially deferred for each row execute function root_2007_publication_barrier()").execute(&pool).await.unwrap();
     let committing = {
         let store = runtime.store.clone();

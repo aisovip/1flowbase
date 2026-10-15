@@ -79,6 +79,14 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         })
         .collect::<Vec<_>>();
     assert_eq!(fixture.interfaces, compiled);
+    // f88bd597c moved vendor exchange to managed-plugin contributions. These
+    // host-owned IDs must not reappear in the exact core projection or fixture.
+    for retired in [
+        "applications.logs.langfuse.export",
+        "applications.logs.langfuse.import",
+    ] {
+        assert!(!compiled.iter().any(|(id, _, _, _)| id == retired));
+    }
 
     let seed: serde_json::Value =
         serde_json::from_slice(crate::official_i18n_catalog_seed::OFFICIAL_SEED_BYTES).unwrap();
@@ -106,6 +114,12 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.instances.delete"
                     | "notifications.instances.send"
                     | "notifications.instances.authorization"
+                    // Added by notification send logs (15c076df4) and Console
+                    // log exchange (900a2adca), after the pinned catalog release.
+                    | "notifications.logs.list"
+                    | "notifications.logs.get"
+                    | "applications.logs.otlp.export"
+                    | "applications.logs.otlp.import"
                     | "ui_management.templates.delete"
                     | "applications.logs.delete"
                     | "departments.delete"

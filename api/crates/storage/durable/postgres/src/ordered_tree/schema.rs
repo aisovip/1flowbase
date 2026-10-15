@@ -84,21 +84,24 @@ pub(crate) async fn create_table(
         )
         "#
     );
-    sqlx::query(&statement).execute(&mut **tx).await?;
+    // SQL safety: Every interpolated table, index and constraint identifier passes quoted_identifier.
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(&mut **tx)
+        .await?;
 
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index {sibling_index} on {table_name} (scope_id, tree_partition_id, parent_id, sibling_rank, id)"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create unique index {sibling_unique} on {table_name} (scope_id, tree_partition_id, parent_id, sibling_rank) where parent_id is not null"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create unique index {root_unique} on {table_name} (scope_id, tree_partition_id, sibling_rank) where parent_id is null"
-    ))
+    )))
     .execute(&mut **tx)
     .await?;
     sqlx::query("select ordered_tree_install_path($1::regclass, $2)")

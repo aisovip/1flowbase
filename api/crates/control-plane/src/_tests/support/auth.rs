@@ -4,10 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -22,10 +19,8 @@ use domain::{
 };
 
 pub fn password_hash(password: &str) -> String {
-    let salt = SaltString::encode_b64(b"session-security-tests")
-        .expect("static salt should be valid base64");
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password_with_salt(password.as_bytes(), b"session-security-tests")
         .expect("password hashing should succeed in tests")
         .to_string()
 }

@@ -42,6 +42,37 @@ async fn root_1998_nested_executable_route_and_catalog_share_the_same_identity()
     assert_eq!(response.status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn axum_route_migration_preserves_parameter_names_and_wildcard_urls() {
+    use axum::extract::Path;
+
+    let app = ExternalRouteAssembly::<()>::new()
+        .nest(
+            "/fixture/:owner",
+            ExternalRouteAssembly::new().route(
+                "/*rest",
+                get(|Path((owner, rest)): Path<(String, String)>| async move {
+                    format!("{owner}:{rest}")
+                }),
+            ),
+        )
+        .into_router();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/fixture/alice/nested/file.txt")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .unwrap();
+    assert_eq!(body.as_ref(), b"alice:nested/file.txt");
+}
+
 #[test]
 fn root_1998_actual_extra_mount_cannot_hide_behind_a_complete_registry() {
     let registry = super::compiled_fixture_registry("/fixture");

@@ -974,7 +974,10 @@ where
             "llm" => {
                 let input_payload = llm_input_payload
                     .expect("LLM nodes must materialize their effective input before execution");
-                let execution = execute_llm_node(
+                // Keep the nested LLM operation state out of the workflow future so
+                // its provider/tool execution fits a normal worker stack. Await it
+                // in place to retain this workflow's cancellation and lifecycle owner.
+                let execution = Box::pin(execute_llm_node(
                     plan,
                     node,
                     &resolved_inputs,
@@ -983,7 +986,7 @@ where
                     &runtime_context,
                     invoker,
                     lifecycle,
-                )
+                ))
                 .await?;
                 let trace = NodeExecutionTrace {
                     node_id: node.node_id.clone(),

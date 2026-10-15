@@ -440,8 +440,11 @@ pub fn recovery_plan_digest(
         selective: &plan.selective,
     })
     .map_err(|_| RecoveryCoordinatorError::PlanDigest)?;
-    ContentDigest::try_from(format!("{:x}", Sha256::digest(bytes)))
-        .map_err(|_| RecoveryCoordinatorError::PlanDigest)
+    ContentDigest::try_from(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(bytes))
+    ))
+    .map_err(|_| RecoveryCoordinatorError::PlanDigest)
 }
 
 fn transition_job(

@@ -110,7 +110,7 @@ node_contributions: []
         expected_versioned_plugin_id: "fixture@1.2.3".to_string(),
         expected_raw_manifest_fingerprint: format!(
             "sha256:{:x}",
-            Sha256::digest(legacy.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(legacy.as_bytes()))
         ),
     };
     let parsed = parse_legacy_installed_plugin_manifest(&legacy, &eligibility)
@@ -137,7 +137,7 @@ node_contributions: []
     let other_missing = LegacyInstalledManifestEligibility {
         expected_raw_manifest_fingerprint: format!(
             "sha256:{:x}",
-            Sha256::digest(also_missing_contract.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(also_missing_contract.as_bytes()))
         ),
         ..eligibility
     };

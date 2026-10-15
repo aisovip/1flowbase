@@ -23,7 +23,7 @@ impl ResolvedCatalogBundle {
 
     pub fn digest(&self) -> anyhow::Result<CatalogDigest> {
         let hash = Sha256::digest(self.canonical_body()?);
-        CatalogDigest::new(format!("sha256:{hash:x}")).map_err(Into::into)
+        CatalogDigest::new(format!("sha256:{:x}", base16ct::HexDisplay(&hash))).map_err(Into::into)
     }
 }
 

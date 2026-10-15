@@ -75,7 +75,7 @@ impl NativeSettingsFixture {
             use sha2::{Digest, Sha256};
             let bytes = format!("export const version = '{version}';");
             std::fs::write(root.join("module.js"), &bytes).unwrap();
-            let module = format!("    code_modules:\n      - source: '@fixture/settings'\n        version: '{version}'\n        exports: [version]\n        binding: fetched\n        assets:\n          - path: module.js\n            role: browser_module\n            media_type: 'text/javascript; charset=utf-8'\n            sha256: '{:x}'\n        type_declarations: \"declare module '@fixture/settings' {{ export const version: string; }}\"\n", Sha256::digest(bytes.as_bytes()));
+            let module = format!("    code_modules:\n      - source: '@fixture/settings'\n        version: '{version}'\n        exports: [version]\n        binding: fetched\n        assets:\n          - path: module.js\n            role: browser_module\n            media_type: 'text/javascript; charset=utf-8'\n            sha256: '{:x}'\n        type_declarations: \"declare module '@fixture/settings' {{ export const version: string; }}\"\n", base16ct::HexDisplay(&Sha256::digest(bytes.as_bytes())));
             for file in ["manifest.yaml", "host-extension.yaml"] {
                 let path = root.join(file);
                 let mut raw = std::fs::read_to_string(&path).unwrap();

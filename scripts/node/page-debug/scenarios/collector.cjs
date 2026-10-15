@@ -34,6 +34,10 @@ async function main() {
       await page.goto(`${webBaseUrl}/applications/${applicationId}/collector?language=${language}`, { waitUntil: 'domcontentloaded' });
       const install = page.getByRole('button', { name: /安装到 1flowbase|Install in 1flowbase/ });
       const download = page.getByRole('button', { name: /下载采集 CLI|Download collector CLI/ });
+      const installation = page.getByRole('region', { name: /^(复制安装命令|Copy the installation command)$/ });
+      const removal = page.getByRole('region', { name: /^(移除|Remove)$/ });
+      const shellOption = installation.getByRole('radio', { name: 'macOS / Linux (Shell)', exact: true });
+      const installationCommand = installation.locator('.application-collector__command pre');
       await page.getByRole('tab', { name: 'Codex', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
       let catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
       assert.equal(catalogResponse.status(), 200);
@@ -45,7 +49,7 @@ async function main() {
         assert.equal(await page.locator('.application-collector__command pre').count(), 0);
         await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-uninstalled.png`), fullPage: true });
         await install.click();
-        await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor({ timeout: 60000 });
+        await shellOption.waitFor({ timeout: 60000 });
         catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
         assert.equal(catalogResponse.status(), 200);
         catalog = (await catalogResponse.json()).data;
@@ -55,7 +59,7 @@ async function main() {
       assert.ok(catalog.collectors[0].shell_installer_url.startsWith('/api/public/client-collectors/'));
       const collectorTab = page.getByRole('tab', { name: 'Codex', exact: true });
       const allTab = page.getByRole('tab', { name: /^(全部|All)$/ });
-      await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
+      await shellOption.waitFor();
       assert.equal(await collectorTab.getAttribute('aria-selected'), 'true');
       assert.equal(await download.count(), 0, 'collector tab opens detail directly');
       await allTab.click();
@@ -64,13 +68,14 @@ async function main() {
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-catalog.png`), fullPage: true });
       await download.click();
       assert.equal(await collectorTab.getAttribute('aria-selected'), 'true');
-      await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
+      await shellOption.waitFor();
       let text = await page.locator('body').innerText();
       assert.ok(text.includes('bash "$installer"')); assert.ok(text.includes(applicationId));
       assert.ok(text.includes('/api/logs/v1/events')); assert.ok(!text.includes('?api_key='));
       assert.ok(!text.includes('github.com'));
       assert.ok(text.includes('--release-base'));
-      const shellCommand = await page.locator('.application-collector__command pre').innerText();
+      assert.equal(await removal.getByRole('radio', { name: 'macOS / Linux (Shell)', exact: true }).isChecked(), true, 'removal defaults to the selected operating system');
+      const shellCommand = await installationCommand.innerText();
       assert.equal(shellCommand.match(/--version '([^']+)'/)?.[1], expectedVersion);
       const endpoint = shellCommand.match(/--endpoint '([^']+)'/)?.[1];
       assert.match(endpoint || '', /^https?:\/\//);
@@ -80,7 +85,7 @@ async function main() {
       assert.ok(shellCommand.includes('--max-redirs 0'));
       assert.ok(new URL(endpoint).pathname.endsWith('/api/logs/v1/events'));
       if (process.env.COLLECTOR_EXPECTED_ENDPOINT) assert.equal(endpoint, process.env.COLLECTOR_EXPECTED_ENDPOINT);
-      await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
+      await installation.getByRole('button', { name: /^(复制命令|Copy command)$/ }).click();
       await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected), shellCommand);
       const overflow = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
       assert.ok(overflow.scroll <= overflow.width + 1, `overflow ${JSON.stringify(overflow)}`);
@@ -93,7 +98,8 @@ async function main() {
         return Math.abs(target.left + target.width / 2 - actual.left - actual.width / 2) < 1;
       });
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-shell.png`), fullPage: true });
-      await page.getByText('Windows (PowerShell)', { exact: true }).click();
+      await installation.getByRole('radio', { name: 'Windows (PowerShell)', exact: true }).check();
+      assert.equal(await removal.getByRole('radio', { name: 'Windows (PowerShell)', exact: true }).isChecked(), true, 'removal follows the selected operating system');
       text = await page.locator('body').innerText();
       assert.ok(text.includes('-Endpoint')); assert.ok(text.includes('-InstallationId'));
       assert.equal(text.match(/-Version '([^']+)'/)?.[1], expectedVersion);
@@ -106,8 +112,8 @@ async function main() {
       assert.equal(await keyInput.inputValue(), '');
       const proofKey = 'collector-ui-proof-key';
       await keyInput.fill(proofKey);
-      assert.ok(!(await page.locator('.application-collector__command pre').innerText()).includes(proofKey));
-      await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
+      assert.ok(!(await installationCommand.innerText()).includes(proofKey));
+      await installation.getByRole('button', { name: /^(复制命令|Copy command)$/ }).click();
       await page.waitForFunction(key => navigator.clipboard.readText().then(value => value.includes("$env:FLOWBASE_AGENT_LOGS_API_KEY = '" + key + "'")), proofKey);
       assert.ok(!(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).includes(proofKey));
       if (name === 'desktop-zh') {
@@ -119,8 +125,8 @@ async function main() {
         try {
           await page.waitForFunction(({ label, token }) => document.querySelector(`input[placeholder="${label}"]`)?.value === token, { label: '输入当前应用的 API Key', token: created.token });
           assert.ok(!(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).includes(created.token), 'generated token absent from browser storage');
-          assert.ok(!(await page.locator('.application-collector__command pre').innerText()).includes(created.token), 'preview masks generated token');
-          await page.getByRole('button', { name: /复制命令|Copy command/ }).click();
+          assert.ok(!(await installationCommand.innerText()).includes(created.token), 'preview masks generated token');
+          await installation.getByRole('button', { name: /^(复制命令|Copy command)$/ }).click();
           assert.ok((await page.evaluate(() => navigator.clipboard.readText())).includes(created.token), 'copied command includes generated key');
         } finally {
           const revoked = await context.request.delete(`${apiBaseUrl}/api/console/applications/${applicationId}/api-keys/${created.id}`, { headers: { 'x-csrf-token': response.request().headers()['x-csrf-token'] } });
@@ -131,7 +137,7 @@ async function main() {
       await download.waitFor();
       assert.equal(await page.locator('.application-collector__command pre').count(), 0);
       await collectorTab.click();
-      await page.getByText('macOS / Linux (Shell)', { exact: true }).waitFor();
+      await shellOption.waitFor();
       assert.equal(await download.count(), 0);
       assert.equal(await keyInput.inputValue(), '', 'leaving detail clears key');
       await page.reload({ waitUntil: 'domcontentloaded' });

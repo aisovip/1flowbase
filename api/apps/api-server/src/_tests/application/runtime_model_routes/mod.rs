@@ -1137,7 +1137,10 @@ async fn drop_runtime_table(database_url: &str, model_id: &str) {
             .await
             .unwrap();
     let statement = format!("drop table if exists \"{physical_table_name}\"");
-    sqlx::query(&statement).execute(pool.pool()).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+        .execute(pool.pool())
+        .await
+        .unwrap();
 }
 
 async fn update_runtime_record_title_directly(
@@ -1172,7 +1175,7 @@ async fn update_runtime_record_title_directly(
         quote_test_identifier(&physical_column_name)
     );
 
-    sqlx::query(&statement)
+    sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
         .bind(title)
         .bind(uuid::Uuid::parse_str(record_id).unwrap())
         .execute(pool.pool())

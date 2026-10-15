@@ -9,7 +9,7 @@ use tokio::net::TcpListener;
 use crate::ui_component_catalog_source::{canonical_json_bytes, ApiUiComponentCatalogSource};
 
 fn checksum(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn component(code: &str) -> Value {

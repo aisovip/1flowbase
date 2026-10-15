@@ -121,9 +121,9 @@ async fn keyset_pages_cover_wide_trees_matches_and_empty_final_pages() {
     )
     .await;
     for parent in [None, Some(root)] {
-        sqlx::query(&format!(r#"insert into "{}" (id, scope_id, tree_partition_id, parent_id, sibling_rank, "{}")
+        sqlx::query(sqlx::AssertSqlSafe(format!(r#"insert into "{}" (id, scope_id, tree_partition_id, parent_id, sibling_rank, "{}")
             select gen_random_uuid(), $1, $1, $2, lpad(series::text, 8, '0') || 'U', 'Match-' || series::text
-            from generate_series(1, 1007) series"#, model.physical_table_name, field.physical_column_name))
+            from generate_series(1, 1007) series"#, model.physical_table_name, field.physical_column_name)))
             .bind(scope).bind(parent).execute(store.pool()).await.unwrap();
     }
     for kind in [Kind::Roots, Kind::Children, Kind::Descendants, Kind::Search] {
@@ -182,7 +182,7 @@ async fn keyset_pages_cover_wide_trees_matches_and_empty_final_pages() {
     let first = page(&store, &metadata, scope, root, Kind::Children, 1, None)
         .await
         .unwrap();
-    sqlx::query(&format!("delete from \"{}\" where scope_id = $1 and tree_partition_id = $1 and parent_id = $2 and id <> $3", model.physical_table_name))
+    sqlx::query(sqlx::AssertSqlSafe(format!("delete from \"{}\" where scope_id = $1 and tree_partition_id = $1 and parent_id = $2 and id <> $3", model.physical_table_name)))
         .bind(scope).bind(root).bind(first.items[0]).execute(store.pool()).await.unwrap();
     let last = page(
         &store,
@@ -390,7 +390,7 @@ async fn keyset_cursor_rejects_changed_context_and_moved_deleted_anchors() {
         assert_eq!(typed_error(err), OrderedTreeQueryError::InvalidCursor);
         let anchor = first.items[0];
         // Changing an anchor's rank invalidates every kind; restore for the next kind.
-        sqlx::query(&format!("update \"{}\" set sibling_rank = 'FU' where scope_id = $1 and tree_partition_id = $1 and id = $2", model.physical_table_name))
+        sqlx::query(sqlx::AssertSqlSafe(format!("update \"{}\" set sibling_rank = 'FU' where scope_id = $1 and tree_partition_id = $1 and id = $2", model.physical_table_name)))
             .bind(scope).bind(anchor).execute(store.pool()).await.unwrap();
         assert_eq!(
             typed_error(
@@ -400,14 +400,14 @@ async fn keyset_cursor_rejects_changed_context_and_moved_deleted_anchors() {
             ),
             OrderedTreeQueryError::StaleCursor
         );
-        sqlx::query(&format!("update \"{}\" set sibling_rank = 'F' where scope_id = $1 and tree_partition_id = $1 and id = $2", model.physical_table_name))
+        sqlx::query(sqlx::AssertSqlSafe(format!("update \"{}\" set sibling_rank = 'F' where scope_id = $1 and tree_partition_id = $1 and id = $2", model.physical_table_name)))
             .bind(scope).bind(anchor).execute(store.pool()).await.unwrap();
     }
     // Reparent without changing rank: tree-path fingerprints detect this too.
     let first = page(&store, &metadata, scope, root, Kind::Children, 1, None)
         .await
         .unwrap();
-    sqlx::query(&format!("update \"{}\" set parent_id = $2 where scope_id = $1 and tree_partition_id = $1 and id = $3", model.physical_table_name))
+    sqlx::query(sqlx::AssertSqlSafe(format!("update \"{}\" set parent_id = $2 where scope_id = $1 and tree_partition_id = $1 and id = $3", model.physical_table_name)))
         .bind(scope).bind(other_root).bind(child).execute(store.pool()).await.unwrap();
     assert_eq!(
         typed_error(
@@ -429,7 +429,7 @@ async fn keyset_cursor_rejects_changed_context_and_moved_deleted_anchors() {
         .await
         .unwrap();
     // Root is the first match (rank F, UUID allocated before child); remove its subtree.
-    sqlx::query(&format!("delete from \"{table}\" node using \"{table}\" anchor where node.scope_id = $1 and node.tree_partition_id = $1 and anchor.scope_id = $1 and anchor.tree_partition_id = $1 and anchor.id = $2 and ARRAY[node.tree_path] OPERATOR(public.<@) anchor.tree_path", table = model.physical_table_name))
+    sqlx::query(sqlx::AssertSqlSafe(format!("delete from \"{table}\" node using \"{table}\" anchor where node.scope_id = $1 and node.tree_partition_id = $1 and anchor.scope_id = $1 and anchor.tree_partition_id = $1 and anchor.id = $2 and ARRAY[node.tree_path] OPERATOR(public.<@) anchor.tree_path", table = model.physical_table_name)))
         .bind(scope).bind(first.items[0]).execute(store.pool()).await.unwrap();
     assert_eq!(
         typed_error(

@@ -663,10 +663,7 @@ impl PgControlPlaneStore {
     }
 }
 
-fn append_owner_scope_clause(
-    builder: &mut QueryBuilder<'_, Postgres>,
-    owner_user_id: Option<Uuid>,
-) {
+fn append_owner_scope_clause(builder: &mut QueryBuilder<Postgres>, owner_user_id: Option<Uuid>) {
     if let Some(owner_user_id) = owner_user_id {
         builder.push(" and created_by = ");
         builder.push_bind(owner_user_id);
@@ -674,7 +671,7 @@ fn append_owner_scope_clause(
 }
 
 fn append_scope_clause(
-    builder: &mut QueryBuilder<'_, Postgres>,
+    builder: &mut QueryBuilder<Postgres>,
     scope_column_name: &str,
     scope_id: Option<Uuid>,
 ) {

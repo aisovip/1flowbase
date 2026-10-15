@@ -54,7 +54,7 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
     });
     let page_checksum = format!(
         "sha256:{:x}",
-        Sha256::digest(serde_json::to_vec(&page).unwrap())
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&page).unwrap()))
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base_url = format!("http://{}", listener.local_addr().unwrap());
@@ -453,7 +453,7 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
         } else {
             format!(
                 "sha256:{:x}",
-                Sha256::digest(serde_json::to_vec(&page).unwrap())
+                base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&page).unwrap()))
             )
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -562,7 +562,7 @@ async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
         rule["provider_code"] = json!("sync-fixture");
         rule["upstream_model_id"] = json!(format!("model-{page_number}"));
         let page = json!({"schema_version":"1flowbase.model-pricing-page/v2", "catalog_version":"sync-test", "currency_code":"USD", "page":page_number, "rules":[rule]});
-        references.push(json!({"page":page_number,"rule_count":1,"checksum":format!("sha256:{:x}", Sha256::digest(serde_json::to_vec(&page).unwrap())),"locator":format!("{base}/pages/{page_number}.json")}));
+        references.push(json!({"page":page_number,"rule_count":1,"checksum":format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(&page).unwrap()))),"locator":format!("{base}/pages/{page_number}.json")}));
         remote = remote.route(
             &format!("/model-pricing/catalog/v1/pages/{page_number}.json"),
             get(move || {

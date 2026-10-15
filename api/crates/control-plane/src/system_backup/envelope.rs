@@ -7,7 +7,8 @@ use domain::{
     SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
 };
 use hmac::{Hmac, Mac};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::{Rng, UnwrapErr};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -50,7 +51,7 @@ pub fn authenticate_backup_manifest(
 ) -> Result<SealedBackupManifest, BackupEnvelopeError> {
     let bytes =
         serde_json::to_vec(&manifest).map_err(|_| BackupEnvelopeError::ManifestSerialization)?;
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key.expose_bytes())
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(key.expose_bytes())
         .map_err(|_| BackupEnvelopeError::InvalidKey)?;
     mac.update(&bytes);
     let tag = mac.finalize().into_bytes();
@@ -70,7 +71,7 @@ pub fn verify_backup_manifest(
     let bytes = serde_json::to_vec(sealed.manifest())
         .map_err(|_| BackupEnvelopeError::ManifestSerialization)?;
     let expected = decode_hex(sealed.authentication_tag().as_str())?;
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key.expose_bytes())
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(key.expose_bytes())
         .map_err(|_| BackupEnvelopeError::InvalidKey)?;
     mac.update(&bytes);
     mac.verify_slice(&expected)
@@ -90,7 +91,7 @@ where
 {
     let cipher = cipher(key)?;
     let mut nonce_prefix = [0_u8; NONCE_PREFIX_BYTES];
-    OsRng.fill_bytes(&mut nonce_prefix);
+    UnwrapErr(SysRng).fill_bytes(&mut nonce_prefix);
 
     let mut envelope_hasher = Sha256::new();
     write_hashed(&mut writer, &mut envelope_hasher, ENVELOPE_MAGIC).await?;

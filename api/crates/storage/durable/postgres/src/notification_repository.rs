@@ -225,19 +225,21 @@ impl NotificationRepository for PgControlPlaneStore {
         }
         let predicate = " FROM notification_send_logs WHERE workspace_id=$1 AND ($2::uuid IS NULL OR instance_id=$2) AND ($3::text IS NULL OR type_code=$3) AND ($4::text IS NULL OR status=$4) AND ($5::text IS NULL OR source=$5) AND ($6::timestamptz IS NULL OR created_at >= $6) AND ($7::timestamptz IS NULL OR created_at <= $7)";
         let source = input.source.map(|s| s.as_str());
-        let total: i64 = sqlx::query_scalar(&format!("SELECT count(*){predicate}"))
-            .bind(workspace_id)
-            .bind(input.instance_id)
-            .bind(&input.type_code)
-            .bind(&input.status)
-            .bind(source)
-            .bind(from)
-            .bind(to)
-            .fetch_one(self.pool())
-            .await?;
-        let items = sqlx::query(&format!(
+        // SQL safety: Only the static notification predicate is interpolated; all filter values remain bound.
+        let total: i64 =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT count(*){predicate}")))
+                .bind(workspace_id)
+                .bind(input.instance_id)
+                .bind(&input.type_code)
+                .bind(&input.status)
+                .bind(source)
+                .bind(from)
+                .bind(to)
+                .fetch_one(self.pool())
+                .await?;
+        let items = sqlx::query(sqlx::AssertSqlSafe(format!(
             "SELECT *{predicate} ORDER BY created_at DESC,id DESC LIMIT $8 OFFSET $9"
-        ))
+        )))
         .bind(workspace_id)
         .bind(input.instance_id)
         .bind(&input.type_code)

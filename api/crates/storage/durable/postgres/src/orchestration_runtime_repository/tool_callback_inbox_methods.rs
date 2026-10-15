@@ -90,9 +90,10 @@ impl PgControlPlaneStore {
             {
                 return Err(ControlPlaneError::Conflict("responses_continuation_conflict").into());
             }
-            let claim_row = sqlx::query(&format!(
+            // SQL safety: RESUME_CLAIM_COLUMNS is static SQL; callback and claim values remain bound.
+            let claim_row = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "select {RESUME_CLAIM_COLUMNS} from flow_run_resume_claims where callback_task_id = $1"
-            ))
+            )))
             .bind(input.callback_task_id)
             .fetch_optional(&mut *tx)
             .await?
@@ -224,9 +225,9 @@ impl PgControlPlaneStore {
         let callback_task = map_callback_task_record(callback_row)?;
 
         let claim_token = Uuid::now_v7();
-        let claim_row = sqlx::query(&format!(
+        let claim_row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "insert into flow_run_resume_claims (id, scope_id, application_id, flow_run_id, checkpoint_id, callback_task_id, resume_kind, status, request_payload, claim_token, lease_expires_at, raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, 'callback', 'processing', ($7::jsonb -> 0), $8, now() + interval '5 minutes', jsonb_strip_nulls(jsonb_build_object('request_payload', ($7::jsonb -> 1))) ) returning {RESUME_CLAIM_COLUMNS}"
-        ))
+        )))
         .bind(Uuid::now_v7())
         .bind(input.scope_id)
         .bind(input.application_id)

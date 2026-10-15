@@ -755,7 +755,7 @@ async fn root_2007_ir_f01_upgrade_and_concurrent_identity() {
     assert_eq!(rejected, 1);
     let (index, installed) = winner.unwrap();
     let bytes = &contenders[index];
-    let digest = format!("sha256:{:x}", Sha256::digest(bytes));
+    let digest = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)));
     assert_eq!(
         installed.installation.expected_checksum.as_deref(),
         Some(digest.as_str())

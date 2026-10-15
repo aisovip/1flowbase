@@ -252,7 +252,10 @@ fn quickjs_runtime_with_dependency(
     artifact_source: &str,
 ) -> CompiledCodeRuntime {
     let artifact_path = write_temp_dependency_artifact(alias, artifact_source);
-    let artifact_hash = format!("sha256:{:x}", Sha256::digest(artifact_source.as_bytes()));
+    let artifact_hash = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(artifact_source.as_bytes()))
+    );
 
     CompiledCodeRuntime {
         language: "javascript".to_string(),

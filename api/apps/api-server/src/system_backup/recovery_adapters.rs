@@ -456,8 +456,9 @@ async fn verify_reader(
         }
         hasher.update(&buffer[..read]);
     }
-    let content_digest = ContentDigest::try_from(format!("{:x}", hasher.finalize()))
-        .map_err(|_| PostRestoreDependencyError)?;
+    let content_digest =
+        ContentDigest::try_from(format!("{:x}", base16ct::HexDisplay(&hasher.finalize())))
+            .map_err(|_| PostRestoreDependencyError)?;
     if size_bytes != component.size_bytes || content_digest != component.content_digest {
         return Err(PostRestoreDependencyError);
     }
@@ -465,8 +466,11 @@ async fn verify_reader(
 }
 
 fn digest(bytes: &[u8]) -> Result<ContentDigest, PostRestoreDependencyError> {
-    ContentDigest::try_from(format!("{:x}", Sha256::digest(bytes)))
-        .map_err(|_| PostRestoreDependencyError)
+    ContentDigest::try_from(format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(bytes))
+    ))
+    .map_err(|_| PostRestoreDependencyError)
 }
 
 #[derive(Clone)]

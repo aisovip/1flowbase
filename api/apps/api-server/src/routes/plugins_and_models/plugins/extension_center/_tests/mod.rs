@@ -512,7 +512,10 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
                 artifact_bytes: bytes.clone(),
                 source: "official".to_string(),
                 trust: "official".to_string(),
-                expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(&bytes))),
+                expected_checksum: Some(format!(
+                    "sha256:{:x}",
+                    base16ct::HexDisplay(&Sha256::digest(&bytes))
+                )),
                 signature_status: domain::ExtensionSignatureStatus::Verified,
                 signature_algorithm: Some("ed25519".to_string()),
                 signing_key_id: Some("official-key-2026-04".to_string()),
@@ -640,7 +643,10 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
         artifact_bytes: bytes.to_vec(),
         source: "official".to_string(),
         trust: "official".to_string(),
-        expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(bytes))),
+        expected_checksum: Some(format!(
+            "sha256:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(bytes))
+        )),
         signature_status: domain::ExtensionSignatureStatus::Verified,
         signature_algorithm: Some("ed25519".to_string()),
         signing_key_id: Some("official-key-2026-04".to_string()),
@@ -1103,7 +1109,7 @@ fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
 fn signed_i18n_artifact_requires_cryptographic_verification_before_install() {
     let signing_key = SigningKey::from_bytes(&[7_u8; 32]);
     let bytes = b"signed-i18n-seed".to_vec();
-    let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+    let checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
     let signature = STANDARD.encode(signing_key.sign(&bytes).to_bytes());
     let trusted_keys = vec![plugin_framework::TrustedPublicKey {
         key_id: "official-key-2026-04".to_string(),

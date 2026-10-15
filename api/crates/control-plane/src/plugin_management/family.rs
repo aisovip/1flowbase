@@ -1019,7 +1019,7 @@ where
         previous: &domain::PluginInstallationRecord,
         target: &domain::PluginInstallationRecord,
     ) {
-        let Ok(revision) = WORKER_DEMAND_REVISION.fetch_update(
+        let Ok(revision) = WORKER_DEMAND_REVISION.try_update(
             std::sync::atomic::Ordering::AcqRel,
             std::sync::atomic::Ordering::Acquire,
             |value| value.checked_add(1),

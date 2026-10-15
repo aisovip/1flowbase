@@ -507,7 +507,8 @@ impl PgControlPlaneStore {
         let query = SECTION_ROWS.replace("select p.event_sequence", "select p.id,p.request_id,p.step_id,p.flow_run_id,p.node_run_id,p.event_sequence")
             .replace("where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4 and p.event_sequence>$5", "where p.flow_run_id=any($1) and p.body_kind in ('content','timing') and p.value_hash ~ '^sha256:[0-9a-f]{64}$'")
             .replace("order by p.event_sequence limit $6", "order by p.flow_run_id,p.event_sequence,p.id limit $2");
-        let rows = sqlx::query(&query)
+        // SQL safety: SECTION_ROWS replacements use only literal SQL fragments; trajectory identifiers remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
             .bind(&runs)
             .bind(remaining)
             .fetch_all(&mut *tx)
@@ -536,7 +537,7 @@ impl PgControlPlaneStore {
             .await?;
             let restored_query = SECTION_ROWS.replace("where p.flow_run_id=$1 and p.request_id=$2 and p.step_id=$3 and p.section=$4 and p.event_sequence>$5", "where p.id=$1")
                 .replace("order by p.event_sequence limit $6", "");
-            let restored = sqlx::query(&restored_query)
+            let restored = sqlx::query(sqlx::AssertSqlSafe(restored_query.as_str()))
                 .bind(id)
                 .fetch_one(&mut *tx)
                 .await?;

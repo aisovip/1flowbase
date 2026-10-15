@@ -15,7 +15,9 @@ pub async fn execute_native_sql(
     pool: &PgPool,
     sql: &str,
 ) -> Result<NativeSqlExecutionOutput, ProviderRuntimeError> {
-    let mut stream = sqlx::raw_sql(sql).fetch_many(pool);
+    // This is the intentional native SQL execution boundary, not an interpolated query.
+    // The caller owns authorization to execute the supplied SQL; preserve its SQL semantics.
+    let mut stream = sqlx::raw_sql(sqlx::AssertSqlSafe(sql)).fetch_many(pool);
     let mut results = Vec::new();
     let mut pending_columns: Option<Vec<NativeSqlColumn>> = None;
     let mut pending_rows = Vec::new();

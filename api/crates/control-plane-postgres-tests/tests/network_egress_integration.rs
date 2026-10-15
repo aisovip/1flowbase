@@ -1,7 +1,7 @@
 use control_plane::{
     network_egress_pool::{
-        CreateNetworkEgressPoolMemberCommand, GLOBAL_NETWORK_EGRESS_POOL_ID,
-        NetworkEgressPoolService, ensure_global_network_egress_pool,
+        ensure_global_network_egress_pool, CreateNetworkEgressPoolMemberCommand,
+        NetworkEgressPoolService, GLOBAL_NETWORK_EGRESS_POOL_ID,
     },
     network_egress_route::{CreateNetworkEgressRouteCommand, NetworkEgressRouteService},
     ports::{
@@ -20,7 +20,7 @@ use domain::{
     ExtensionCategory, ExtensionSignatureStatus, PluginDesiredState, PluginVerificationStatus,
 };
 use serde_json::json;
-use storage_durable_postgres::{PgControlPlaneStore, run_migrations};
+use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -138,12 +138,10 @@ async fn ac_015_failed_sync_preserves_stably_ordered_egress_projection() {
     )
     .await
     .expect("registry-owned secret should persist encrypted");
-    assert!(
-        !secret
-            .encrypted_secret_json
-            .to_string()
-            .contains("registry-secret-must-not-persist-in-cleartext")
-    );
+    assert!(!secret
+        .encrypted_secret_json
+        .to_string()
+        .contains("registry-secret-must-not-persist-in-cleartext"));
     let resolved = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
         &store,
         provider_id,
@@ -509,11 +507,9 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         .select_healthy_first_from(pool_id, &[unavailable.member.id])
         .await
         .expect_err("a route must not fall through to an unbound healthy proxy");
-    assert!(
-        unavailable_route
-            .to_string()
-            .contains("network_egress_pool_unavailable")
-    );
+    assert!(unavailable_route
+        .to_string()
+        .contains("network_egress_pool_unavailable"));
 
     let workspace_id =
         sqlx::query_scalar::<_, Uuid>("select id from workspaces where name = 'network-egress'")
@@ -557,11 +553,9 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         .delete_member(actor.id, pool_id, available.member.id)
         .await
         .expect_err("a proxy referenced by a route must not be deleted");
-    assert!(
-        delete_referenced
-            .to_string()
-            .contains("network_egress_pool_member_in_use")
-    );
+    assert!(delete_referenced
+        .to_string()
+        .contains("network_egress_pool_member_in_use"));
 
     let delete_selected = NetworkEgressPoolService::new(store.clone())
         .delete_members(
@@ -571,31 +565,25 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         )
         .await
         .expect_err("AC-003 selected deletion must be atomic when one member is referenced");
-    assert!(
-        delete_selected
-            .to_string()
-            .contains("network_egress_pool_member_in_use")
-    );
+    assert!(delete_selected
+        .to_string()
+        .contains("network_egress_pool_member_in_use"));
     let members_after_selected_failure =
         NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
             .await
             .expect("members should remain readable after rejected selected deletion");
     assert_eq!(members_after_selected_failure.len(), 3);
-    assert!(
-        members_after_selected_failure
-            .iter()
-            .any(|member| member.id == unreferenced.member.id)
-    );
+    assert!(members_after_selected_failure
+        .iter()
+        .any(|member| member.id == unreferenced.member.id));
 
     let delete_all = NetworkEgressPoolService::new(store.clone())
         .delete_all_members(actor.id, pool_id)
         .await
         .expect_err("AC-003 delete all must be atomic when one member is referenced");
-    assert!(
-        delete_all
-            .to_string()
-            .contains("network_egress_pool_member_in_use")
-    );
+    assert!(delete_all
+        .to_string()
+        .contains("network_egress_pool_member_in_use"));
     let members_after_delete_all_failure =
         NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
             .await
@@ -619,21 +607,17 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         .list()
         .await
         .expect("stale references should remain visible for correction");
-    assert!(
-        views[0]
-            .members
-            .iter()
-            .all(|member| member.health == domain::NetworkEgressPoolMemberHealth::Invalid)
-    );
+    assert!(views[0]
+        .members
+        .iter()
+        .all(|member| member.health == domain::NetworkEgressPoolMemberHealth::Invalid));
     let unavailable_error = NetworkEgressPoolService::new(store.clone())
         .select_healthy_first(pool_id)
         .await
         .expect_err("a stale projection must fail closed before any runtime lease is acquired");
-    assert!(
-        unavailable_error
-            .to_string()
-            .contains("network_egress_pool_unavailable")
-    );
+    assert!(unavailable_error
+        .to_string()
+        .contains("network_egress_pool_unavailable"));
 
     let stopped = NetworkEgressRepository::update_network_egress_provider_lifecycle(
         &store,

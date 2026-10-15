@@ -44,7 +44,8 @@ fn issue_1601_native_websocket_decodes_typed_commands() {
             "request_id": "req-1",
             "request": {"query": "hello"}
         })
-        .to_string(),
+        .to_string()
+        .into(),
     ))
     .expect("command should decode")
     .expect("text should contain a command");
@@ -64,7 +65,8 @@ fn issue_1601_native_attach_keeps_workflow_visibility_explicit() {
             "after_event_id": null,
             "stream_options": {"include_workflow_events": "public"}
         })
-        .to_string(),
+        .to_string()
+        .into(),
     ))
     .unwrap()
     .unwrap();

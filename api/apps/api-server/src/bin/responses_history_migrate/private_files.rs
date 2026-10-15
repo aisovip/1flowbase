@@ -76,7 +76,7 @@ pub fn backup_database(directory: &Path, database_url: &str) -> Result<()> {
     write_json(
         &directory.join("backup.json"),
         &serde_json::json!({
-            "archive": "before.dump", "sha256": format!("{:x}", digest.finalize()),
+            "archive": "before.dump", "sha256": format!("{:x}", base16ct::HexDisplay(&digest.finalize())),
             "bytes": file.metadata()?.len(),
             "rollback_semantics": "Rollback restores effective recovered data by appending an original-content restoration head. Original latest context ID or absence is not restored; immutable provenance remains.",
         "recovery": "Keep all writers stopped. If an intent lacks a receipt after interruption, restore the complete archive before retrying; never restart the single-format runtime over partial migration."

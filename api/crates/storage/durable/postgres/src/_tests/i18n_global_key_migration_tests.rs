@@ -132,7 +132,7 @@ async fn migration_merges_equal_cross_module_values_and_preserves_catalog_state(
             let statement = format!(
                 "insert into {table} (workspace_id, module, msgid, locale, translation) values ($1, $2, 'Settings', 'zh_Hans', $3)"
             );
-            sqlx::query(&statement)
+            sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
                 .bind(workspace_id)
                 .bind(module)
                 .bind(translation)

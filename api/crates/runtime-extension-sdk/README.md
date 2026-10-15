@@ -192,7 +192,9 @@ an alternate SDK polling service.
 Use `execute_authorizable_notification(..., |config, input| async move { ... })`
 inside the existing `serve`/`serve_duplex` handler. Lower-level
 `prepare_authorizable_notification` and `complete_authorizable_notification`
-are available for authors needing separate await/lifecycle handling. The SDK
+are available for authors needing separate await/lifecycle handling. Preparation errors
+use `Box<CapabilityStdioResponse>` to keep the result small; forwarding the original
+wire response requires `*response`. The SDK
 validates before supplier I/O and redacts callback errors. Errors or invalid
 responses after a send become unknown, without exposing unvalidated patches.
 The Host must validate the response again; a worker can bypass SDK helpers.

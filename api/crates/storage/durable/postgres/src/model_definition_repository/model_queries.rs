@@ -122,7 +122,8 @@ pub(super) async fn load_model_definition_with_lock(
         statement.push_str(" for update");
     }
 
-    let row = sqlx::query(&statement)
+    // SQL safety: Only the literal FOR UPDATE suffix is appended to the static model query.
+    let row = sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
         .bind(model_id)
         .fetch_optional(&mut **tx)
         .await?;

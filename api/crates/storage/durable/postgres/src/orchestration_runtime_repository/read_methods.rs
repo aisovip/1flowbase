@@ -738,7 +738,8 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        let rows = sqlx::query(&format!(
+        // SQL safety: The interpolated internal-run filter is generated with a fixed SQL alias; selectors remain bound.
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             select
                 id,
@@ -780,7 +781,7 @@ impl PgControlPlaneStore {
             limit $3 offset $4
             "#,
             order_by
-        ))
+        )))
         .bind(application_id)
         .bind(created_after)
         .bind(page_size)
@@ -1355,9 +1356,9 @@ impl PgControlPlaneStore {
     }
 }
 
-fn push_model_provider_request_log_filters<'a>(
-    query: &mut QueryBuilder<'a, Postgres>,
-    input: &'a control_plane_contracts::ports::ListModelProviderRequestLogsPageInput,
+fn push_model_provider_request_log_filters(
+    query: &mut QueryBuilder<Postgres>,
+    input: &control_plane_contracts::ports::ListModelProviderRequestLogsPageInput,
 ) {
     query
         .push(" where logs.scope_id = ")

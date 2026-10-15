@@ -90,7 +90,10 @@ async fn native_snapshot_strings_share_items_preserve_occurrences_and_reclaim_la
 async fn native_snapshot_full_equality_rejects_hash_collision_and_missing_item() {
     let (store, run, application, scope) = seed().await;
     let item = "{\"content\":\"original\"}";
-    let hash = format!("sha256:{:x}", Sha256::digest(item.as_bytes()));
+    let hash = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(item.as_bytes()))
+    );
     let id = Uuid::now_v7();
     sqlx::query("insert into runtime_native_snapshot_items(id,scope_id,application_id,content_hash,body,byte_size) values($1,$2,$3,$4,'wrong',5)")
         .bind(id).bind(scope).bind(application).bind(hash).execute(store.pool()).await.unwrap();
@@ -112,7 +115,7 @@ async fn native_snapshot_full_equality_rejects_hash_collision_and_missing_item()
         .unwrap();
     let root = Uuid::now_v7();
     sqlx::query("insert into runtime_native_snapshot_manifests(id,scope_id,application_id,content_hash,byte_size,layout) values($1,$2,$3,$4,$5,$6)")
-        .bind(root).bind(scope).bind(application).bind(format!("sha256:{:x}",Sha256::digest(body.as_bytes())))
+        .bind(root).bind(scope).bind(application).bind(format!("sha256:{:x}",base16ct::HexDisplay(&Sha256::digest(body.as_bytes()))))
         .bind(body.len() as i64).bind(json!([["item",Uuid::now_v7()]])).execute(store.pool()).await.unwrap();
     assert!(
         sqlx::query_scalar::<_, Value>("select runtime_native_snapshot_body($1,$2)")

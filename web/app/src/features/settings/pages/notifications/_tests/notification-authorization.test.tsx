@@ -240,7 +240,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
 test('unmount stops polling and aborts the request without cancelling backend authorization', async () => {
   poll = () => new Promise(() => {});
   vi.useFakeTimers();
-  const rendered = render(
+  const { unmount } = render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
       type={type}
@@ -252,7 +252,7 @@ test('unmount stops polling and aborts the request without cancelling backend au
     await vi.advanceTimersByTimeAsync(5000);
   });
   const pollCommand = commands.find((command) => command.body.type === 'poll');
-  rendered.unmount();
+  unmount();
   expect(pollCommand?.signal?.aborted).toBe(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(15000);

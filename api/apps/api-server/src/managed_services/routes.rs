@@ -117,7 +117,8 @@ async fn invoke(
 }
 
 // Registration validates console membership before either transport is mounted.
-// Axum 0.7 uses :parameter; canonical catalogs and manifests use {parameter}.
+// Console authorization templates use :parameter; manifests use {parameter}.
+// ConsoleRouteAssembly translates that template into Axum syntax when mounting.
 pub(super) fn axum_path(path: &str) -> String {
     path.strip_prefix("/api/console")
         .expect("validated managed service route")

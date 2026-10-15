@@ -2,12 +2,15 @@
 name = "storage-durable-postgres"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [features]
 responses-history-migration = ["control-plane-contracts/responses-history-migration"]
 
 [dependencies]
+sqlx-core.workspace = true
+base16ct.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true

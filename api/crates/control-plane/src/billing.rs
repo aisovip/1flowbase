@@ -19,7 +19,7 @@ pub use control_plane_contracts::billing::{
 
 pub fn pricing_rules_cache_key(provider_code: &str, upstream_model_id: &str) -> String {
     let digest = Sha256::digest(format!("{provider_code}\0{upstream_model_id}"));
-    format!("model-pricing:rules:{digest:x}")
+    format!("model-pricing:rules:{:x}", base16ct::HexDisplay(&digest))
 }
 
 pub fn required_credit_permission(command: &str) -> Option<&'static str> {

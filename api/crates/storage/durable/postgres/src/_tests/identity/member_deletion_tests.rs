@@ -60,12 +60,13 @@ async fn member_deletion_preserves_history_and_cleans_identity() {
             "api_keys" => "creator_user_id",
             _ => "user_id",
         };
-        let count: i64 =
-            sqlx::query_scalar(&format!("select count(*) from {table} where {column}=$1"))
-                .bind(member.id)
-                .fetch_one(store.pool())
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select count(*) from {table} where {column}=$1"
+        )))
+        .bind(member.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
         assert_eq!(count, 0, "{table} must be removed");
     }
     let history = store.get_flow_run(application, run).await.unwrap().unwrap();

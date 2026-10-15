@@ -19,7 +19,10 @@ fn extract_archive_from_zip(bytes: &[u8]) -> Result<RunArchiveV1Response, ApiErr
         let file = zip
             .by_index(index)
             .map_err(|_| ControlPlaneError::InvalidInput("archive_zip_read_error"))?;
-        let file_name = file.name().to_string();
+        let file_name = file
+            .name()
+            .map_err(|_| ControlPlaneError::InvalidInput("archive_zip_read_error"))?
+            .into_owned();
         if file_name.ends_with(".json") && !file_name.contains('/') {
             root_json_names.push(file_name);
         }
@@ -371,7 +374,7 @@ pub(in crate::routes::applications_group::application_runtime) fn parse_run_arch
 }
 
 pub(super) fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 pub(super) fn normalize_sha256(value: &str) -> String {

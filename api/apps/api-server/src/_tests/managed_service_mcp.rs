@@ -248,9 +248,8 @@ async fn managed_mcp_flat_arguments_reach_existing_http_dispatch_and_unwrap_api_
     };
     let service = registration();
     let operation = &service.declaration.operations[0];
-    // Axum 0.7 routing syntax differs from the canonical interface path.
     let router = Router::new().route(
-        &operation.path.replace("{host_id}", ":host_id"),
+        &operation.path,
         post(
             |Path(host): Path<String>,
              Query(query): Query<std::collections::HashMap<String, String>>,

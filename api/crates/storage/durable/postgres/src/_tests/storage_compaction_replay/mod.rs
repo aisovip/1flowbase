@@ -176,7 +176,7 @@ fn candidate_sha() -> Result<String> {
 }
 
 fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    format!("{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 pub(super) fn qualified(schema: &str, table: &str) -> String {
@@ -216,17 +216,17 @@ async fn empty_fixture(version: Option<i64>) -> Result<PgPool> {
     let (pool, seed) =
         super::provider_protocol_capsule_store_tests::seeded_flow_run_before(version).await;
     let schema = isolated_schema(&pool).await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "delete from {} where id=$1",
         qualified(&schema, "flow_runs")
-    ))
+    )))
     .bind(seed)
     .execute(&pool)
     .await?;
-    let remaining: i64 = sqlx::query_scalar(&format!(
+    let remaining: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select count(*) from {}",
         qualified(&schema, "flow_runs")
-    ))
+    )))
     .fetch_one(&pool)
     .await?;
     ensure!(
@@ -239,12 +239,14 @@ async fn empty_fixture(version: Option<i64>) -> Result<PgPool> {
 async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Value> {
     let ids = run_array(&input.runs);
     let sql = format!("select (select count(*) from {s}.flow_runs where id=any({ids})) runs,(select count(*) from {s}.runtime_events where flow_run_id=any({ids})) events,(select coalesce(sum(case when coalesce((to_jsonb(p)->>'codec_version')::int,0)=0 then jsonb_array_length(p.frames) when (to_jsonb(p)->>'codec_version')::int in (1,2,3) then p.last_sequence-p.first_sequence+1 else null end),0)::bigint from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids})) frames,(select count(*) from {s}.client_trajectory_captures where flow_run_id=any({ids})) captures", s=ident(schema));
-    let unknown: i64 = sqlx::query_scalar(&format!("select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and coalesce((to_jsonb(p)->>'codec_version')::int,0) not in (0,1,2,3)",s=ident(schema))).fetch_one(pool).await?;
+    let unknown: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and coalesce((to_jsonb(p)->>'codec_version')::int,0) not in (0,1,2,3)",s=ident(schema)))).fetch_one(pool).await?;
     ensure!(
         unknown == 0,
         "unknown archive encoding cannot enter frame counts"
     );
-    let row = sqlx::query(&sql).fetch_one(pool).await?;
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+        .fetch_one(pool)
+        .await?;
     let mut result = json!({"runs":row.try_get::<i64,_>("runs")?,"events":row.try_get::<i64,_>("events")?,"frames":row.try_get::<i64,_>("frames")?,"captures":row.try_get::<i64,_>("captures")?});
     ensure!(
         result["runs"] == input.runs.len()
@@ -254,7 +256,7 @@ async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Val
         "source/copy approved sample count mismatch"
     );
     if input.finite_manifest && input.prefix_version == 20260929120000 {
-        let inventory: (i64, i64, i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema))).fetch_one(pool).await?;
+        let inventory: (i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema)))).fetch_one(pool).await?;
         ensure!(
             input.runs.len() == 8
                 && input.events == 1941
@@ -275,7 +277,7 @@ async fn sample_counts(pool: &PgPool, schema: &str, input: &Input) -> Result<Val
                     .all(|key| expected[*key].as_i64().is_some_and(|n| n > 0)),
             "manifest inventory must contain exact positive steps/sections/raw_parts counts"
         );
-        let actual: (i64,i64,i64) = sqlx::query_as(&format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema))).fetch_one(pool).await?;
+        let actual: (i64,i64,i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!("select (select count(*) from {s}.client_trajectory_steps where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_sections where flow_run_id=any({ids})),(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}))",s=ident(schema)))).fetch_one(pool).await?;
         ensure!(
             json!({"steps":actual.0,"sections":actual.1,"raw_parts":actual.2}) == *expected,
             "approved finite inventory differs"
@@ -313,7 +315,7 @@ async fn layout_inventory(pool: &PgPool, schema: &str, runs: &[Uuid]) -> Result<
     let ids = run_array(runs);
     // to_jsonb inspects only the new typed layout marker. Originals and bodies
     // never pass through this inventory projection.
-    let row = sqlx::query(&format!("select (select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and coalesce((to_jsonb(t)->>'metadata_layout')::int,0)=0) compact_layout0_steps,(select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and (to_jsonb(t)->>'metadata_layout')::int=1) dense_steps,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=2) sealed_inline_directory_parts,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=3) packed_parts,(select count(*) from {s}.client_trajectory_archive_blocks b join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and b.codec_version=2) packed_blocks",s=ident(schema))).fetch_one(pool).await?;
+    let row = sqlx::query(sqlx::AssertSqlSafe(format!("select (select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and coalesce((to_jsonb(t)->>'metadata_layout')::int,0)=0) compact_layout0_steps,(select count(*) from {s}.client_trajectory_steps t where flow_run_id=any({ids}) and metadata_compact and (to_jsonb(t)->>'metadata_layout')::int=1) dense_steps,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=2) sealed_inline_directory_parts,(select count(*) from {s}.client_trajectory_archive_parts p join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and p.codec_version=3) packed_parts,(select count(*) from {s}.client_trajectory_archive_blocks b join {s}.client_trajectory_archive_heads h using(request_id) where h.flow_run_id=any({ids}) and b.codec_version=2) packed_blocks",s=ident(schema)))).fetch_one(pool).await?;
     Ok(
         json!({"compact_layout0_steps":row.try_get::<i64,_>("compact_layout0_steps")?,
         "dense_steps":row.try_get::<i64,_>("dense_steps")?,

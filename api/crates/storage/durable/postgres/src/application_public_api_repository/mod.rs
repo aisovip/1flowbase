@@ -374,7 +374,8 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         publication_id: Uuid,
     ) -> Result<Option<ApplicationPublicationVersionRecord>> {
-        let row = sqlx::query(publication_select_sql("where id = $1").as_str())
+        // SQL safety: publication_select_sql receives only internal literal suffixes; publication selectors remain bound.
+        let row = sqlx::query(sqlx::AssertSqlSafe(publication_select_sql("where id = $1")))
             .bind(publication_id)
             .fetch_optional(self.pool())
             .await?;
@@ -386,12 +387,9 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
     ) -> Result<Vec<ApplicationPublicationVersionRecord>> {
-        let rows = sqlx::query(
-            publication_select_sql(
-                "where application_id = $1 order by version_sequence desc, id desc",
-            )
-            .as_str(),
-        )
+        let rows = sqlx::query(sqlx::AssertSqlSafe(publication_select_sql(
+            "where application_id = $1 order by version_sequence desc, id desc",
+        )))
         .bind(application_id)
         .fetch_all(self.pool())
         .await?;
@@ -403,11 +401,12 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
     ) -> Result<Option<ApplicationPublicationVersionRecord>> {
-        let row =
-            sqlx::query(publication_select_sql("where active and application_id = $1").as_str())
-                .bind(application_id)
-                .fetch_optional(self.pool())
-                .await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(publication_select_sql(
+            "where active and application_id = $1",
+        )))
+        .bind(application_id)
+        .fetch_optional(self.pool())
+        .await?;
 
         row.map(map_publication_row).transpose()
     }
@@ -416,11 +415,12 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
         slug: &str,
     ) -> Result<Option<ApplicationPublicationVersionRecord>> {
-        let row =
-            sqlx::query(publication_select_sql("where active and extension_slug = $1").as_str())
-                .bind(slug)
-                .fetch_optional(self.pool())
-                .await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(publication_select_sql(
+            "where active and extension_slug = $1",
+        )))
+        .bind(slug)
+        .fetch_optional(self.pool())
+        .await?;
 
         row.map(map_publication_row).transpose()
     }
@@ -429,10 +429,9 @@ impl ApplicationPublicationRepository for PgControlPlaneStore {
         &self,
     ) -> Result<Vec<ApplicationPublicationVersionRecord>> {
         let rows = sqlx::query(
-            publication_select_sql(
+            sqlx::AssertSqlSafe(publication_select_sql(
                 "where active and api_enabled and extension_slug is not null and application_id in (select id from applications where workflow_trigger_type = 'extension') order by extension_slug asc, id asc",
-            )
-            .as_str(),
+            )),
         )
         .fetch_all(self.pool())
         .await?;

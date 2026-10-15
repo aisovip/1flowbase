@@ -333,7 +333,7 @@ fn recovery_paths(
     hasher.update(resolved.storage_id.as_bytes());
     hasher.update(resolved.object_path.as_bytes());
     hasher.update(component.component_id.as_str().as_bytes());
-    let identity = format!("{:x}", hasher.finalize());
+    let identity = format!("{:x}", base16ct::HexDisplay(&hasher.finalize()));
     let base = format!(
         "{RECOVERY_OBJECT_NAMESPACE}/{}/{identity}",
         context.recovery_job_id.as_uuid()
@@ -466,7 +466,7 @@ async fn object_receipt_from_opened(
         })
         .await
         .map_err(map_storage_error)?;
-    let digest = ContentDigest::try_from(format!("{:x}", hasher.finalize()))
+    let digest = ContentDigest::try_from(format!("{:x}", base16ct::HexDisplay(&hasher.finalize())))
         .map_err(|_| RecoveryStepTargetError::Integrity)?;
     Ok(ObjectReceipt {
         size_bytes,

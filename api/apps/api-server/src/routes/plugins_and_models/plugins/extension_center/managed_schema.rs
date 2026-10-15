@@ -143,7 +143,7 @@ pub(super) async fn restore_installed_managed_schema(
     )
     .join("manifest.yaml");
     let raw = tokio::fs::read(manifest_path).await?;
-    let fingerprint = format!("sha256:{:x}", Sha256::digest(&raw));
+    let fingerprint = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&raw)));
     if local.installation.verification_status != domain::PluginVerificationStatus::Valid
         || local.artifact.manifest_fingerprint.as_deref() != Some(fingerprint.as_str())
     {

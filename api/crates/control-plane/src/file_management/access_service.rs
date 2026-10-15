@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+use rand_core::TryRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
@@ -27,7 +28,10 @@ impl FileAccessKey {
 }
 
 fn hex_digest(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(token.as_bytes()))
+    )
 }
 
 fn denied() -> ControlPlaneError {
@@ -178,7 +182,7 @@ where
             expires_at,
         };
         let mut bytes = [0u8; 32];
-        OsRng.try_fill_bytes(&mut bytes)?;
+        SysRng.try_fill_bytes(&mut bytes)?;
         let token = URL_SAFE_NO_PAD.encode(bytes);
         let key = FileAccessKey::from_token(&token)?;
         self.grants

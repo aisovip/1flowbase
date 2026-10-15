@@ -361,7 +361,8 @@ async fn get_record_in_transaction(
     page_id: Uuid,
     block_id: &str,
 ) -> Result<Option<domain::FrontstageBlockNodeRecord>> {
-    let row = sqlx::query(&format!(
+    // SQL safety: DETAIL_COLUMNS is static SQL; block selectors and paging values remain bound.
+    let row = sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"
         select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
         from frontstage_block_nodes node
@@ -371,7 +372,7 @@ async fn get_record_in_transaction(
          and parent.id = node.parent_id
         where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
         "#,
-    ))
+    )))
     .bind(workspace_id)
     .bind(page_id)
     .bind(block_id)
@@ -610,7 +611,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(&input.code.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.code.source_code.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(input.code.source_code.as_bytes()))
         ))
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
@@ -673,7 +674,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         page_id: Uuid,
         block_id: &str,
     ) -> Result<Option<domain::FrontstageBlockNodeRecord>> {
-        let row = sqlx::query(&format!(
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
             from frontstage_block_nodes node
@@ -683,7 +684,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
              and parent.id = node.parent_id
             where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
             "#,
-        ))
+        )))
         .bind(workspace_id)
         .bind(page_id)
         .bind(block_id)
@@ -700,7 +701,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
     ) -> Result<Vec<domain::frontstage::FrontstageBlockRuntimeLayer>> {
         // A single bounded recursive read owns ancestor ordering and source resolution so
         // runtime callers never fan out into one descriptor/code query per tree layer.
-        let rows = sqlx::query(&format!(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             with recursive ancestry as (
                 select target.id, target.parent_id, 0::integer as depth, array[target.id] as path
@@ -740,7 +741,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
              and source.code_ref = node.code_ref
             order by ancestry.depth desc
             "#,
-        ))
+        )))
         .bind(workspace_id)
         .bind(page_id)
         .bind(block_id)
@@ -756,7 +757,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         tab_id: Uuid,
         limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
-        let rows = sqlx::query(&format!(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
             select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
             from frontstage_block_nodes node
@@ -771,7 +772,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             order by node.sibling_rank collate "C", node.id
             limit $4
             "#,
-        ))
+        )))
         .bind(workspace_id)
         .bind(page_id)
         .bind(tab_id)
@@ -1206,7 +1207,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(&input.source.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.source.source_code.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(input.source.source_code.as_bytes()))
         ))
         .bind(&input.expected_source_revision)
         .bind(input.actor_user_id)

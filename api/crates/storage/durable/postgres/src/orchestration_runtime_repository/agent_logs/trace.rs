@@ -52,7 +52,8 @@ pub(in crate::orchestration_runtime_repository) async fn tree(
     record_id: Uuid,
 ) -> Result<ApplicationLogRecordTraceTree> {
     let sql = format!("{} where t.application_id=$1 and t.id=$2", projection());
-    let row = sqlx::query(&sql)
+    // SQL safety: EDGE/ANCESTORS/projection are static SQL fragments; trace and cursor identifiers remain bound.
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(record_id)
         .fetch_optional(store.pool())
@@ -72,7 +73,7 @@ pub(in crate::orchestration_runtime_repository) async fn children(
 ) -> Result<ApplicationLogRecordTraceChildren> {
     let lookahead = log_query_page_lookahead(page_size)?;
     let sql = format!("{ANCESTORS} select exists(select 1 from ancestors where id=$2)");
-    let valid: bool = sqlx::query_scalar(&sql)
+    let valid: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(record_id)
         .bind(trace_node_id)
@@ -99,7 +100,7 @@ pub(in crate::orchestration_runtime_repository) async fn children(
         .transpose()?;
     if let Some(position) = position {
         let sql=format!("select exists(select 1 from application_run_log_tasks t join application_run_log_tasks child on {EDGE} where t.application_id=$1 and t.id=$2 and child.id=$3)");
-        let valid: bool = sqlx::query_scalar(&sql)
+        let valid: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(application_id)
             .bind(trace_node_id)
             .bind(position)
@@ -110,7 +111,7 @@ pub(in crate::orchestration_runtime_repository) async fn children(
         }
     }
     let sql=format!("{} join application_run_log_tasks parent on t.parent_task_run_id=parent.id and t.application_id=parent.application_id and t.scope_id=parent.scope_id and t.source_kind=parent.source_kind and t.source_id is not distinct from parent.source_id and t.source_client is not distinct from parent.source_client where parent.application_id=$1 and parent.id=$2 and t.id<>parent.id and (parent.source_kind='native' or (parent.source_id is not null and parent.source_client is not null)) and ($3::uuid is null or t.id>$3) order by t.id limit $4",projection());
-    let mut rows = sqlx::query(&sql)
+    let mut rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(application_id)
         .bind(trace_node_id)
         .bind(position)

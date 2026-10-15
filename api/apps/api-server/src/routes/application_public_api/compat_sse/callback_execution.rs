@@ -62,7 +62,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
             Some(PreparedPublishedCallback::Execution(owner)) => {
                 service.execute_prepared_callback(*owner).await
             }
-            Some(PreparedPublishedCallback::NoExecution(result)) => Ok(result),
+            Some(PreparedPublishedCallback::NoExecution(result)) => Ok(*result),
             None => service.resume_callback_for_actor(actor, command).await,
         };
         result

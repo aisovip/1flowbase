@@ -12,7 +12,7 @@ pub fn application_template_checksum(package: &PortableTemplatePackage) -> Resul
     // Typed serialization includes release metadata; whitespace of the source file is irrelevant.
     Ok(format!(
         "{:x}",
-        Sha256::digest(serde_json::to_vec(package)?)
+        base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(package)?))
     ))
 }
 

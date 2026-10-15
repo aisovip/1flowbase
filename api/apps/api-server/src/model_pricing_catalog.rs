@@ -229,7 +229,7 @@ pub(crate) async fn fetch_remote_pricing_catalog(
             .into());
         }
         let bytes = fetch_document(client, &reference.locator, 2 * 1024 * 1024).await?;
-        let actual_checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let actual_checksum = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&bytes)));
         if actual_checksum != reference.checksum {
             return Err(control_plane::errors::ControlPlaneError::Conflict(
                 "pricing_catalog_page_checksum_mismatch",

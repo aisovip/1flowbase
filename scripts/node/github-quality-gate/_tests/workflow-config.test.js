@@ -1070,10 +1070,12 @@ test("container image publishing avoids deprecated artifact runtime and qemu cac
 
 test("quality gate workflow keeps regular dispatch scopes on a single targeted job", () => {
   const workflow = readQualityGateWorkflow();
+  assert.match(workflow, /inputs\.batch_mode == 'legacy-crypto-fixtures'/u);
+  assert.match(workflow, /uses: \.\/\.github\/workflows\/legacy-crypto-fixtures\.yml/u);
 
   assert.match(
     workflow,
-    /single-scope-gate:\n\s+if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope != 'ci' && inputs\.scope != 'container-images' && inputs\.scope != 'plugin-composition-2007' && inputs\.scope != 'plugin-composition-2014' \}\}/u,
+    /single-scope-gate:\n\s+if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope != 'ci' && inputs\.scope != 'container-images' && inputs\.scope != 'plugin-composition-2007' && inputs\.scope != 'plugin-composition-2014' && inputs\.batch_mode != 'legacy-crypto-fixtures' \}\}/u,
   );
   assert.match(
     workflow,

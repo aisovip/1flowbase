@@ -51,10 +51,11 @@ test('full quality jobs execute the resolver snapshot and preserve standalone sc
 });
 
 
-test('upstream macro lint policy pins only Clippy while retaining project warnings as errors', () => {
+test('Clippy uses stable while retaining project warnings as errors', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8');
-  assert.match(workflow, /startsWith\(matrix\.scope, 'repo-backend-clippy-'\) && '1\.98\.1' \|\| 'stable'/u);
-  assert.match(workflow, /startsWith\(inputs\.scope, 'repo-backend-clippy-'\) && '1\.98\.1' \|\| 'stable'/u);
+  const toolchains = [...workflow.matchAll(/^\s+toolchain: (.+)$/gmu)].map((match) => match[1]);
+  assert.ok(toolchains.length > 0);
+  assert.ok(toolchains.every((toolchain) => toolchain === 'stable'));
   const { buildCommands } = require('../../verify-backend.js');
   const clippy = buildCommands({ cargoJobs: 2, cargoTestThreads: 2, repoRoot, env: {}, target: 'clippy' });
   assert.ok(clippy.every((command) => command.args.slice(-2).join(' ') === '-D warnings'));

@@ -23,7 +23,10 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
     // AC-004: sync writes only the fixed local library; resolve remains local-first.
     let artifact = b"fixture-mcp-bundle-zip".to_vec();
     let signing_key = SigningKey::from_bytes(&[23; 32]);
-    let checksum = format!("sha256:{:x}", Sha256::digest(&artifact));
+    let checksum = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&Sha256::digest(&artifact))
+    );
     let signature = STANDARD.encode(signing_key.sign(&artifact).to_bytes());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());

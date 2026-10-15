@@ -33,14 +33,15 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
     ) -> Result<OrderedTreeSubtreeImpactResult> {
         ensure_ordered_tree(metadata)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let affected_count: i64 = sqlx::query_scalar(&format!(
+        // SQL safety: Identifiers/projections pass existing quoting; candidate, predicate and ordering fragments are internal SQL.
+        let affected_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
             r#"
             select count(*)::bigint from {table_name} node
             join {table_name} root on root.scope_id = $1 and root.tree_partition_id = $2 and root.id = $3
             where node.scope_id = $1 and node.tree_partition_id = $2
               and ARRAY[node.tree_path] OPERATOR(public.<@) root.tree_path
             "#,
-        ))
+        )))
         .bind(input.scope_id)
         .bind(input.tree_partition_id)
         .bind(input.node_id)
@@ -290,7 +291,7 @@ async fn fetch_page(
         None
     };
     if let Some(id) = context.node_id {
-        let exists: bool = sqlx::query_scalar(&format!("select exists(select 1 from {table} where scope_id = $1 and tree_partition_id = $2 and id = $3)"))
+        let exists: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select exists(select 1 from {table} where scope_id = $1 and tree_partition_id = $2 and id = $3)")))
             .bind(context.scope_id).bind(context.partition_id).bind(id).fetch_one(&mut *conn).await?;
         if !exists {
             return Err(if context.query == "children" {
@@ -312,7 +313,7 @@ async fn fetch_page(
             r#"candidates.sibling_rank collate "C", candidates.id"#,
         )
     };
-    let mut rows: Vec<PageRow> = sqlx::query_as(&format!(r#"{cte}
+    let mut rows: Vec<PageRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(r#"{cte}
         select row_to_json(node), candidates.depth,
             exists(select 1 from {table} child where child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = candidates.id),
             candidates.id_path, candidates.rank_path, candidates.id, candidates.tree_path::text
@@ -321,7 +322,7 @@ async fn fetch_page(
         where {predicate}
         order by {order}
         limit $8"#,
-        projection = qualified_projection(metadata, "source")?))
+        projection = qualified_projection(metadata, "source")?)))
         .bind(context.scope_id).bind(context.partition_id).bind(context.node_id)
         .bind(context.max_depth.map(i64::from)).bind(context.prefix.as_ref().map(|prefix| format!("{}%", escape_like_prefix(prefix))))
         .bind(anchor.as_ref().map(|anchor| anchor.ranks.clone())).bind(anchor.as_ref().map(|anchor| anchor.ids.clone()))
@@ -438,9 +439,9 @@ async fn ensure_node_exists(
     node_id: Uuid,
     error: OrderedTreeQueryError,
 ) -> Result<()> {
-    let exists: bool = sqlx::query_scalar(&format!(
+    let exists: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3)"
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)
@@ -461,7 +462,7 @@ async fn ancestor_records(
     tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<Vec<Value>> {
-    let records: Vec<Value> = sqlx::query_scalar(&format!(
+    let records: Vec<Value> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         r#"
         select row_to_json(node)
         from {table_name} target
@@ -472,7 +473,7 @@ async fn ancestor_records(
         order by public.nlevel(ancestor.tree_path)
         "#,
         projection = qualified_projection(metadata, "source")?,
-    ))
+    )))
     .bind(scope_id)
     .bind(tree_partition_id)
     .bind(node_id)

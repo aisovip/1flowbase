@@ -150,7 +150,10 @@ impl NavigationCache {
             permissions,
             registry_context,
         ))?;
-        let variant = format!("routes:{:x}", Sha256::digest(identity));
+        let variant = format!(
+            "routes:{:x}",
+            base16ct::HexDisplay(&Sha256::digest(identity))
+        );
         self.load(
             NavigationCacheDomain::ConsoleRoutes,
             actor.current_workspace_id,

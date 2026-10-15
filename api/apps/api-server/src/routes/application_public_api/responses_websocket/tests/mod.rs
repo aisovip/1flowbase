@@ -92,7 +92,8 @@ fn decodes_response_create_envelope_without_renaming_response_fields() {
             "input": "hello",
             "previous_response_id": "resp_previous"
         })
-        .to_string(),
+        .to_string()
+        .into(),
     );
 
     let request = decode_client_message(message).unwrap().unwrap();
@@ -117,7 +118,8 @@ fn responses_websocket_second_turn_uses_the_shared_callback_correlation_adapter(
                 "output": "sunny"
             }]
         })
-        .to_string(),
+        .to_string()
+        .into(),
     );
 
     let ResponsesWebSocketClientRequest::Create { response } = decode_client_message(message)
@@ -140,7 +142,7 @@ fn responses_websocket_second_turn_uses_the_shared_callback_correlation_adapter(
 
 #[test]
 fn binary_unknown_and_invalid_envelopes_have_explicit_close_contracts() {
-    let binary = decode_client_message(Message::Binary(vec![1, 2, 3])).unwrap_err();
+    let binary = decode_client_message(Message::Binary(vec![1, 2, 3].into())).unwrap_err();
     assert_eq!(
         binary,
         ResponsesWebSocketClientMessageError::BinaryNotSupported
@@ -173,10 +175,10 @@ fn binary_unknown_and_invalid_envelopes_have_explicit_close_contracts() {
 
 #[test]
 fn control_frames_are_not_request_envelopes() {
-    assert!(decode_client_message(Message::Ping(Vec::new()))
+    assert!(decode_client_message(Message::Ping(Vec::new().into()))
         .unwrap()
         .is_none());
-    assert!(decode_client_message(Message::Pong(Vec::new()))
+    assert!(decode_client_message(Message::Pong(Vec::new().into()))
         .unwrap()
         .is_none());
     assert!(decode_client_message(Message::Close(None))

@@ -5,7 +5,7 @@ use control_plane::{
     },
     ports::OrchestrationRuntimeRepository,
 };
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
@@ -276,7 +276,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                     if let Some(capture) = capture.as_ref() {
                         if capture.recorder.record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes()).await.is_err() {capture.recorder.mark_incomplete();}
                     }
-                    if sender.send(Message::Text(frame)).await.is_err() {
+                    if sender.send(Message::Text(frame.into())).await.is_err() {
                         if let Some(capture)=capture.as_ref() {capture.recorder.mark_incomplete();}
                         break;
                     }
@@ -290,7 +290,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                         actor.begin_close();
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
-                            reason: Cow::Borrowed("Responses turn failed"),
+                            reason: "Responses turn failed".into(),
                         })).await;
                         break;
                     }
@@ -366,7 +366,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                                     }
                                     finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                                         code: error.close_code(),
-                                        reason: Cow::Borrowed(error.close_reason()),
+                                        reason: error.close_reason().into(),
                                     })).await;
                                     break;
                                 }
@@ -381,7 +381,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
-                            reason: Cow::Owned(notice.code.to_string()),
+                            reason: notice.code.to_string().into(),
                         })).await;
                         break;
                     }
@@ -409,7 +409,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
-                            reason: Cow::Owned(notice.code.to_string()),
+                            reason: notice.code.to_string().into(),
                         })).await;
                         break;
                     }
@@ -468,7 +468,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                         &mut receiver,
                         Some(CloseFrame {
                             code: error.close_code(),
-                            reason: Cow::Borrowed(error.close_reason()),
+                            reason: error.close_reason().into(),
                         }),
                     )
                     .await;
@@ -518,7 +518,7 @@ async fn receive_termination(
             Ok(notice) if scope.accepts_termination(&notice) => return Some(notice),
             Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                return std::future::pending().await
+                return std::future::pending().await;
             }
         }
     }
@@ -549,7 +549,7 @@ async fn send_transport_terminal(
             capture.recorder.mark_incomplete();
         }
     }
-    let sent = sender.send(Message::Text(frame)).await.is_ok();
+    let sent = sender.send(Message::Text(frame.into())).await.is_ok();
     if let Some(capture) = capture {
         if sent {
             capture.complete().await;
@@ -560,10 +560,10 @@ async fn send_transport_terminal(
     }
 }
 
-fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {
+fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame> {
     Some(CloseFrame {
         code: error.close_code(),
-        reason: Cow::Borrowed(error.close_reason()),
+        reason: error.close_reason().into(),
     })
 }
 
@@ -574,7 +574,7 @@ const CLOSE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 async fn finish_server_close(
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     receiver: &mut futures_util::stream::SplitStream<WebSocket>,
-    frame: Option<CloseFrame<'static>>,
+    frame: Option<CloseFrame>,
 ) {
     if sender.send(Message::Close(frame)).await.is_err() {
         return;

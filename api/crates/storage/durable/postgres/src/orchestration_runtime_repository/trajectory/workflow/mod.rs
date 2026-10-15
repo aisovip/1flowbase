@@ -77,7 +77,8 @@ impl PgControlPlaneStore {
         let initial_focus = query.cursor.is_none() && query.focus_event_id.is_some();
         if let Some(id) = query.focus_event_id.as_deref() {
             let sql=format!("{} select event_id,created_at,flow_run_id,source_rank,event_sequence from enriched where event_id=$3 or source_id::text=$3 order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id limit 1",event_sql());
-            let row = sqlx::query(&sql)
+            // SQL safety: CTEs/links are embedded SQL, paging clauses are closed choices and body tables/resolvers are literal selections.
+            let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(id)
@@ -99,7 +100,7 @@ impl PgControlPlaneStore {
         }
         if let Some((time, run, rank, sequence, id)) = &cursor {
             let sql=format!("{} select exists(select 1 from enriched where created_at=$3 and flow_run_id=$4 and source_rank=$5 and coalesce(event_sequence,0)=$6 and event_id=$7)",event_sql());
-            let valid: bool = sqlx::query_scalar(&sql)
+            let valid: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(timestamp(Some(time))?)
@@ -143,7 +144,7 @@ impl PgControlPlaneStore {
         let rows = if query.index_only {
             Vec::new()
         } else {
-            sqlx::query(&sql)
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(query.category.as_str())
@@ -211,7 +212,7 @@ impl PgControlPlaneStore {
         };
         let before = if let Some(first) = items.first() {
             let sql=format!("{} select exists(select 1 from enriched e where ($3='all' or e.category=$3 or ($3='agents' and e.depth>0) or ($3='rounds' and e.is_round)) and ($4::uuid is null or e.node_run_id=$4) and ($5::text is null or e.metadata->>'trigger_request_id'=$5) and ($6::timestamptz is null or e.created_at >= $6) and ($7::timestamptz is null or e.created_at <= $7) and (e.created_at,e.flow_run_id,e.source_rank,coalesce(e.event_sequence,0),e.event_id)<($8,$9::uuid,$10::integer,$11::bigint,$12::text))",event_sql());
-            sqlx::query_scalar::<_, bool>(&sql)
+            sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .bind(query.category.as_str())
@@ -254,13 +255,13 @@ impl PgControlPlaneStore {
             None
         };
         // Catalogue and extent deliberately precede all interactive filters.
-        let nodes=sqlx::query(&format!("{} select n.flow_run_id,n.id node_run_id,n.node_id,n.node_alias,n.node_type from scope_runs r join node_runs n on n.flow_run_id=r.id order by n.started_at,n.id",scope_sql()))
+        let nodes=sqlx::query(sqlx::AssertSqlSafe(format!("{} select n.flow_run_id,n.id node_run_id,n.node_id,n.node_alias,n.node_type from scope_runs r join node_runs n on n.flow_run_id=r.id order by n.started_at,n.id",scope_sql())))
             .bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await?
             .into_iter().map(|r|WorkflowTrajectoryNode {flow_run_id:r.get("flow_run_id"),node_run_id:r.get("node_run_id"),node_id:r.get("node_id"),node_alias:r.get("node_alias"),node_type:r.get("node_type")}).collect();
-        let extent = sqlx::query(&format!(
+        let extent = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{} select min(created_at) time_start,max(created_at) time_end from events",
             event_sql()
-        ))
+        )))
         .bind(application_id)
         .bind(flow_run_id)
         .fetch_one(self.pool())
@@ -268,7 +269,7 @@ impl PgControlPlaneStore {
         let overview = if query.index_only {
             // The full index excludes links, previews, bodies and locator payloads.
             let sql=format!("{} select event_id,source_id,event_sequence,event_type,created_at,category,flow_run_id,node_run_id,node_id,node_alias,task_run_id,parent_task_run_id,depth,is_round,metadata->>'trigger_request_id' trigger_request_id,jsonb_strip_nulls(jsonb_build_object('kind',metadata->'kind','purpose',metadata->'purpose','source',metadata->'source','status',metadata->'status','step_key',metadata->'step_key','flow_run_id',metadata->'flow_run_id','node_id',metadata->'node_id','node_run_id',metadata->'node_run_id','invocation_id',metadata->'invocation_id','provider_attempt_index',metadata->'provider_attempt_index','run_mode',metadata->'run_mode')) metadata from enriched e order by created_at,flow_run_id,source_rank,coalesce(event_sequence,0),event_id",event_sql());
-            let rows = sqlx::query(&sql)
+            let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(application_id)
                 .bind(flow_run_id)
                 .fetch_all(self.pool())
@@ -365,7 +366,7 @@ impl PgControlPlaneStore {
         event_id: &str,
     ) -> Result<Option<WorkflowTrajectoryBody>> {
         // The locator must be present in precisely the same closed scope and allowlist as its summary.
-        let locator=sqlx::query(&format!("{} select source_id,flow_run_id,node_run_id,event_type from events where event_id=$3 and metadata is null",event_sql()))
+        let locator=sqlx::query(sqlx::AssertSqlSafe(format!("{} select source_id,flow_run_id,node_run_id,event_type from events where event_id=$3 and metadata is null",event_sql())))
             .bind(application_id).bind(flow_run_id).bind(event_id).fetch_optional(self.pool()).await?;
         let Some(locator) = locator else {
             return Ok(None);
@@ -384,7 +385,7 @@ impl PgControlPlaneStore {
                 "runtime_original_json(payload,raw_json_payloads,'payload')"
             };
             let body_sql = format!("select {resolver} from {table} where id=$1 and flow_run_id=$2");
-            let value: Value = sqlx::query_scalar(&body_sql)
+            let value: Value = sqlx::query_scalar(sqlx::AssertSqlSafe(body_sql.as_str()))
                 .bind(source_id)
                 .bind(source_run)
                 .fetch_one(self.pool())

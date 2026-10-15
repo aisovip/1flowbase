@@ -111,7 +111,10 @@ impl OfficialI18nCatalogSourcePort for ApiOfficialI18nCatalogSource {
                 release.catalog_version.as_str(),
             )?;
             let seed_bytes = Self::download(request.http_client(), &asset_url).await?;
-            let actual = format!("sha256:{:x}", Sha256::digest(&seed_bytes));
+            let actual = format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&Sha256::digest(&seed_bytes))
+            );
             if actual != release.seed_sha256.as_str() {
                 bail!("official i18n catalog Seed checksum mismatch");
             }

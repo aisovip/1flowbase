@@ -86,13 +86,13 @@ impl HostContributionGrantPolicy {
         format!(
             "{}:sha256:{:x}",
             Self::IDENTITY,
-            sha2::Sha256::digest(
+            base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
                     b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1"
                 ]
                 .concat()
-            )
+            ))
         )
     }
 

@@ -649,7 +649,10 @@ fn resolve_official_extension_catalog_sources(
 }
 
 fn default_api_node_id(provider_install_root: &str) -> String {
-    let digest = format!("{:x}", Sha256::digest(provider_install_root.as_bytes()));
+    let digest = format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(provider_install_root.as_bytes()))
+    );
     format!("api-node-{}", &digest[..12])
 }
 

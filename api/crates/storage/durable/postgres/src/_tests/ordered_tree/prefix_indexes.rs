@@ -122,10 +122,10 @@ async fn migration_drops_legacy_ordered_tree_text_prefix_indexes() {
     let field = add_text_field(&store, model.id).await;
     let index_name = format!("idx_ot_prefix_{}", field.id.simple());
 
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "create index if not exists \"{index_name}\" on \"{}\" (scope_id, tree_partition_id, (lower(\"{}\") collate \"C\") text_pattern_ops)",
         model.physical_table_name, field.physical_column_name
-    ))
+    )))
     .execute(store.pool())
     .await
     .unwrap();

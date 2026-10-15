@@ -174,7 +174,7 @@ async fn seed_store_before_main_instance_aggregation(
 ) -> (PgControlPlaneStore, domain::WorkspaceRecord, Uuid, Uuid) {
     let pool = isolated_database().await.connect().await.unwrap();
     for migration_sql in PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS {
-        sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
+        sqlx::raw_sql(*migration_sql).execute(&pool).await.unwrap();
     }
     sqlx::raw_sql(ROLE_DATA_POLICIES_MIGRATION_SQL)
         .execute(&pool)

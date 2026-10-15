@@ -472,8 +472,11 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
     let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let old_bytes = b"export function RetainedButton() {}\n";
-    let old_sha256 = format!("{:x}", Sha256::digest(old_bytes));
-    let new_sha256 = format!("{:x}", Sha256::digest(b"export function ButtonV2() {}\n"));
+    let old_sha256 = format!("{:x}", base16ct::HexDisplay(&Sha256::digest(old_bytes)));
+    let new_sha256 = format!(
+        "{:x}",
+        base16ct::HexDisplay(&Sha256::digest(b"export function ButtonV2() {}\n"))
+    );
 
     sqlx::query(
         r#"

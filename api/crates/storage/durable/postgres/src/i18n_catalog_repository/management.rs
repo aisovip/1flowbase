@@ -329,9 +329,9 @@ impl I18nCatalogManagementRepository for PgControlPlaneStore {
         let fingerprint = |value: &str| -> Result<String> {
             Ok(format!(
                 "{:x}",
-                Sha256::digest(serde_json::to_vec(
+                base16ct::HexDisplay(&Sha256::digest(serde_json::to_vec(
                     &serde_json::json!({"translation": value})
-                )?)
+                )?))
             ))
         };
         let actual_fingerprint = fingerprint(translation.value.translation())?;

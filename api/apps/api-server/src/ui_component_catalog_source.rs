@@ -273,7 +273,7 @@ fn valid_code(value: &str) -> bool {
 }
 
 fn digest(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 pub(crate) fn canonical_json_bytes(value: &Value) -> Result<Vec<u8>> {

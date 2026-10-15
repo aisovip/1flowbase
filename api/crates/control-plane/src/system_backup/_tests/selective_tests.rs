@@ -227,7 +227,11 @@ async fn backup_fixture(
     derivation.update(b"source-master-key");
     let bytes = derivation.finalize().to_vec();
     let portable_key = BackupKeyMaterial::new(
-        KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&bytes))).unwrap(),
+        KeyFingerprint::try_from(format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(&bytes))
+        ))
+        .unwrap(),
         bytes,
     )
     .unwrap();
@@ -462,7 +466,7 @@ async fn uncertain_database_commit_retains_promoted_object_and_rollback_copy() {
     hasher.update(storage_id.as_bytes());
     hasher.update(b"files/example.txt");
     hasher.update(b"objects/file");
-    let identity = format!("{:x}", hasher.finalize());
+    let identity = format!("{:x}", base16ct::HexDisplay(&hasher.finalize()));
     let rollback = root.0.join(format!(
         "__1flowbase_recovery/{}/{identity}/rollback",
         recovery_job_id.as_uuid()

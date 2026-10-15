@@ -32,7 +32,9 @@ impl LegacyHistory {
             item_count: 0,
             digest: format!(
                 "{:x}",
-                Sha256::digest(format!("1flowbase.responses.history.v{version}"))
+                base16ct::HexDisplay(&Sha256::digest(format!(
+                    "1flowbase.responses.history.v{version}"
+                )))
             ),
         })
     }

@@ -40,7 +40,7 @@ impl ApiRecoveryTargetProbe {
     ) -> Result<Self, RecoveryPreflightError> {
         let fingerprint = format!(
             "{:x}",
-            Sha256::digest(provider_secret_master_key.as_bytes())
+            base16ct::HexDisplay(&Sha256::digest(provider_secret_master_key.as_bytes()))
         );
         let master_key_fingerprint = KeyFingerprint::try_from(fingerprint)
             .map_err(|_| RecoveryPreflightError::TargetProbe)?;

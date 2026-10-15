@@ -474,10 +474,12 @@ async fn delete_application_cascades_flow_runtime_and_tag_bindings() {
         "flow_compiled_plans",
         "flow_runs",
     ] {
-        let count: i64 = sqlx::query_scalar(&format!("select count(*)::bigint from {table}"))
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "select count(*)::bigint from {table}"
+        )))
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
         assert_eq!(count, 0, "{table} should be empty after application delete");
     }
 }

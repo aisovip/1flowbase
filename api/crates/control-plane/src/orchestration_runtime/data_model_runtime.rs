@@ -588,7 +588,7 @@ fn data_model_side_effect_policy(
 
 fn stable_json_hash(value: &Value) -> String {
     let bytes = serde_json::to_vec(value).unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
 fn output_record_id(output_payload: &Value) -> Option<String> {

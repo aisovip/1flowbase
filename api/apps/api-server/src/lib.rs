@@ -53,17 +53,13 @@ pub mod workers;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Result};
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     plugin_management::ready_current_node_plugin_installation,
     ports::{DataSourceRuntimePort, PluginRepository},
 };
-use rand_core::OsRng;
 use serde::Serialize;
 use time::OffsetDateTime;
 use tower_http::{
@@ -574,9 +570,9 @@ async fn app_and_runtime_host_from_config(
     let runtime_event_stream = infrastructure
         .runtime_event_stream()
         .expect("runtime-event-stream default provider must be registered");
-    let salt = SaltString::generate(&mut OsRng);
+
     let root_password_hash = Argon2::default()
-        .hash_password(config.bootstrap_root_password.as_bytes(), &salt)
+        .hash_password(config.bootstrap_root_password.as_bytes())
         .map_err(|err| anyhow::anyhow!("failed to hash bootstrap root password: {err}"))?
         .to_string();
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());

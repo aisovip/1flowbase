@@ -330,8 +330,10 @@ pub(super) fn normalize(
         // appending its version. This includes occurred_at, sequence and provenance.
         let identity = serde_json::to_vec(&*fact)?;
         fact.event_id.push(':');
-        fact.event_id
-            .push_str(&format!("{:x}", Sha256::digest(identity)));
+        fact.event_id.push_str(&format!(
+            "{:x}",
+            base16ct::HexDisplay(&Sha256::digest(identity))
+        ));
     }
     Ok(result)
 }

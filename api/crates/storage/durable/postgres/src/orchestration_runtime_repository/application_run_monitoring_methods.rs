@@ -144,7 +144,8 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringOverview> {
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        // SQL safety: Monitoring templates are internal SQL; dimensions and ordering use closed literal selections.
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 count(*)::bigint as total_count,
@@ -164,7 +165,7 @@ impl PgControlPlaneStore {
                 ) as failed_rate
             from monitoring_logs
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -192,7 +193,7 @@ impl PgControlPlaneStore {
         started_to: Option<OffsetDateTime>,
         slow_run_threshold_ms: i64,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringDuration> {
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             , logs as (
                 select
@@ -221,7 +222,7 @@ impl PgControlPlaneStore {
                     0.0
                 )::double precision as slow_run_rate
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -246,7 +247,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringTokens> {
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 coalesce(sum(coalesce(total_tokens, 0)), 0)::bigint as total_tokens_sum,
@@ -259,7 +260,7 @@ impl PgControlPlaneStore {
                 count(total_tokens)::bigint as token_recorded_count
             from monitoring_logs
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -293,7 +294,7 @@ impl PgControlPlaneStore {
             return Ok(empty_tokens_comparison());
         };
 
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 coalesce(sum(coalesce(total_tokens, 0)), 0)::bigint
@@ -303,7 +304,7 @@ impl PgControlPlaneStore {
                     as previous_avg_tokens_per_run
             from monitoring_logs
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(Some(previous_from))
         .bind(Some(previous_to))
@@ -340,7 +341,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringToolCallbacks> {
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 coalesce(sum(tool_callback_count), 0)::bigint as total_tool_callback_count,
@@ -350,7 +351,7 @@ impl PgControlPlaneStore {
                     as runs_with_tool_callback
             from monitoring_logs
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -372,7 +373,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringNodes> {
-        let row = sqlx::query(&application_run_monitoring_logs_query(
+        let row = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 coalesce(avg(unique_node_count::double precision), 0.0)::double precision
@@ -380,7 +381,7 @@ impl PgControlPlaneStore {
                 coalesce(max(unique_node_count), 0)::bigint as max_unique_node_count
             from monitoring_logs
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -401,8 +402,8 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringConcurrency> {
-        let peak_concurrency =
-            sqlx::query_scalar::<_, i64>(&application_run_monitoring_logs_query(
+        let peak_concurrency = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(
+            application_run_monitoring_logs_query(
                 r#"
             , logs as (
                 select started_at, finished_at
@@ -420,12 +421,13 @@ impl PgControlPlaneStore {
             )
             select coalesce(max(concurrency), 0)::bigint as peak_concurrency from scan
             "#,
-            ))
-            .bind(application_id)
-            .bind(started_from)
-            .bind(started_to)
-            .fetch_one(self.pool())
-            .await?;
+            ),
+        ))
+        .bind(application_id)
+        .bind(started_from)
+        .bind(started_to)
+        .fetch_one(self.pool())
+        .await?;
 
         Ok(
             control_plane_contracts::ports::ApplicationRunMonitoringConcurrency {
@@ -441,7 +443,7 @@ impl PgControlPlaneStore {
         started_to: Option<OffsetDateTime>,
         bucket: &str,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringTokenTrendPoint>> {
-        let rows = sqlx::query(&application_run_monitoring_logs_query(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 date_trunc($4, started_at, 'UTC') as bucket_start,
@@ -459,7 +461,7 @@ impl PgControlPlaneStore {
             group by bucket_start, bucket_end
             order by bucket_start asc
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -492,7 +494,7 @@ impl PgControlPlaneStore {
         started_to: Option<OffsetDateTime>,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown>>
     {
-        let rows = sqlx::query(&application_run_monitoring_logs_query(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             , logs as (
                 select
@@ -517,7 +519,7 @@ impl PgControlPlaneStore {
             group by protocol
             order by request_count desc, protocol asc
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -544,7 +546,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringSourceBreakdown>> {
-        let rows = sqlx::query(&application_run_monitoring_logs_query(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             , logs as (
                 select
@@ -574,7 +576,7 @@ impl PgControlPlaneStore {
             group by invocation_source
             order by request_count desc, invocation_source asc
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -667,8 +669,9 @@ impl PgControlPlaneStore {
             "external_conversation_id" => "external_conversation_id",
             _ => return Err(anyhow!("unsupported monitoring usage field: {field}")),
         };
-        let rows = sqlx::query(&application_run_monitoring_logs_query(&format!(
-            r#"
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
+            &format!(
+                r#"
             select
                 {field} as dimension_value,
                 count(*)::bigint as request_count,
@@ -685,6 +688,7 @@ impl PgControlPlaneStore {
             order by request_count desc, {field} asc
             limit 10
             "#
+            ),
         )))
         .bind(application_id)
         .bind(started_from)
@@ -710,7 +714,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringApiKeyUsage>> {
-        let rows = sqlx::query(&application_run_monitoring_logs_query(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
             r#"
             select
                 api_key_id,
@@ -731,7 +735,7 @@ impl PgControlPlaneStore {
             order by request_count desc, api_key_id asc
             limit 10
             "#,
-        ))
+        )))
         .bind(application_id)
         .bind(started_from)
         .bind(started_to)
@@ -769,8 +773,9 @@ impl PgControlPlaneStore {
                 "total_tokens desc nulls last",
             ),
         };
-        let rows = sqlx::query(&application_run_monitoring_logs_query(&format!(
-            r#"
+        let rows = sqlx::query(sqlx::AssertSqlSafe(application_run_monitoring_logs_query(
+            &format!(
+                r#"
             select
                 flow_run_id,
                 title,
@@ -788,6 +793,7 @@ impl PgControlPlaneStore {
             order by {order_by}, started_at desc, flow_run_id desc
             limit 10
             "#
+            ),
         )))
         .bind(application_id)
         .bind(started_from)
