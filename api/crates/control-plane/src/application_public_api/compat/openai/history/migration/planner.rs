@@ -27,7 +27,8 @@ type ProofKey = (u32, usize, String);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FlowInspection {
-    /// Deduplicated legacy proofs only. Null and current proofs need no conversion.
+    /// All deduplicated valid owned proofs, including current format, for inventory.
+    /// Null/absent leaves are not proofs and require no conversion.
     pub proofs: Vec<Value>,
     /// Actual persisted round output, in its original order, from owned locations.
     pub public_rounds: Vec<ResponsesRoundEvidence>,
@@ -220,10 +221,8 @@ fn visit_node(
     visitor: &mut impl FnMut(&Value) -> Result<()>,
     rounds: &mut Vec<ResponsesRoundEvidence>,
 ) -> Result<()> {
-    // Node-set/overlay represents a node output; callback state has its own
-    // reserved child. Neither path descends into user content or message arrays.
-    visit_paths(node, CALLBACK_PROOFS, visitor)?;
-    collect_round(node, rounds)?;
+    // Only reserved callback state is recovery-owned. Direct node output fields
+    // remain user data even when they resemble native or public proof envelopes.
     if let Some(callback) = node.get("__llm_tool_callback") {
         visit_paths(callback, CALLBACK_PROOFS, visitor)?;
         collect_round(callback, rounds)?;
@@ -293,9 +292,7 @@ pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspe
     let mut rounds = Vec::new();
     let mut collect = |value: &Value| -> Result<()> {
         let proof = parse_proof(value)?;
-        if proof.version != 3 {
-            proofs.insert(proof_key(&proof), value.clone());
-        }
+        proofs.insert(proof_key(&proof), value.clone());
         Ok(())
     };
     for document in &snapshot.documents {
@@ -341,6 +338,8 @@ pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspe
     })
 }
 
+/// Collect all valid owned proof formats; callers can inventory current proofs
+/// while the source graph ignores them and the planner leaves them unchanged.
 pub fn collect_proofs(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<Vec<Value>> {
     Ok(inspect_flow(snapshot)?.proofs)
 }
@@ -420,7 +419,6 @@ impl Replacements {
         Ok(())
     }
     fn replace_node(&self, node: &mut Value) -> Result<()> {
-        self.replace_paths(node, CALLBACK_PROOFS)?;
         if let Some(callback) = node.get_mut("__llm_tool_callback") {
             self.replace_paths(callback, CALLBACK_PROOFS)?;
         }

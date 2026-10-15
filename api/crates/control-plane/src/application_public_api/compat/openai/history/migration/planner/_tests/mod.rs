@@ -197,7 +197,7 @@ fn null_absent_and_current_proofs_are_preserved_without_receipts() {
         value:json!({"provider_metadata":{"native_response":{"history":null}},"responses_round":{"history":null}})});
     snapshot.continuations.push(continuation(&Value::Null));
     snapshot.checkpoints.push(checkpoint(None, json!({"sys":{"responses_input_history":null},"node":{"__llm_tool_callback":{"provider_metadata":{"native_response":{"history":current}},"responses_round":{"response_id":"not-a-proof"}}}})));
-    assert!(collect_proofs(&snapshot).unwrap().is_empty());
+    assert_eq!(collect_proofs(&snapshot).unwrap(), vec![current.clone()]);
     assert!(public_rounds(&snapshot).unwrap().is_empty());
     let plan = build_plan(&snapshot, &[]).unwrap();
     assert!(
@@ -373,14 +373,6 @@ fn shared_dag_copies_each_node_once_and_preserves_delta_user_history() {
         {
             *proof = current.clone();
         }
-        for path in [
-            "/llm/provider_metadata/native_response/history",
-            "/llm/responses_round/history",
-        ] {
-            if let Some(proof) = expected.pointer_mut(path) {
-                *proof = current.clone();
-            }
-        }
         assert_eq!(materialized(&copies, remap[&head]), expected);
     }
     assert_eq!(
@@ -394,7 +386,7 @@ fn shared_dag_copies_each_node_once_and_preserves_delta_user_history() {
     assert_eq!(collect_proofs(&snapshot).unwrap(), vec![old]);
     assert_eq!(
         public_rounds(&snapshot).unwrap().len(),
-        5,
+        3,
         "source rounds read once per unique context"
     );
 }
@@ -516,7 +508,7 @@ fn current_context_and_null_delta_slots_do_not_create_versions_for_markers() {
         .push(checkpoint(Some(&delta), json!({MARKER:{"sequence":2}})));
     snapshot.latest_context_version_id = Some(delta.identity.context_version_id);
     snapshot.contexts = vec![root, delta];
-    assert!(collect_proofs(&snapshot).unwrap().is_empty());
+    assert_eq!(collect_proofs(&snapshot).unwrap(), vec![current]);
     let plan = build_plan(&snapshot, &[]).unwrap();
     assert!(plan.contexts.is_empty());
     assert!(plan.checkpoints.is_empty());
@@ -537,4 +529,66 @@ fn public_round_collection_retains_original_order_numbers_and_opaque_fields() {
     snapshot.documents.push(ResponsesHistoryDocument {owner:ResponsesHistoryDocumentOwner::FlowOutput,
         value:json!({"responses_round":{"response_id":"ordered","history":state.snapshot().old(),"output":output}})});
     assert_eq!(public_rounds(&snapshot).unwrap()[0].output, output);
+}
+
+#[test]
+fn direct_node_outputs_are_user_data_even_when_they_look_like_host_proofs() {
+    let (old, current, verified) = fixture();
+    let mut snapshot = empty();
+    let user_node = json!({"provider_metadata":{"native_response":{"history":{"version":999}}},
+        "responses_round":{"history":"user string"},"user":{"native_history":old}});
+    let mut root_pool = json!({"llm":user_node});
+    root_pool["llm"]["__llm_tool_callback"] = callback(&old);
+    let root = context(
+        1,
+        None,
+        json!({"format":"runtime_snapshot_v1","variable_pool":root_pool}),
+    );
+    let delta = context(
+        2,
+        Some(root.identity.context_version_id),
+        json!({"format":"runtime_delta_v1","set":{"other":user_node},"remove":[],
+        "llm_callback_appends":[{"node_id":"llm","node_set":user_node,"node_remove":[],
+            "state_set":{"provider_metadata":{"native_response":{"history":old}}},"state_remove":[],
+            "history_append":[user_node]}]}),
+    );
+    snapshot.latest_context_version_id = Some(delta.identity.context_version_id);
+    snapshot.contexts = vec![root, delta];
+    assert_eq!(collect_proofs(&snapshot).unwrap(), vec![old.clone()]);
+    let plan = build_plan(&snapshot, &verified).unwrap();
+    assert_eq!(
+        plan.contexts[0].after_content["variable_pool"]["llm"]["provider_metadata"],
+        user_node["provider_metadata"]
+    );
+    assert_eq!(
+        plan.contexts[0].after_content["variable_pool"]["llm"]["responses_round"],
+        user_node["responses_round"]
+    );
+    assert_eq!(plan.contexts[1].after_content["set"]["other"], user_node);
+    assert_eq!(
+        plan.contexts[1].after_content["llm_callback_appends"][0]["node_set"],
+        user_node
+    );
+    assert_eq!(
+        plan.contexts[1].after_content["llm_callback_appends"][0]["history_append"],
+        json!([user_node])
+    );
+    assert_eq!(
+        plan.contexts[1].after_content["llm_callback_appends"][0]["state_set"]["provider_metadata"]
+            ["native_response"]["history"],
+        current
+    );
+    // Legacy overlay carries the same direct user node fields unchanged.
+    snapshot.contexts[1].content["llm_callback_appends"] = json!([{"node_id":"llm","node_overlay":user_node,
+        "state_overlay":{"provider_metadata":{"native_response":{"history":old}}},"system_changed":false,"history_append":[]}]);
+    let overlay = build_plan(&snapshot, &verified).unwrap();
+    assert_eq!(
+        overlay.contexts[1].after_content["llm_callback_appends"][0]["node_overlay"],
+        user_node
+    );
+    assert_eq!(
+        overlay.contexts[1].after_content["llm_callback_appends"][0]["state_overlay"]
+            ["provider_metadata"]["native_response"]["history"],
+        current
+    );
 }
