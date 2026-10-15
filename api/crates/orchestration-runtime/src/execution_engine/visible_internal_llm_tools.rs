@@ -96,6 +96,7 @@ pub(super) async fn execute_llm_node_with_visible_internal_tools<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    eprintln!("PROBE-F1 visible-tools:entered");
     let tools = visible_internal_llm_tools(node);
     if tools.is_empty() {
         return execute_llm_node_provider_round(

@@ -14,6 +14,7 @@ pub(super) async fn execute_compact_consumer<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
+    eprintln!("PROBE-F1 compact-consumer:entered");
     let input = match build_provider_invocation(
         plan,
         node,
@@ -29,12 +30,15 @@ where
         Ok(invocation) => invocation.input,
         Err(error_payload) => return Ok(failed_compact_execution(error_payload)),
     };
+    eprintln!("PROBE-F1 compact-consumer:invocation-built");
     let expected_profile = input
         .profile
         .ok_or_else(|| anyhow!("canonical Compact invocation is missing its profile"))?;
 
+    eprintln!("PROBE-F1 compact-consumer:before-provider");
     match invoker.compact(runtime, input).await {
         Ok(result) if result.satisfies_profile(expected_profile) => {
+            eprintln!("PROBE-F1 compact-consumer:provider-succeeded");
             let receipt = CompactOperationReceipt::from_provider_result(result)?;
             Ok(LlmNodeExecution {
                 output_payload: receipt.as_payload()?,

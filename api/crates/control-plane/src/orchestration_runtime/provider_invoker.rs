@@ -374,6 +374,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: ProviderInvocationInput,
     ) -> Result<plugin_framework::provider_contract::ProviderCompactResult> {
+        eprintln!("PROBE-F1 compact-invoker:entered");
         self.apply_provider_transport(runtime, &mut input)?;
         let instance = self.resolve_llm_instance(runtime).await?;
         let installation = self.ready_installation(instance.installation_id).await?;
@@ -401,6 +402,7 @@ where
                     node_run_id: self.active_node_run_id?,
                 })
             });
+        eprintln!("PROBE-F1 compact-invoker:before-capture");
         let capture = native_trajectory::start(
             self.repository.clone(),
             self.flow_run_id,
@@ -409,7 +411,9 @@ where
             self.observation_context.as_ref(),
         )
         .await;
+        eprintln!("PROBE-F1 compact-invoker:before-runtime");
         let result = self.runtime.compact(&installation, input).await;
+        eprintln!("PROBE-F1 compact-invoker:runtime-returned");
         capture
             .finish_compact(result.as_ref().ok(), result.is_err())
             .await;

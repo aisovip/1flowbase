@@ -107,6 +107,7 @@ pub async fn execute_llm_node<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    eprintln!("PROBE-F1 llm-node:entered");
     let registrations = runtime_context.runtime_internal_tool_registrations(node);
     if registrations.is_empty() {
         return execute_llm_node_with_visible_internal_tools(
@@ -329,6 +330,7 @@ pub(crate) async fn execute_llm_node_provider_round<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
+    eprintln!("PROBE-F1 provider-round:entered");
     let runtime = node.llm_runtime.as_ref().ok_or_else(|| {
         anyhow!(
             "compiled llm node is missing runtime metadata: {}",

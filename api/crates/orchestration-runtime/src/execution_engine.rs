@@ -928,7 +928,15 @@ where
         } else {
             Value::Object(resolved_inputs.clone())
         };
+        eprintln!(
+            "PROBE-F1 execute-from:before-node-lifecycle type={}",
+            node.node_type
+        );
         lifecycle.begin_node(node, &node_input_payload).await?;
+        eprintln!(
+            "PROBE-F1 execute-from:after-node-lifecycle type={}",
+            node.node_type
+        );
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
