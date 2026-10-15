@@ -75,7 +75,7 @@ async function verifyOpenApi({request, args, instanceId, secrets, receipt, check
   async function rpc(name, arguments_) {
     const id=++sequence;
     const response=await fetch(`${args.apiBaseUrl}/mcp/${encodeURIComponent(instance.instance_id)}`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(args.deadlineMs),headers:{Authorization:`Bearer ${key.token}`,'content-type':'application/json',Accept:'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:arguments_}})});
-    assert.ok(response.ok(),`MCP protocol HTTP ${response.status}`);
+    assert.ok(response.ok,`MCP protocol HTTP ${response.status}`);
     const envelope=await response.json(); assert.equal(envelope.id,id); assert.ok(!envelope.error,'MCP JSON-RPC succeeds');
     assert.equal(envelope.result.isError,false,'MCP tool succeeds');
     const value=envelope.result.structuredContent; assert.ok(value && typeof value==='object' && !Array.isArray(value),'MCP structuredContent object');
