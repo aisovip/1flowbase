@@ -19,6 +19,7 @@ export function NotificationDeliveryWindow({
         : delivery_window.status === 'waiting_for_message'
           ? t('delivery_window_waiting')
           : t('delivery_window_unknown');
+  if (compact) return <Typography.Text>{statusLabel}</Typography.Text>;
   return (
     <Space orientation="vertical" size="small">
       <Typography.Text>
