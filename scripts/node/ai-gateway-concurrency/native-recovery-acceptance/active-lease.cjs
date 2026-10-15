@@ -21,7 +21,7 @@ async function run() {
   const artifactRoot = path.resolve(process.env.NRA_ARTIFACT_DIR || 'tmp/test-governance/callback-active-lease');
   fs.mkdirSync(artifactRoot, { recursive: true });
   const mock = await createActiveLeaseMock();
-  let gateway, socket, watchdog, outputTimer, releaseError;
+  let gateway, socket, watchdog, outputTimer, releaseError, sql;
   const evidence = { controlledMock: true, model: 'gpt-6-luna', effort: 'max',
     ageInjection: 'Only isolated fixture admission timestamp is aged by 6 minutes; execution lease remains live.' };
   const save = () => fs.writeFileSync(path.join(artifactRoot, 'receipt.json'), JSON.stringify(evidence, null, 2));
@@ -62,12 +62,13 @@ async function run() {
       input: [{ type: 'function_call_output', call_id: call.call_id, output: 'fixture-result-once' }] };
     socket.send(JSON.stringify({ ...followup, type: 'response.create' }));
     await bounded(mock.continuing, 'Continuation did not start');
-    const sql = query => cp.execFileSync('docker', ['exec', 'docker-db-1', 'psql', '-U', 'postgres',
+    sql = query => cp.execFileSync('docker', ['exec', 'docker-db-1', 'psql', '-U', 'postgres',
       '-d', gateway.databaseName, '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], { encoding: 'utf8', maxBuffer: 1024 * 1024 }).trim();
     sql("update flow_run_callback_resume_attempts set updated_at = now() - interval '6 minutes' where status = 'processing';");
     evidence.before = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'attempt_age_seconds',extract(epoch from now()-a.updated_at),'claim_status',c.status,'lease_live',c.lease_expires_at>now(),'callback_status',t.status) from flow_run_callback_resume_attempts a join flow_run_callback_tasks t on t.id=a.callback_task_id join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
     assert.equal(evidence.before.lease_live, true);
     assert.equal(evidence.before.callback_status, 'completed');
+    save();
     socket.terminate();
     await new Promise(resolve => socket.readyState === WebSocket.CLOSED ? resolve() : socket.once('close', resolve));
     assert.equal(socketError, undefined);
@@ -82,6 +83,8 @@ async function run() {
         assert.equal(evidence.during.lease_live, true);
       } catch (error) { releaseError = error; }
       mock.release();
+      evidence.providerReleasedUtc = new Date().toISOString();
+      save();
     }, 2000);
     const retry = await fetch(gateway.target.gateway.responses_url, {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: gateway.target.gateway.authorization,
@@ -90,7 +93,20 @@ async function run() {
     evidence.httpStatus = retry.status;
     if (retry.status !== 200) { evidence.body = await retry.text(); save(); }
     assert.equal(retry.status, 200, 'Live callback lease must attach, even when admission is older than five minutes');
-    const raw = await retry.text();
+    const reader = retry.body.getReader();
+    const chunks = [];
+    let raw = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        chunks.push(Buffer.from(value));
+        raw = Buffer.concat(chunks).toString();
+        evidence.receivedEvents = decodeSseChunks(chunks).filter(record => !record.done).map(record => record.data);
+        save();
+        if (evidence.receivedEvents.some(event => ['response.completed', 'response.failed', 'error'].includes(event.type))) break;
+      }
+    } finally { await reader.cancel().catch(() => {}); }
     if (releaseError) throw releaseError;
     assert.ok(evidence.during, 'The original invocation must remain live until controlled release');
     evidence.events = decodeSseChunks([Buffer.from(raw)]).filter(record => !record.done).map(record => record.data);
@@ -106,6 +122,15 @@ async function run() {
     evidence.pass = true;
     save();
     console.log(JSON.stringify({ pass: true, httpStatus: retry.status, upstreamRequests: mock.trace.length, artifactRoot }));
+  } catch (error) {
+    evidence.failure = error.message;
+    evidence.upstream = mock.trace;
+    if (sql) {
+      evidence.finalState = sql("select jsonb_build_object('run',r.id,'status',r.status,'error',r.error_payload,'attempt',a.status,'claim',c.status) from flow_runs r left join flow_run_callback_resume_attempts a on a.flow_run_id=r.id left join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;");
+      evidence.eventTail = sql("select jsonb_build_object('type',event_type,'sequence',sequence,'payload',left(payload::text,500)) from runtime_events order by created_at desc limit 12;");
+    }
+    save();
+    throw error;
   } finally {
     clearTimeout(watchdog);
     clearTimeout(outputTimer);

@@ -41,8 +41,11 @@ async function createActiveLeaseMock() {
           usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } });
       } else if (ordinal === 2) {
         const response = responsesEvents('lease_active', 'LEASE_', 'COMPLETED');
+        response.chunks[0].response.model = body.model;
+        response.terminal.response.model = body.model;
         emit(response.chunks[0]);
         release = () => {
+          trace[ordinal - 1].released = true;
           for (const event of response.chunks.slice(1)) emit(event);
           emit(response.terminal);
         };
