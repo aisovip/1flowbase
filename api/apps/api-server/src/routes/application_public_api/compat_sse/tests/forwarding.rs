@@ -227,6 +227,11 @@ async fn callback_attach_retains_terminal_observation_until_durable_identity_arr
     assert_terminal_callback_attach(true, 3).await;
 }
 
+#[tokio::test]
+async fn missing_callback_round_retains_terminal_observation_until_identity_only_page() {
+    assert_terminal_callback_attach(true, 5).await;
+}
+
 async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mode: u8) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
@@ -235,6 +240,8 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             ResumePublishedCallbackCommand,
         },
     };
+    let delayed_identity = matches!(live_mode, 3 | 5);
+    let live_enabled = matches!(live_mode, 1..=3);
     let mut run = native_run();
     let callback_task_id = Uuid::now_v7();
     run.metadata["response_round_id"] = json!(callback_task_id);
@@ -249,7 +256,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
     )
     .await;
     let generation = Uuid::now_v7();
-    if live_mode == 3 {
+    if delayed_identity {
         append_compat_sse_runtime_event(
             &state,
             run.id,
@@ -274,7 +281,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         None
     };
     let stream = Arc::new(LocalRuntimeEventStream::new());
-    if live_mode > 0 {
+    if live_enabled {
         stream
             .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
             .await
@@ -378,7 +385,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             .await
             .unwrap();
     let mut events = Vec::new();
-    if live_mode > 0 {
+    if live_enabled {
         for _ in 0..if live_mode == 2 { 4 } else { 1 } {
             let input = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
                 .await
@@ -408,7 +415,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             &second_item,
         )
         .await;
-        if live_mode == 3 {
+        if delayed_identity {
             assert!(matches!(
                 durable_compatible_round_replay(
                     &dependencies,
@@ -498,7 +505,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
     .await
     .unwrap();
     assert_eq!(attempt_count, 0, "attach must not reserve another attempt");
-    if live_mode == 0 {
+    if !live_enabled {
         assert!(
             stream
                 .replay(attached.initial_run.id, None, 1)
