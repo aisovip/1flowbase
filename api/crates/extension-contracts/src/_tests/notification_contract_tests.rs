@@ -227,3 +227,100 @@ fn notification_send_outcomes_never_conflate_ambiguous_delivery_or_revoke_ready_
     )
     .is_err());
 }
+
+#[test]
+fn delivery_window_contract_preserves_legacy_and_checks_evidence_pairs() {
+    use crate::{NotificationAuthorizationView, NotificationRuntimeInput};
+    let legacy: NotificationAuthorizationView =
+        serde_json::from_value(json!({"status":"authorized"})).unwrap();
+    assert!(legacy.delivery_window.is_none());
+    assert_eq!(
+        serde_json::to_value(legacy).unwrap(),
+        json!({"status":"authorized"})
+    );
+    for window in [
+        json!({"status":"unknown"}),
+        json!({"status":"unknown","last_received_at_ms":1,"expires_at_ms":2}),
+        json!({"status":"waiting_for_message"}),
+        json!({"status":"active","last_received_at_ms":1,"expires_at_ms":2}),
+        json!({"status":"expired","last_received_at_ms":1,"expires_at_ms":u64::MAX}),
+    ] {
+        let view: NotificationAuthorizationView =
+            serde_json::from_value(json!({"status":"authorized","delivery_window":window}))
+                .unwrap();
+        view.validate().unwrap();
+        let input: NotificationRuntimeInput = serde_json::from_value(json!({"operation":{"type":"send","input_payload":{"text":"hello"}},"delivery_window":window})).unwrap();
+        input.validate(&authorizable_descriptor()).unwrap();
+        assert!(input.managed_secrets.is_empty());
+        assert_eq!(
+            serde_json::to_value(input).unwrap()["delivery_window"],
+            window
+        );
+    }
+    for window in [
+        json!({"status":"active"}),
+        json!({"status":"expired"}),
+        json!({"status":"waiting_for_message","last_received_at_ms":1,"expires_at_ms":2}),
+        json!({"status":"unknown","last_received_at_ms":1}),
+        json!({"status":"unknown","expires_at_ms":2}),
+        json!({"status":"active","last_received_at_ms":0,"expires_at_ms":2}),
+        json!({"status":"active","last_received_at_ms":2,"expires_at_ms":2}),
+        json!({"status":"active","last_received_at_ms":3,"expires_at_ms":2}),
+    ] {
+        let view: NotificationAuthorizationView =
+            serde_json::from_value(json!({"status":"authorized","delivery_window":window}))
+                .unwrap();
+        assert!(view.validate().is_err(), "{window}");
+        let input: NotificationRuntimeInput = serde_json::from_value(json!({"operation":{"type":"send","input_payload":{"text":"hello"}},"delivery_window":window})).unwrap();
+        assert!(input.validate(&authorizable_descriptor()).is_err());
+    }
+    for value in [-1.0, 1.5] {
+        assert!(serde_json::from_value::<NotificationAuthorizationView>(json!({"status":"authorized","delivery_window":{"status":"active","last_received_at_ms":value,"expires_at_ms":2}})).is_err());
+    }
+    assert!(serde_json::from_value::<crate::NotificationAuthorizationOperation>(json!({"type":"maintain","delivery_window":{"status":"active","last_received_at_ms":1,"expires_at_ms":2}})).is_err());
+    for operation in ["poll", "cancel", "maintain"] {
+        let valid = json!({"type":operation});
+        let parsed: crate::NotificationAuthorizationOperation =
+            serde_json::from_value(valid.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), valid);
+        for field in ["delivery_window", "managed_secrets", "unexpected"] {
+            let mut injected = valid.clone();
+            injected[field] = json!({"injected":true});
+            assert!(
+                serde_json::from_value::<crate::NotificationAuthorizationOperation>(injected)
+                    .is_err()
+            );
+        }
+    }
+}
+
+#[test]
+fn subscription_failures_keep_account_authorized_and_round_trip_fixed_codes() {
+    use crate::{NotificationRuntimeInput, NotificationRuntimeResult};
+    let descriptor = authorizable_descriptor();
+    let input: NotificationRuntimeInput = serde_json::from_value(
+        json!({"operation":{"type":"send","input_payload":{"text":"hello"}}}),
+    )
+    .unwrap();
+    for code in [
+        "subscription_required",
+        "subscription_expired",
+        "subscription_unavailable",
+    ] {
+        for status in ["authorized", "unauthorized", "invalid", "pending"] {
+            let authorization = if status == "pending" {
+                json!({"status":status,"user_action":{"kind":"qr_code","qr_code_url":"https://example.com/qr","poll_interval_seconds":2}})
+            } else {
+                json!({"status":status})
+            };
+            let wire = json!({"type":"send","outcome":{"status":"failed","failure_code":code},"authorization":authorization});
+            let result: NotificationRuntimeResult = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(
+                result.validate_for(&input, &descriptor).is_ok(),
+                status == "authorized",
+                "{wire}"
+            );
+            assert_eq!(serde_json::to_value(result).unwrap(), wire);
+        }
+    }
+}

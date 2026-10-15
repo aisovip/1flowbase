@@ -36,6 +36,7 @@ import {
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
+import { NotificationDeliveryWindow } from './NotificationDeliveryWindow';
 import { NotificationInstanceDrawer } from './NotificationInstanceDrawer';
 import { NotificationInstanceFilters } from './NotificationInstanceFilters';
 import { NotificationLogs } from './NotificationLogs';
@@ -187,6 +188,12 @@ function NotificationChannelsPage() {
                       ? t('authorization_invalid')
                       : t('authorization_unauthorized')}
               </Typography.Text>
+            )}
+            {item.authorization?.delivery_window && (
+              <NotificationDeliveryWindow
+                delivery_window={item.authorization.delivery_window}
+                compact
+              />
             )}
             {availability(item) && (
               <Typography.Text type="secondary">

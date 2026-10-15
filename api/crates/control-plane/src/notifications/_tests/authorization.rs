@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn opted_in_legacy_account_projects_unknown_without_changing_other_channels() {
+    let view: NotificationAuthorizationView =
+        serde_json::from_value(json!({"status":"authorized"})).unwrap();
+    let mut descriptor = system_notification_descriptor();
+    descriptor.authorization = Some(
+        serde_json::from_value(json!({
+            "actions":[{"code":"qr","label":"Scan","kind":"qr_code"}],
+            "managed_secret_keys":["token"], "supports_delivery_window":true
+        }))
+        .unwrap(),
+    );
+    let projected = project_for_descriptor(view.clone(), &descriptor);
+    assert_eq!(projected.status, Status::Authorized);
+    assert_eq!(
+        projected.delivery_window.unwrap().status,
+        extension_contracts::NotificationDeliveryWindowStatus::Unknown
+    );
+    descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .supports_delivery_window = false;
+    assert_eq!(
+        project_for_descriptor(view, &descriptor).delivery_window,
+        None
+    );
+    descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .supports_delivery_window = true;
+    assert_eq!(
+        project_for_descriptor(unauthorized(), &descriptor).delivery_window,
+        None
+    );
+}
+
+#[test]
 fn host_secret_projection_rejects_existing_and_new_credentials_and_patch_deletion_is_exact() {
     let mut descriptor = system_notification_descriptor();
     descriptor.config_form=serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"token","label":"Token","type":"string","control":"password"}]})).unwrap();
@@ -158,4 +196,35 @@ fn qr_challenge_may_appear_only_in_its_exact_cached_display_url() {
         &tokens,
         &patch
     ));
+}
+
+#[test]
+fn delivery_window_projection_expires_at_boundary_without_revoking_authorization() {
+    let active: NotificationAuthorizationView = serde_json::from_value(json!({"status":"authorized","delivery_window":{"status":"active","last_received_at_ms":100,"expires_at_ms":200}})).unwrap();
+    assert_eq!(project_authorization_at(active.clone(), 199), active);
+    for now in [200, 201, u64::MAX] {
+        let expired = project_authorization_at(active.clone(), now);
+        assert_eq!(expired.status, Status::Authorized);
+        let window = expired.delivery_window.unwrap();
+        assert_eq!(
+            window.status,
+            extension_contracts::NotificationDeliveryWindowStatus::Expired
+        );
+        assert_eq!(window.last_received_at_ms, Some(100));
+        assert_eq!(window.expires_at_ms, Some(200));
+    }
+    for window in [
+        json!({"status":"unknown","last_received_at_ms":100,"expires_at_ms":200}),
+        json!({"status":"waiting_for_message"}),
+    ] {
+        let view: NotificationAuthorizationView =
+            serde_json::from_value(json!({"status":"authorized","delivery_window":window}))
+                .unwrap();
+        assert_eq!(project_authorization_at(view.clone(), u64::MAX), view);
+    }
+    assert_eq!(
+        project_authorization_at(unauthorized(), 200),
+        unauthorized()
+    );
+    assert!(unauthorized().delivery_window.is_none());
 }

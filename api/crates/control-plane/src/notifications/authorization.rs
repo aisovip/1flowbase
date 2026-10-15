@@ -11,7 +11,50 @@ pub(super) fn unauthorized() -> NotificationAuthorizationView {
     NotificationAuthorizationView {
         status: Status::Unauthorized,
         user_action: None,
+        delivery_window: None,
     }
+}
+
+/// Projection is deliberately read-only: expiry never revokes account authorization/secrets.
+pub(super) fn project_authorization_at(
+    mut view: NotificationAuthorizationView,
+    now_ms: u64,
+) -> NotificationAuthorizationView {
+    if let Some(window) = &mut view.delivery_window {
+        if window.status == extension_contracts::NotificationDeliveryWindowStatus::Active
+            && window.expires_at_ms.is_some_and(|expiry| now_ms >= expiry)
+        {
+            window.status = extension_contracts::NotificationDeliveryWindowStatus::Expired;
+        }
+    }
+    view
+}
+
+pub(super) fn project_authorization(
+    view: NotificationAuthorizationView,
+) -> NotificationAuthorizationView {
+    let now_ms = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).max(0) as u64;
+    project_authorization_at(view, now_ms)
+}
+
+pub(super) fn project_for_descriptor(
+    mut view: NotificationAuthorizationView,
+    descriptor: &NotificationTypeDescriptor,
+) -> NotificationAuthorizationView {
+    if view.status == Status::Authorized
+        && view.delivery_window.is_none()
+        && descriptor
+            .authorization
+            .as_ref()
+            .is_some_and(|authorization| authorization.supports_delivery_window)
+    {
+        view.delivery_window = Some(extension_contracts::NotificationDeliveryWindowView {
+            status: extension_contracts::NotificationDeliveryWindowStatus::Unknown,
+            last_received_at_ms: None,
+            expires_at_ms: None,
+        });
+    }
+    project_authorization(view)
 }
 
 impl<R> NotificationService<R>
@@ -42,9 +85,13 @@ where
                 &self.master_key,
             )
             .await?;
-        let current = state.authorization.clone().unwrap_or_else(unauthorized);
+        let current = project_for_descriptor(
+            state.authorization.clone().unwrap_or_else(unauthorized),
+            &entry.descriptor,
+        );
         let original_secrets = state.managed_secrets.clone();
         let mut input = NotificationRuntimeInput {
+            delivery_window: current.delivery_window.clone(),
             operation: NotificationOperation::Authorize {
                 operation: operation.clone(),
             },
@@ -113,6 +160,7 @@ where
             state.authorization = Some(unauthorized());
             state.managed_secrets.clear();
             input.managed_secrets.clear();
+            input.delivery_window = None;
         }
         let raw = self
             .provider
@@ -162,7 +210,7 @@ where
         )
         .await?
         .ok_or(Error::Conflict("notification_authorization_stale"))?;
-        Ok(authorization)
+        Ok(project_for_descriptor(authorization, &entry.descriptor))
     }
 
     pub(super) async fn notification_config(

@@ -246,16 +246,15 @@ where
         actor: &ActorContext,
         record: NotificationInstanceRecord,
     ) -> Result<NotificationInstance> {
+        let entry = self.types(actor).await?.into_iter().find(|entry| {
+            entry.descriptor.type_code == record.type_code
+                && entry.installation_id == record.installation_id
+        });
         let reason = if record.status == NotificationInstanceStatus::Disabled {
             Some("instance_disabled")
         } else {
-            self.types(actor)
-                .await?
-                .into_iter()
-                .find(|entry| {
-                    entry.descriptor.type_code == record.type_code
-                        && entry.installation_id == record.installation_id
-                })
+            entry
+                .as_ref()
                 .map_or(Some("type_unavailable"), |entry| entry.unavailable_reason)
         };
         let persisted = self
@@ -263,16 +262,12 @@ where
             .notification_authorization_view(actor.current_workspace_id, record.id)
             .await?;
         let authorization = match persisted {
-            Some(view) => Some(view),
-            None => self
-                .types(actor)
-                .await?
-                .into_iter()
-                .find(|entry| {
-                    entry.descriptor.type_code == record.type_code
-                        && entry.installation_id == record.installation_id
-                        && entry.descriptor.authorization.is_some()
-                })
+            Some(view) => Some(match &entry {
+                Some(entry) => authorization::project_for_descriptor(view, &entry.descriptor),
+                None => authorization::project_authorization(view),
+            }),
+            None => entry
+                .filter(|entry| entry.descriptor.authorization.is_some())
                 .map(|_| authorization::unauthorized()),
         };
         Ok(NotificationInstance {
@@ -585,6 +580,15 @@ where
                 }
                 Error::Conflict("authorization_invalid") => {
                     Some(("failure", "authorization_invalid"))
+                }
+                Error::Conflict("subscription_required") => {
+                    Some(("failure", "subscription_required"))
+                }
+                Error::Conflict("subscription_expired") => {
+                    Some(("failure", "subscription_expired"))
+                }
+                Error::UpstreamUnavailable("subscription_unavailable") => {
+                    Some(("failure", "subscription_unavailable"))
                 }
                 Error::Conflict("recipient_not_ready") => Some(("failure", "recipient_not_ready")),
                 Error::UpstreamUnavailable("provider_rejected") => {
