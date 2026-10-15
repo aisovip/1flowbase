@@ -47,10 +47,39 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         };
         await page.goto(`${args.webBaseUrl}/applications/${applicationId}/logs?language=zh`, { waitUntil: 'domcontentloaded' });
         // Canonical rows expose only the latest task in each conversation.
-        const sourceRows = page.locator(recordIds.map(id => `input[type=checkbox][name="${id}"]`).join(', '));
-        await sourceRows.nth(1).waitFor({ state: 'visible' });
-        assert.equal(await sourceRows.count(), 2, 'three task facts render two canonical conversations');
-        for (const row of await sourceRows.all()) await row.check();
+        const sourceSelector = recordIds.map(id => `input[type=checkbox][name="${id}"]`).join(', ');
+        const selected = new Set();
+        if (name === 'mobile') {
+          // Virtualized rows mount as the user scrolls; select each source identity once.
+          const list = page.locator('.data-table-mobile__viewport .ant-listy-holder');
+          await list.waitFor({ state: 'visible' });
+          const dimensions = await list.evaluate(element => ({ height: element.clientHeight, total: element.scrollHeight }));
+          const maxSteps = Math.ceil(dimensions.total / (dimensions.height * 0.7)) + 2;
+          for (let step = 0; step < maxSteps; step++) {
+            for (const id of recordIds) {
+              const row = page.locator(`input[type=checkbox][name="${id}"]`);
+              if (!selected.has(id) && await row.count()) {
+                await row.check();
+                selected.add(id);
+              }
+            }
+            const metrics = await list.evaluate(element => ({ top: element.scrollTop, height: element.clientHeight, total: element.scrollHeight }));
+            if (metrics.top + metrics.height >= metrics.total - 1) break;
+            await list.hover();
+            await page.mouse.wheel(0, metrics.height * 0.7);
+            await page.waitForFunction(({ selector, previous }) => document.querySelector(selector).scrollTop > previous,
+              { selector: '.data-table-mobile__viewport .ant-listy-holder', previous: metrics.top });
+          }
+        } else {
+          const sourceRows = page.locator(sourceSelector);
+          await sourceRows.nth(1).waitFor({ state: 'visible' });
+          assert.equal(await sourceRows.count(), 2, 'three task facts render two canonical conversations');
+          for (const row of await sourceRows.all()) {
+            selected.add(await row.getAttribute('name'));
+            await row.check();
+          }
+        }
+        assert.equal(selected.size, 2, 'both viewports select exactly two canonical source conversations');
         await save('01-record-selection.png', applicationId);
         const dialog = await openExchange();
         assert.ok(await dialog.getByText(/已选择 2 条日志|2 logs selected/).isVisible());
