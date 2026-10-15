@@ -218,3 +218,27 @@ The `notification_authorization_worker` example under
 with deterministic begin/poll/cancel/maintain/send responses and secret patches.
 It is a Host persistence fixture, not evidence of real provider delivery. Contract
 and SDK test execution is deferred to the Root's one assembled QA batch.
+
+## Application logs and HTTP Host services
+
+`ApplicationLogsClient::new(emitter.clone()).execute(ApplicationLogsRequest)` and
+`HttpEgressClient::new(emitter).execute(HttpEgressRequest)` use the same multiplex
+callback dispatcher. The canonical types are reexported from `extension-contracts`.
+Responses are typed; `HostServiceError` retains a safe `code`, optional HTTP `status`
+and structured `details` (including partial import receipts).
+
+These are two fixed Host service families, not route forwarding or arbitrary RPC.
+Managed service contributions declare and receive independent system grants:
+`application.logs.read` / `application.logs.import` with permission contract
+`application-logs` version `1`, and `network.http.request` with `http-egress` version
+`1`. The actual caller's session, operation and application/workspace rights are
+rechecked by the Host. No worker request supplies actor or installation identity.
+System plugin data and credentials keep their own existing system storage scope.
+
+HTTP requests use Host Network Egress with closed consumer kind `managed_plugin`
+and `consumer_reference` equal to the installed plugin UUID, in the real caller's
+workspace. Redirects are returned unchanged; the plugin interprets remote status
+and body. Cancellation/deadline drops release Host leases. Full selected log facts
+are returned or an explicit transport-budget error is raised; the 32 MiB frame
+budget never silently truncates records. Page complete record lists and export
+selected records in separate calls when a larger overall exchange is needed.

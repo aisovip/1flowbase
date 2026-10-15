@@ -208,6 +208,8 @@ impl ManagedWorkers {
         plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
         file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
         file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
+        application_logs: Option<Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>>,
+        http_egress: Option<Arc<dyn runtime_core::runtime_backend::HttpEgressPort>>,
     ) -> Result<
         impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
         runtime_core::runtime_backend::RuntimeBackendError,
@@ -240,6 +242,46 @@ impl ManagedWorkers {
                 provider_instance_id: request.handle.identity().installation_id().as_str().into(),
                 permissions: data_permissions,
                 deadline_unix_ms: request.principal.deadline_unix_ms,
+            },
+            application_logs: if permissions.contains("application.logs.read")
+                || permissions.contains("application.logs.import")
+            {
+                application_logs
+                    .zip(request.principal.caller.clone())
+                    .map(|(port, caller)| {
+                        (
+                            runtime_core::runtime_backend::FileImportBinding {
+                                subject: request.handle.identity().subject().clone(),
+                                publisher_namespace: binding.publisher_namespace.clone(),
+                                plugin_code: binding.plugin_code.clone(),
+                                plugin_version: binding.plugin_version.clone(),
+                                caller,
+                                deadline_unix_ms: request.principal.deadline_unix_ms,
+                            },
+                            port,
+                        )
+                    })
+            } else {
+                None
+            },
+            http_egress: if permissions.contains("network.http.request") {
+                http_egress
+                    .zip(request.principal.caller.clone())
+                    .map(|(port, caller)| {
+                        (
+                            runtime_core::runtime_backend::FileImportBinding {
+                                subject: request.handle.identity().subject().clone(),
+                                publisher_namespace: binding.publisher_namespace.clone(),
+                                plugin_code: binding.plugin_code.clone(),
+                                plugin_version: binding.plugin_version.clone(),
+                                caller,
+                                deadline_unix_ms: request.principal.deadline_unix_ms,
+                            },
+                            port,
+                        )
+                    })
+            } else {
+                None
             },
             plugin_data,
             file_read: if permissions.contains("file.read.content") {

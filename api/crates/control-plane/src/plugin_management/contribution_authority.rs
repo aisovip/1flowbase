@@ -89,7 +89,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1"
                 ]
                 .concat()
             ))
@@ -169,6 +169,14 @@ impl HostContributionGrantPolicy {
                     }
                     "file.import.resource" => {
                         request.permission_contract_id == "file-import"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    "application.logs.read" | "application.logs.import" => {
+                        request.permission_contract_id == "application-logs"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    "network.http.request" => {
+                        request.permission_contract_id == "http-egress"
                             && request.resource_scope == ContributionResourceScope::System
                     }
                     "credential.manage" => {

@@ -1,4 +1,5 @@
 mod callback_originals;
+mod native_log_exchange;
 mod native_snapshot_concurrency;
 mod native_snapshots;
 mod node_details;

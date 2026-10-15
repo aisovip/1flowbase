@@ -127,8 +127,6 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("applications.logs.import", "system.applications"),
     settings("applications.logs.otlp.export", "system.applications"),
     settings("applications.logs.otlp.import", "system.applications"),
-    settings("applications.logs.langfuse.export", "system.applications"),
-    settings("applications.logs.langfuse.import", "system.applications"),
     settings("applications.logs.delete", "system.applications"),
     settings("applications.logs.delete.preview", "system.applications"),
     settings(

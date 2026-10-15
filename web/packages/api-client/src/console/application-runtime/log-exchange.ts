@@ -14,16 +14,6 @@ export interface ApplicationLogPartialImportReceipt {
   duplicate_events: number;
   committed_records: number;
 }
-export interface ApplicationLogLangfuseCredentials {
-  base_url: string;
-  public_key: string;
-  secret_key: string;
-}
-export interface ApplicationLogLangfuseExportReceipt {
-  exported_records: number;
-  exported_spans: number;
-  trace_ids: string[];
-}
 export function exportConsoleApplicationLogsOtlp(
   applicationId: string,
   input: ApplicationLogExportSelector,
@@ -46,34 +36,6 @@ export function importConsoleApplicationLogsOtlp(
 ) {
   return apiFetch<ApplicationLogImportReceipt>({
     path: `/api/console/applications/${applicationId}/logs/otlp/import`,
-    method: 'POST',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-export function exportConsoleApplicationLogsLangfuse(
-  applicationId: string,
-  input: ApplicationLogLangfuseCredentials & ApplicationLogExportSelector,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ApplicationLogLangfuseExportReceipt>({
-    path: `/api/console/applications/${applicationId}/logs/langfuse/export`,
-    method: 'POST',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-export function importConsoleApplicationLogsLangfuse(
-  applicationId: string,
-  input: ApplicationLogLangfuseCredentials & { trace_ids: string[] },
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ApplicationLogImportReceipt>({
-    path: `/api/console/applications/${applicationId}/logs/langfuse/import`,
     method: 'POST',
     body: input,
     csrfToken,

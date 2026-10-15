@@ -4,7 +4,6 @@ import {
   Button,
   Descriptions,
   Form,
-  Input,
   Modal,
   Select,
   Space,
@@ -14,25 +13,19 @@ import { useTranslation } from 'react-i18next';
 import {
   ApiClientError,
   type ApplicationLogPartialImportReceipt,
-  type ApplicationLogImportReceipt,
-  type ApplicationLogLangfuseExportReceipt
+  type ApplicationLogImportReceipt
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
   exportApplicationLogsOtlp,
-  importApplicationLogsOtlp,
-  exportApplicationLogsLangfuse,
-  importApplicationLogsLangfuse
+  importApplicationLogsOtlp
 } from '../../../api/log-exchange';
 import { saveApplicationRunExport } from '../../../lib/run-export-download';
 
-type Operation =
-  | 'otlp_export'
-  | 'otlp_import'
-  | 'langfuse_export'
-  | 'langfuse_import';
+type Operation = 'otlp_export' | 'otlp_import';
 interface Props {
   applicationId: string;
+  allowImport?: boolean;
   applications: Array<{ id: string; name: string }>;
   selectedRecords: Array<{
     id: string;
@@ -43,9 +36,9 @@ interface Props {
 }
 interface Receipt {
   application_id: string;
-  kind: 'download' | 'import' | 'export' | 'error' | 'partial_import';
+  kind: 'download' | 'import' | 'error' | 'partial_import';
   partial_import?: ApplicationLogPartialImportReceipt;
-  value?: ApplicationLogImportReceipt | ApplicationLogLangfuseExportReceipt;
+  value?: ApplicationLogImportReceipt;
   filename?: string;
 }
 
@@ -96,6 +89,7 @@ export function AgentLogsExchange(props: Props) {
 
 function ExchangeModal({
   applicationId,
+  allowImport = true,
   applications,
   selectedRecords,
   onImported,
@@ -104,35 +98,23 @@ function ExchangeModal({
   const { t } = useTranslation('applications');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [operation, setOperation] = useState<Operation>(
-    selectedRecords.length ? 'otlp_export' : 'otlp_import'
+    selectedRecords.length || !allowImport ? 'otlp_export' : 'otlp_import'
   );
   const [target, setTarget] = useState(applicationId);
-  const [base_url, setBaseUrl] = useState('');
-  const [public_key, setPublicKey] = useState('');
-  const [secret_key, setSecretKey] = useState('');
-  const [traceIds, setTraceIds] = useState('');
   const [otlp, setOtlp] = useState<object | null>(null);
   const [fileError, setFileError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const running = useRef(false);
   const fileReadVersion = useRef(0);
-  const importing =
-    operation === 'otlp_import' || operation === 'langfuse_import';
-  const langfuse =
-    operation === 'langfuse_export' || operation === 'langfuse_import';
-  const trace_ids = Array.from(
-    new Set(traceIds.split(/[\s,]+/).filter(Boolean))
-  );
+  const importing = operation === 'otlp_import';
   const missingConversation = selectedRecords.some(
     (record) => !record.log_conversation_id
   );
   const ready = Boolean(
     csrfToken &&
     (!importing ? selectedRecords.length && !missingConversation : target) &&
-    (!langfuse || (base_url.trim() && public_key.trim() && secret_key)) &&
-    (operation !== 'otlp_import' || otlp) &&
-    (operation !== 'langfuse_import' || trace_ids.length)
+    (operation !== 'otlp_import' || otlp)
   );
 
   async function exchange() {
@@ -140,11 +122,6 @@ function ExchangeModal({
     running.current = true;
     setBusy(true);
     setReceipts([]);
-    const credentials = {
-      base_url: base_url.trim(),
-      public_key: public_key.trim(),
-      secret_key
-    };
     const groups = new Map<string, string[]>();
     if (importing) groups.set(target, []);
     else
@@ -153,10 +130,7 @@ function ExchangeModal({
         groups.set(
           owner,
           Array.from(
-            new Set([
-              ...(groups.get(owner) ?? []),
-              record.log_conversation_id!
-            ])
+            new Set([...(groups.get(owner) ?? []), record.log_conversation_id!])
           )
         );
       }
@@ -173,28 +147,12 @@ function ExchangeModal({
             const filename = download.filename ?? `${owner}-logs-otlp.json`;
             saveApplicationRunExport(download, filename);
             receipt = { application_id: owner, kind: 'download', filename };
-          } else if (operation === 'langfuse_export') {
-            const value = await exportApplicationLogsLangfuse(
+          } else {
+            const value = await importApplicationLogsOtlp(
               owner,
-              { log_conversation_ids },
-              credentials,
+              otlp!,
               csrfToken
             );
-            receipt = {
-              application_id: owner,
-              kind: 'export',
-              value
-            };
-          } else {
-            const value =
-              operation === 'otlp_import'
-                ? await importApplicationLogsOtlp(owner, otlp!, csrfToken)
-                : await importApplicationLogsLangfuse(
-                    owner,
-                    trace_ids,
-                    credentials,
-                    csrfToken
-                  );
             receipt = { application_id: owner, kind: 'import', value };
             onImported();
           }
@@ -256,15 +214,14 @@ function ExchangeModal({
             }}
             options={[
               { value: 'otlp_export', label: t('logs.exchange.otlp_export') },
-              { value: 'otlp_import', label: t('logs.exchange.otlp_import') },
-              {
-                value: 'langfuse_export',
-                label: t('logs.exchange.langfuse_export')
-              },
-              {
-                value: 'langfuse_import',
-                label: t('logs.exchange.langfuse_import')
-              }
+              ...(allowImport
+                ? [
+                    {
+                      value: 'otlp_import',
+                      label: t('logs.exchange.otlp_import')
+                    }
+                  ]
+                : [])
             ]}
           />
         </Form.Item>
@@ -333,45 +290,6 @@ function ExchangeModal({
             )}
           </Form.Item>
         )}
-        {langfuse && (
-          <>
-            <Typography.Paragraph>
-              {t('logs.exchange.credentials_hint')}
-            </Typography.Paragraph>
-            <Form.Item label={t('logs.exchange.base_url')}>
-              <Input
-                aria-label={t('logs.exchange.base_url')}
-                value={base_url}
-                onChange={(event) => setBaseUrl(event.target.value)}
-              />
-            </Form.Item>
-            <Form.Item label={t('logs.exchange.public_key')}>
-              <Input
-                autoComplete="off"
-                aria-label={t('logs.exchange.public_key')}
-                value={public_key}
-                onChange={(event) => setPublicKey(event.target.value)}
-              />
-            </Form.Item>
-            <Form.Item label={t('logs.exchange.secret_key')}>
-              <Input.Password
-                autoComplete="new-password"
-                aria-label={t('logs.exchange.secret_key')}
-                value={secret_key}
-                onChange={(event) => setSecretKey(event.target.value)}
-              />
-            </Form.Item>
-          </>
-        )}
-        {operation === 'langfuse_import' && (
-          <Form.Item label={t('logs.exchange.trace_ids')}>
-            <Input.TextArea
-              aria-label={t('logs.exchange.trace_ids')}
-              value={traceIds}
-              onChange={(event) => setTraceIds(event.target.value)}
-            />
-          </Form.Item>
-        )}
       </Form>
       <Space direction="vertical" style={{ width: '100%' }} aria-live="polite">
         {receipts.map((receipt) => (
@@ -420,62 +338,31 @@ function ExchangeModal({
               />
             ) : (
               <>
-                <Alert
-                  type="info"
-                  message={t('logs.exchange.receipt')}
-                />
+                <Alert type="info" message={t('logs.exchange.receipt')} />
                 <Descriptions
                   column={1}
                   size="small"
-                  items={
-                    receipt.kind === 'import'
-                      ? [
-                          {
-                            key: 'accepted_events',
-                            label: t('logs.exchange.accepted_events'),
-                            children: (
-                              receipt.value as ApplicationLogImportReceipt
-                            ).accepted_events
-                          },
-                          {
-                            key: 'duplicate_events',
-                            label: t('logs.exchange.duplicate_events'),
-                            children: (
-                              receipt.value as ApplicationLogImportReceipt
-                            ).duplicate_events
-                          },
-                          {
-                            key: 'record_ids',
-                            label: t('logs.exchange.record_ids'),
-                            children: (
-                              receipt.value as ApplicationLogImportReceipt
-                            ).record_ids.join(', ')
-                          }
-                        ]
-                      : [
-                          {
-                            key: 'exported_records',
-                            label: t('logs.exchange.exported_records'),
-                            children: (
-                              receipt.value as ApplicationLogLangfuseExportReceipt
-                            ).exported_records
-                          },
-                          {
-                            key: 'exported_spans',
-                            label: t('logs.exchange.exported_spans'),
-                            children: (
-                              receipt.value as ApplicationLogLangfuseExportReceipt
-                            ).exported_spans
-                          },
-                          {
-                            key: 'trace_ids',
-                            label: t('logs.exchange.trace_ids'),
-                            children: (
-                              receipt.value as ApplicationLogLangfuseExportReceipt
-                            ).trace_ids.join(', ')
-                          }
-                        ]
-                  }
+                  items={[
+                    {
+                      key: 'accepted_events',
+                      label: t('logs.exchange.accepted_events'),
+                      children: (receipt.value as ApplicationLogImportReceipt)
+                        .accepted_events
+                    },
+                    {
+                      key: 'duplicate_events',
+                      label: t('logs.exchange.duplicate_events'),
+                      children: (receipt.value as ApplicationLogImportReceipt)
+                        .duplicate_events
+                    },
+                    {
+                      key: 'record_ids',
+                      label: t('logs.exchange.record_ids'),
+                      children: (
+                        receipt.value as ApplicationLogImportReceipt
+                      ).record_ids.join(', ')
+                    }
+                  ]}
                 />
               </>
             )}

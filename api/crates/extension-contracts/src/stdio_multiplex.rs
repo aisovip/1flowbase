@@ -70,6 +70,8 @@ pub enum MultiplexHostService {
     PluginCredentialV1,
     FileImportV1,
     FileReadV1,
+    ApplicationLogsV1,
+    HttpEgressV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+pub(super) const SOURCE_FACT_ATTRIBUTE: &str = "1flowbase.agent_log.source_fact";
 pub(super) const SELF_NAMESPACE: &str = "1flowbase_agent_log";
 const SOURCE_FACT_ENCODING: &str = "1flowbase.agent-logs.source-fact/v1;base64,";
 
@@ -19,8 +20,7 @@ pub(super) struct SourceFact {
     pub event: AgentLogEvent,
 }
 
-/// Keep the replay authority in one string leaf: Langfuse recursively flattens
-/// objects with first-write collisions between dotted keys and nested paths.
+/// Keep the versioned replay authority in one opaque, portable string leaf.
 pub(super) fn encode_source_fact(fact: &SourceFact) -> Result<String> {
     Ok(format!(
         "{SOURCE_FACT_ENCODING}{}",

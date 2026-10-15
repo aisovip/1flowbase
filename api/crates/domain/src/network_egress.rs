@@ -194,6 +194,7 @@ pub enum NetworkEgressConsumerSelector {
     ModelProviderInstance { instance_id: Uuid },
     HttpNodeDefault,
     AgentLogsExchange,
+    ManagedPlugin { installation_id: Uuid },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,12 +215,14 @@ impl NetworkEgressConsumerSelector {
             Self::ModelProviderDefault | Self::ModelProviderInstance { .. } => "model_provider",
             Self::HttpNodeDefault => "http_node",
             Self::AgentLogsExchange => "agent_logs_exchange",
+            Self::ManagedPlugin { .. } => "managed_plugin",
         }
     }
 
     pub const fn consumer_reference(&self) -> Option<Uuid> {
         match self {
             Self::ModelProviderInstance { instance_id } => Some(*instance_id),
+            Self::ManagedPlugin { installation_id } => Some(*installation_id),
             Self::GithubOfficialSources
             | Self::ModelProviderDefault
             | Self::HttpNodeDefault
@@ -239,6 +242,9 @@ impl NetworkEgressConsumerSelector {
             }
             ("http_node", None) => Ok(Self::HttpNodeDefault),
             ("agent_logs_exchange", None) => Ok(Self::AgentLogsExchange),
+            ("managed_plugin", Some(installation_id)) => {
+                Ok(Self::ManagedPlugin { installation_id })
+            }
             _ => Err(NetworkEgressConsumerSelectorParseError),
         }
     }

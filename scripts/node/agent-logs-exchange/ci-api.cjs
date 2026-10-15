@@ -106,7 +106,10 @@ async function main() {
     ['codec', 'agent_logs_protocol::'],
     ['public-contract', 'routes::application_public_api::agent_logs::otlp::'],
     ['public-route', 'application_api_routes::otlp_logs::'],
-    ['console-contract-remote', 'application_runtime::log_exchange::'],
+    ['console-contract', 'application_runtime::log_exchange::'],
+    ['unified-exchange', 'application_log_exchange::'],
+    ['exchange-host-api', 'exchange_host_services'],
+    ['exchange-session', 'read_and_import_session_currentness'],
     ['console-route', 'logs_routes::exchange::'],
     ['openapi', 'canonical_otlp_trace_ingest_advertises_application_bearer_and_standard_wire_formats'],
     ['native-reception', 'application_api_routes::log_reception::'],
@@ -145,7 +148,13 @@ async function main() {
     await testCommand(label, [...api, selector, '--', '--test-threads', String(budget.cargoTestThreads)]);
   }
   for (const [label, cargoArgs] of [
+    ['exchange-contracts', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'extension-contracts', '--lib', 'exchange_host_services']],
+    ['exchange-sdk', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--lib', 'exchange_host_services']],
+    ['exchange-host', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-host', '--lib', 'exchange_host_services']],
+    ['exchange-authority', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane', '--lib', 'exchange_host_services']],
+    ['exchange-egress-domain', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'domain', '--lib', 'managed_plugin_selector']],
     ['source-contracts', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane-contracts', '--lib', 'agent_logs_contract_tests']],
+    ['native-source-units', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'storage-durable-postgres', '--lib', 'native_log_exchange']],
     ['selected-source-snapshot', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'storage-durable-postgres', '--lib', 'agent_logs::reader::selected_facts']],
     ['independent-grants', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane', '--lib', 'agent_log_exchange_operations_are_independent_and_do_not_inherit_archive_grants']],
     ['pricing', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'control-plane-postgres-tests', '--test', 'orchestration_runtime_integration', 'application_logs::agent_logs::pricing']]

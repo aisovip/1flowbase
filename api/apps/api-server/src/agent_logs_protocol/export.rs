@@ -1,6 +1,6 @@
 use super::{
     attributes::{int_attribute, string_attribute},
-    facts::{encode_source_fact, hash, nanos, SourceFact, SELF_NAMESPACE},
+    facts::{encode_source_fact, hash, nanos, SourceFact, SOURCE_FACT_ATTRIBUTE},
     ExportTraceServiceRequest,
 };
 use anyhow::Result;
@@ -95,29 +95,8 @@ pub fn batches_to_traces(batches: &[AgentLogsBatch]) -> Result<ExportTraceServic
                 source_client: batch.source_client.clone(),
                 event: event.clone(),
             };
-            let metadata = json!({SELF_NAMESPACE: encode_source_fact(&fact)?});
             let mut attrs = vec![
-                string_attribute(
-                    "langfuse.observation.metadata",
-                    serde_json::to_string(&metadata)?,
-                ),
-                string_attribute(
-                    "langfuse.observation.type",
-                    if metered.contains(&(
-                        batch.source_id.clone(),
-                        batch.source_client.clone(),
-                        event.event_id.clone(),
-                    )) {
-                        "generation"
-                    } else if matches!(
-                        event.kind,
-                        AgentLogEventKind::ToolCall | AgentLogEventKind::ToolResult
-                    ) {
-                        "tool"
-                    } else {
-                        "span"
-                    },
-                ),
+                string_attribute(SOURCE_FACT_ATTRIBUTE, encode_source_fact(&fact)?),
                 string_attribute("session.id", &event.source_session_id),
                 string_attribute("gen_ai.conversation.id", &event.source_session_id),
                 string_attribute("coding_agent.client", &batch.source_client),
@@ -127,14 +106,24 @@ pub fn batches_to_traces(batches: &[AgentLogsBatch]) -> Result<ExportTraceServic
                 let key = match event.kind {
                     AgentLogEventKind::Assistant
                     | AgentLogEventKind::ToolResult
-                    | AgentLogEventKind::TaskEnd => "langfuse.observation.output",
-                    _ => "langfuse.observation.input",
+                    | AgentLogEventKind::TaskEnd => "gen_ai.output.messages",
+                    _ => "gen_ai.input.messages",
                 };
-                // Langfuse deserializes this attribute as a JSON blob.
-                attrs.push(string_attribute(key, serde_json::to_string(content)?));
+                let role = match event.kind {
+                    AgentLogEventKind::System => "system",
+                    AgentLogEventKind::User => "user",
+                    AgentLogEventKind::Assistant | AgentLogEventKind::ToolCall => "assistant",
+                    AgentLogEventKind::ToolResult => "tool",
+                    _ => "context",
+                };
+                attrs.push(string_attribute(
+                    key,
+                    serde_json::to_string(&json!([
+                        {"role":role,"parts":[{"type":"text","content":content}]}
+                    ]))?,
+                ));
             }
             if let Some(model) = &event.model_id {
-                attrs.push(string_attribute("langfuse.observation.model.name", model));
                 attrs.push(string_attribute("gen_ai.response.model", model));
             }
             if let Some(provider) = &event.provider_code {
@@ -146,8 +135,7 @@ pub fn batches_to_traces(batches: &[AgentLogsBatch]) -> Result<ExportTraceServic
                 event.event_id.clone(),
             )) {
                 let usage = event.usage.as_ref().expect("selected usage event");
-                let mut details = serde_json::Map::new();
-                for (dimension, key, value) in [
+                for (_dimension, key, value) in [
                     ("input", "gen_ai.usage.input_tokens", usage.input_tokens),
                     ("output", "gen_ai.usage.output_tokens", usage.output_tokens),
                     ("total", "gen_ai.usage.total_tokens", usage.total_tokens),
@@ -163,14 +151,9 @@ pub fn batches_to_traces(batches: &[AgentLogsBatch]) -> Result<ExportTraceServic
                     ),
                 ] {
                     if let Some(value) = value {
-                        details.insert(dimension.into(), value.into());
                         attrs.push(int_attribute(key, value));
                     }
                 }
-                attrs.push(string_attribute(
-                    "langfuse.observation.usage_details",
-                    serde_json::to_string(&details)?,
-                ));
             }
             if let Some(name) = &event.name {
                 attrs.push(string_attribute("gen_ai.tool.name", name));

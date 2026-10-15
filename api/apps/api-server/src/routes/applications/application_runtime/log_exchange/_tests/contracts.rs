@@ -4,46 +4,18 @@ use super::*;
 fn exchange_managed_projection_excludes_credentials_destinations_and_facts() {
     let id = Uuid::now_v7();
     let secret = "PRIVATE_SOURCE_VALUE";
-    let inputs = [
-        ExchangeInput::OtlpImport {
-            application_id: id,
-            body: OtlpImportBody {
-                otlp: json!({"raw":secret}),
-            },
+    let inputs = [ExchangeInput::OtlpImport {
+        application_id: id,
+        body: OtlpImportBody {
+            otlp: json!({"raw":secret}),
         },
-        ExchangeInput::LangfuseImport {
-            application_id: id,
-            body: LangfuseImportBody {
-                trace_ids: vec![secret.into()],
-                base_url: secret.into(),
-                public_key: secret.into(),
-                secret_key: secret.into(),
-            },
-        },
-        ExchangeInput::LangfuseExport {
-            application_id: id,
-            body: LangfuseExportBody {
-                record_ids: Some(vec![id]),
-                log_conversation_ids: None,
-                base_url: secret.into(),
-                public_key: secret.into(),
-                secret_key: secret.into(),
-            },
-        },
-    ];
+    }];
     for input in inputs {
         let projection = input.project_for_managed_hook().unwrap();
         assert_eq!(projection.as_object().unwrap().len(), 3);
         assert!(!projection.to_string().contains(secret));
     }
-    for output in [
-        ExchangeOutput::Otlp(json!({"raw":secret})),
-        ExchangeOutput::Exported(LangfuseExportReceipt {
-            exported_records: 1,
-            exported_spans: 2,
-            trace_ids: vec![secret.into()],
-        }),
-    ] {
+    for output in [ExchangeOutput::Otlp(json!({"raw":secret}))] {
         assert!(!output
             .project_for_managed_hook()
             .unwrap()
@@ -53,9 +25,9 @@ fn exchange_managed_projection_excludes_credentials_destinations_and_facts() {
 }
 
 #[test]
-fn exchange_has_four_independent_operations_and_strict_bodies() {
+fn exchange_has_two_independent_operations_and_strict_bodies() {
     let assembly = route_assembly();
-    assert_eq!(assembly.bindings().len(), 4);
+    assert_eq!(assembly.bindings().len(), 2);
     for (binding, operation) in assembly.bindings().iter().zip(OPERATIONS) {
         assert_eq!(binding.route.method, "POST");
         assert_eq!(
@@ -67,7 +39,6 @@ fn exchange_has_four_independent_operations_and_strict_bodies() {
         json!({"otlp":{},"secret_key":"unregistered"})
     )
     .is_err());
-    assert!(serde_json::from_value::<LangfuseImportBody>(json!({"trace_ids":[],"base_url":"http://localhost","public_key":"pk","secret_key":"sk","api_key_id":Uuid::nil()})).is_err());
 }
 
 #[tokio::test]

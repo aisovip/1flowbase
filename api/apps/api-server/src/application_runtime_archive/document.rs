@@ -70,7 +70,7 @@ pub(super) async fn build_run_archive_v1_document(
     })
 }
 
-async fn build_run_archive_v1_entry(
+pub(crate) async fn build_run_archive_v1_entry(
     store: storage_durable_postgres::MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     workspace_id: Uuid,

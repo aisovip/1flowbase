@@ -26,11 +26,16 @@
 - 物理 schema 归属与版本字段投影分开：宿主持久化每个版本实际声明的对象集合，安装新版不会撤销旧版字段，也不会把新字段开放给旧版。成员集合在同版本内不可变；回退复用原集合。移除字段仅保留物理数据，不授予新版访问权。没有默认值契约时，增加必填列或从仍可写的集合移除必填列会破坏共存写入，因此拒绝该 schema 变更。卸载停用整个家族的数据入口并保留表和版本映射；运行调用仍受当前贡献授权约束。
 - 物理质量检查以实际访问模型为准：版本对象成员集合使用 `(owner_id, owner_version, ownership_key)` 主键及 ownership catalog 外键；出站凭据使用 `(publisher_namespace, plugin_code, scope_id, credential_id)` 精确查找并保留创建/更新时序。两者不承担普通业务资源的 scope/time/id 分页，门禁仍独立验证复合身份、归属和实际查询索引。
 - `process_per_call` + `stdio_json_multiplex_v1` 复用共享 SDK 和宿主 carrier。系统 PluginData 与出站 credential 回调由宿主注入安装、贡献、作用域与期限，每次校验当前授权；凭据加密持久化，普通页面数据不返回凭据原文。宿主登录凭据、SQL 与数据库连接不向插件开放。
+- `application_logs_v1` / `http_egress_v1` 是两类独立 typed Host Service，SDK 复用共享 callback。贡献分别获批 `application.logs.read`、`application.logs.import`（`application-logs/v1`）与 `network.http.request`（`http-egress/v1`）；真实 caller 与 system 存储 scope 分离，每次重验 session、operation 和贡献授权，应用 ACL / 接收开关由日志 use case 校验。HTTP 经 caller workspace 的 Network Egress `managed_plugin` + installation UUID selector，保留远端状态/正文与重定向，取消/期限收尾归 Host；不向插件开放 SQL 或宿主自 HTTP。完整日志超出现有 32MiB 帧预算明确失败，不截断。
 - `managed_service.worker_lifetime` 默认 `per_call`。显式 `actor_scope` 保留 `process_per_call` 的单调用预算与 `stdio_json_multiplex_v1` 协议，但由宿主复用 carrier：安装、作用域、冻结制品及可执行文件一致的贡献按可信 actor 隔离进程，同 actor 的操作共享进程内业务会话。所有操作必须声明同一 runtime entry 与 limits；每次调用仍独立注入贡献权限、凭据与 deadline。`worker_idle_timeout_ms` 为正整数，默认 1,800,000；仅无在途调用且无资源租约的 worker 可因空闲回收。取消仅针对相关调用，卸载、重载与 shutdown 先 fence 已准入未执行调用，再实际终止并回收子进程后完成 dispose。短 HTTP pull 可复用此契约，worker 生命周期不等于业务会话的闲置策略。
 - 同一 actor worker 的所有执行绑定可显式声明 `runtime_worker_retention/v1`。宿主先通告支持，SDK `MultiplexEmitter::retain_resource().await` 再取得可跨调用持有的 RAII 租约；取得前刷新控制帧，释放后合并发送资源计数。序号阻止旧计数覆盖新状态。插件在业务资源关闭、到期或断连时释放租约，宿主只管理 worker 回收，不推测 SSH 等业务的会话期限。失败、卸载、升级和显式重置优先于租约；旧宿主未通告时获取租约明确失败。
 - 操作默认 `execution_concurrency: serialized`，写调用持有安装级变更锁；显式 `parallel` 仅跳过该串行锁，不改变 method 对应的授权与写语义。成功的 `invalidates_workers: true` 操作由底座重置同一挂载的共享 actor 池：拒绝旧代准入，等待旧进程退出，再允许新 worker。变更期间已准入操作可能被取消，返回成功后旧连接不再可用；`invalidates_streams` 仍独立撤销流入口。
 - 插件出站凭据属于 Extension Center 配置备份；备份与恢复复用凭据存储的身份绑定 AAD，校验源密钥并按目标密钥重加密。归属或凭据 ID 被改写时拒绝恢复，不能把原密文直接搬到另一主密钥环境。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
+
+受管日志连接器使用共享 SDK 的 `ApplicationLogsClient` 与 `HttpEgressClient`，复用 multiplex callback 的关联、取消和 deadline。底座持有真实调用者、安装贡献授权、应用权限及接收状态校验；系统插件激活不授予调用者跨工作区访问。`application.logs.read` / `application.logs.import` 属于 `application-logs` v1，`network.http.request` 属于 `http-egress` v1，贡献授权作用域为 system，业务日志仍按调用者 workspace 读取。HTTP 经宿主 Network Egress 的 `managed_plugin` 消费者解析，插件只解释供应商状态及响应。
+
+日志来源适配层读取 Agent Flow 原生完整事实和 Agent Logs 采集事实；来源中立语义通过标准 OTLP/GenAI 输出。供应商 API、元数据转换和分页归官方插件仓库，Langfuse 页面为 `/settings/langfuse`；导入只生成 Agent Logs 历史事实。原生 ZIP 和标准 OTLP 仍由底座提供。旧内置 `/logs/langfuse/export`、`/logs/langfuse/import` 入口由已安装插件的 `/api/console/managed-services/langfuse/export`、`/import` 工作流替代，不存在前端静默回退。统一协议不表示原生执行状态与外部采集日志共用持久化执行表。
 
 实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。
 

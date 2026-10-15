@@ -2,9 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { apiFetch, apiFetchBlob } from '../../../transport';
 import {
   exportConsoleApplicationLogsOtlp,
-  importConsoleApplicationLogsOtlp,
-  exportConsoleApplicationLogsLangfuse,
-  importConsoleApplicationLogsLangfuse
+  importConsoleApplicationLogsOtlp
 } from '../log-exchange';
 vi.mock('../../../transport', () => ({
   apiFetch: vi.fn(),
@@ -35,39 +33,7 @@ test('OTLP exchange posts record IDs and OTLP object through CSRF transport with
     baseUrl: undefined
   });
 });
-test('Langfuse exchange preserves exact credential fields and multiple record or trace IDs', async () => {
-  const credentials = {
-    base_url: 'https://langfuse.example',
-    public_key: 'public',
-    secret_key: 'secret'
-  };
-  await exportConsoleApplicationLogsLangfuse(
-    'app',
-    { ...credentials, record_ids: ['r1', 'r2'] },
-    'csrf'
-  );
-  expect(apiFetch).toHaveBeenLastCalledWith({
-    path: '/api/console/applications/app/logs/langfuse/export',
-    method: 'POST',
-    body: { ...credentials, record_ids: ['r1', 'r2'] },
-    csrfToken: 'csrf',
-    baseUrl: undefined
-  });
-  await importConsoleApplicationLogsLangfuse(
-    'app',
-    { ...credentials, trace_ids: ['t1', 't2'] },
-    'csrf'
-  );
-  expect(apiFetch).toHaveBeenLastCalledWith({
-    path: '/api/console/applications/app/logs/langfuse/import',
-    method: 'POST',
-    body: { ...credentials, trace_ids: ['t1', 't2'] },
-    csrfToken: 'csrf',
-    baseUrl: undefined
-  });
-});
-
-test('conversation selectors preserve canonical IDs through both export transports', async () => {
+test('conversation selectors preserve canonical IDs through the standard export transport', async () => {
   const selection = {
     log_conversation_ids: ['conversation-one', 'conversation-two']
   };
@@ -76,23 +42,6 @@ test('conversation selectors preserve canonical IDs through both export transpor
     path: '/api/console/applications/app/logs/otlp/export',
     method: 'POST',
     body: selection,
-    csrfToken: 'csrf',
-    baseUrl: undefined
-  });
-  const credentials = {
-    base_url: 'https://langfuse.example',
-    public_key: 'public',
-    secret_key: 'secret'
-  };
-  await exportConsoleApplicationLogsLangfuse(
-    'app',
-    { ...selection, ...credentials },
-    'csrf'
-  );
-  expect(apiFetch).toHaveBeenLastCalledWith({
-    path: '/api/console/applications/app/logs/langfuse/export',
-    method: 'POST',
-    body: { ...selection, ...credentials },
     csrfToken: 'csrf',
     baseUrl: undefined
   });

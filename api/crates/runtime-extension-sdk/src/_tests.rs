@@ -97,3 +97,6 @@ mod file_import_client_tests;
 
 #[path = "_tests/file_read_client_tests.rs"]
 mod file_read_client_tests;
+
+#[path = "_tests/exchange_host_services.rs"]
+mod exchange_host_services;

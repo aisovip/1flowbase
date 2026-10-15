@@ -13,9 +13,7 @@ import { ApiClientError } from '@1flowbase/api-client';
 import { AgentLogsExchange } from '../AgentLogsExchange';
 const api = vi.hoisted(() => ({
   exportApplicationLogsOtlp: vi.fn(),
-  importApplicationLogsOtlp: vi.fn(),
-  exportApplicationLogsLangfuse: vi.fn(),
-  importApplicationLogsLangfuse: vi.fn()
+  importApplicationLogsOtlp: vi.fn()
 }));
 const save = vi.hoisted(() => vi.fn());
 vi.mock('../../../../api/log-exchange', () => api);
@@ -54,24 +52,17 @@ function open(
   fireEvent.click(screen.getByRole('button', { name: '日志交换' }));
   return onImported;
 }
-async function operation(label: string) {
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '交换方式' }));
-  fireEvent.click(
-    await screen.findByText(label, {
-      selector: '.ant-select-item-option-content'
-    })
+async function uploadOtlp() {
+  const file = new File(['unused'], 'logs.json', { type: 'application/json' });
+  Object.defineProperty(file, 'text', {
+    value: async () => JSON.stringify({ resourceSpans: [] })
+  });
+  fireEvent.change(screen.getByLabelText('OTLP JSON 文件'), {
+    target: { files: [file] }
+  });
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '执行交换' })).toBeEnabled()
   );
-}
-function credentials() {
-  fireEvent.change(screen.getByLabelText('Langfuse 地址'), {
-    target: { value: 'https://langfuse.example' }
-  });
-  fireEvent.change(screen.getByLabelText('Public Key'), {
-    target: { value: 'public-fixture' }
-  });
-  fireEvent.change(screen.getByLabelText('Secret Key'), {
-    target: { value: 'secret-fixture' }
-  });
 }
 function execute() {
   fireEvent.click(
@@ -102,108 +93,6 @@ test('OTLP export groups the selection by owner and preserves a successful downl
     ['app-b', { log_conversation_ids: ['c2'] }, 'fixture-csrf']
   ]);
   expect(save).toHaveBeenCalledOnce();
-});
-
-test('Langfuse exports two complete conversations as three records without inventing partial failure', async () => {
-  let resolve!: (value: unknown) => void;
-  api.exportApplicationLogsLangfuse.mockImplementation(
-    () =>
-      new Promise((done) => {
-        resolve = done;
-      })
-  );
-  open(
-    [
-      { id: 'r1', application_id: 'app-a', log_conversation_id: 'c1' },
-      { id: 'r2', application_id: 'app-a', log_conversation_id: 'c2' }
-    ],
-    'app-a'
-  );
-  await operation('导出到 Langfuse');
-  credentials();
-  execute();
-  execute();
-  expect(api.exportApplicationLogsLangfuse).toHaveBeenCalledOnce();
-  expect(
-    within(screen.getByRole('dialog')).getByRole('button', {
-      name: /^关\s*闭$/
-    })
-  ).toBeDisabled();
-  resolve({
-    exported_records: 3,
-    exported_spans: 21,
-    trace_ids: ['trace-one', 'trace-two']
-  });
-  expect(await screen.findByText('服务端交换回执')).toBeInTheDocument();
-  expect(screen.getByText('trace-one, trace-two')).toBeInTheDocument();
-  expect(screen.queryByText(/仅导出了部分/)).not.toBeInTheDocument();
-  expect(screen.getByText('3', { exact: true })).toBeInTheDocument();
-  expect(api.exportApplicationLogsLangfuse.mock.calls[0]).toEqual([
-    'app-a',
-    { log_conversation_ids: ['c1', 'c2'] },
-    {
-      base_url: 'https://langfuse.example',
-      public_key: 'public-fixture',
-      secret_key: 'secret-fixture'
-    },
-    'fixture-csrf'
-  ]);
-});
-
-test('global Langfuse import requires explicit destination, sends multiple IDs and clears credentials on close', async () => {
-  api.importApplicationLogsLangfuse.mockResolvedValue({
-    accepted_events: 3,
-    duplicate_events: 2,
-    record_ids: ['imported-one', 'imported-two']
-  });
-  const onImported = open([]);
-  await operation('从 Langfuse 导入');
-  credentials();
-  expect(screen.getByLabelText('Secret Key')).toHaveAttribute(
-    'type',
-    'password'
-  );
-  fireEvent.change(screen.getByLabelText('Trace IDs（逗号或换行分隔）'), {
-    target: { value: 'trace-1,trace-2\ntrace-1' }
-  });
-  expect(screen.getByRole('button', { name: '执行交换' })).toBeDisabled();
-  fireEvent.mouseDown(
-    screen.getByRole('combobox', { name: '选择导入目标应用' })
-  );
-  fireEvent.click(
-    await screen.findByText('App B', {
-      selector: '.ant-select-item-option-content'
-    })
-  );
-  execute();
-  expect(
-    await screen.findByText('imported-one, imported-two')
-  ).toBeInTheDocument();
-  expect(screen.getByText('重复事件数')).toBeInTheDocument();
-  expect(api.importApplicationLogsLangfuse).toHaveBeenCalledWith(
-    'app-b',
-    ['trace-1', 'trace-2'],
-    {
-      base_url: 'https://langfuse.example',
-      public_key: 'public-fixture',
-      secret_key: 'secret-fixture'
-    },
-    'fixture-csrf'
-  );
-  expect(onImported).toHaveBeenCalledOnce();
-  fireEvent.click(
-    within(screen.getByRole('dialog')).getByRole('button', {
-      name: /^关\s*闭$/
-    })
-  );
-  await waitFor(() =>
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  );
-  fireEvent.click(screen.getByRole('button', { name: '日志交换' }));
-  await operation('从 Langfuse 导入');
-  expect(screen.getByLabelText('Secret Key')).toHaveValue('');
-  expect(screen.getByLabelText('Public Key')).toHaveValue('');
-  expect(screen.getByLabelText('Langfuse 地址')).toHaveValue('');
 });
 
 test('OTLP file import uses the object unchanged and shows actual duplicate receipt', async () => {
@@ -268,7 +157,7 @@ test('real partial-import transport error shows committed counts, refreshes rows
       { status: 409, headers: { 'content-type': 'application/json' } }
     )
   );
-  api.importApplicationLogsLangfuse
+  api.importApplicationLogsOtlp
     .mockRejectedValueOnce(error)
     .mockResolvedValueOnce({
       accepted_events: 1,
@@ -276,11 +165,7 @@ test('real partial-import transport error shows committed counts, refreshes rows
       record_ids: ['committed-record', 'remaining-record']
     });
   const onImported = open([], 'app-a');
-  await operation('从 Langfuse 导入');
-  credentials();
-  fireEvent.change(screen.getByLabelText('Trace IDs（逗号或换行分隔）'), {
-    target: { value: 'trace-1,trace-2' }
-  });
+  await uploadOtlp();
   execute();
   const dialog = screen.getByRole('dialog');
   expect(
@@ -312,9 +197,9 @@ test('real partial-import transport error shows committed counts, refreshes rows
     await within(dialog).findByText('committed-record, remaining-record')
   ).toBeInTheDocument();
   expect(onImported).toHaveBeenCalledTimes(2);
-  expect(api.importApplicationLogsLangfuse).toHaveBeenCalledTimes(2);
-  expect(api.importApplicationLogsLangfuse.mock.calls[1]).toEqual(
-    api.importApplicationLogsLangfuse.mock.calls[0]
+  expect(api.importApplicationLogsOtlp).toHaveBeenCalledTimes(2);
+  expect(api.importApplicationLogsOtlp.mock.calls[1]).toEqual(
+    api.importApplicationLogsOtlp.mock.calls[0]
   );
 });
 
@@ -332,13 +217,9 @@ test('upstream error diagnostics containing credentials remain hidden and do not
       { status: 502, headers: { 'content-type': 'application/json' } }
     )
   );
-  api.importApplicationLogsLangfuse.mockRejectedValue(error);
+  api.importApplicationLogsOtlp.mockRejectedValue(error);
   const onImported = open([], 'app-a');
-  await operation('从 Langfuse 导入');
-  credentials();
-  fireEvent.change(screen.getByLabelText('Trace IDs（逗号或换行分隔）'), {
-    target: { value: 'trace-1' }
-  });
+  await uploadOtlp();
   execute();
   expect(
     await screen.findByText('交换失败，请检查输入或连接后重试。')
@@ -354,8 +235,40 @@ test('missing canonical conversation ID disables export without falling back to 
     screen.getByText('部分所选日志缺少会话标识，请刷新列表后再导出。')
   ).toBeInTheDocument();
   expect(
-    within(screen.getByRole('dialog')).getByRole('button', { name: /执行交换$/ })
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /执行交换$/
+    })
   ).toBeDisabled();
   execute();
   expect(api.exportApplicationLogsOtlp).not.toHaveBeenCalled();
+});
+
+test('native source exposes standard download and does not offer import into an executable application', async () => {
+  render(
+    <AgentLogsExchange
+      applicationId="native"
+      allowImport={false}
+      applications={[{ id: 'native', name: 'Native' }]}
+      selectedRecords={[
+        {
+          id: 'native-task',
+          application_id: 'native',
+          log_conversation_id: 'native-conversation'
+        }
+      ]}
+      onImported={vi.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: '日志交换' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '交换方式' }));
+  expect(
+    await screen.findByText('导出 OTLP JSON', {
+      selector: '.ant-select-item-option-content'
+    })
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText('导入 OTLP JSON', {
+      selector: '.ant-select-item-option-content'
+    })
+  ).not.toBeInTheDocument();
 });

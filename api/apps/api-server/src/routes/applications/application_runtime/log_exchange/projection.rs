@@ -20,10 +20,6 @@ impl InterfaceContract for ExchangeInput {
                 selection_count(&body.record_ids, &body.log_conversation_ids)
             }
             Self::OtlpImport { .. } => Value::Null,
-            Self::LangfuseExport { body, .. } => {
-                selection_count(&body.record_ids, &body.log_conversation_ids)
-            }
-            Self::LangfuseImport { body, .. } => json!(body.trace_ids.len()),
         };
         Some(
             json!({"application_id":self.identity().0,"action":self.action(),"selected_items":count}),
@@ -61,9 +57,6 @@ impl InterfaceContract for ExchangeOutput {
             }
             Self::Imported(receipt) => {
                 json!({"action":"import","records":receipt.record_ids.len(),"events":receipt.accepted_events,"duplicates":receipt.duplicate_events})
-            }
-            Self::Exported(receipt) => {
-                json!({"action":"langfuse_export","records":receipt.exported_records,"events":receipt.exported_spans,"duplicates":0})
             }
         })
     }

@@ -829,6 +829,9 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
             "credential.manage",
             "file.import.resource",
             "file.read.content",
+            "application.logs.read",
+            "application.logs.import",
+            "network.http.request",
         ]
         .into_iter()
         .map(PermissionCode::new)
