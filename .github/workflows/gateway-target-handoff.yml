@@ -69,6 +69,15 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
+      - name: Callback admission ownership and recovery regressions
+        if: ${{ inputs.verify_callback_attachment }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::callback_resume > tmp/test-governance/gateway-target-handoff/ci/callback-admission.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-admission.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-admission.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::native_tool_resume > tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/native-tool-resume.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration callback_resume > tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/postgres-callback.log
       - name: Callback attachment live and durable delivery regressions
         if: ${{ inputs.verify_callback_attachment }}
         run: |
