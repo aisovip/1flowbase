@@ -143,7 +143,6 @@ test('persists a new instance before metadata-driven QR, retains edits and polls
     target: { value: 'https://example.com/custom' }
   });
   fireEvent.click(screen.getByRole('button', { name: '保存并扫码授权' }));
-  await act(async () => {});
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -215,9 +214,10 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
   const pollCommand = commands.find((command) => command.body.type === 'poll');
   expect(pollCommand).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: '取消授权' }));
-  await act(async () => {});
+  await waitFor(() =>
+    expect(screen.getByText('授权状态: 未授权')).toBeInTheDocument()
+  );
   expect(pollCommand?.signal?.aborted).toBe(true);
-  expect(screen.getByText('授权状态: 未授权')).toBeInTheDocument();
   await act(async () => {
     finish({ status: 'authorized' });
   });
@@ -227,7 +227,7 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
 test('unmount stops polling and aborts the request without cancelling backend authorization', async () => {
   poll = () => new Promise(() => {});
   vi.useFakeTimers();
-  const rendered = render(
+  const { unmount } = render(
     <NotificationInstanceDrawer
       instance={{ ...instance, authorization: pending }}
       type={type}
@@ -239,7 +239,7 @@ test('unmount stops polling and aborts the request without cancelling backend au
     await vi.advanceTimersByTimeAsync(5000);
   });
   const pollCommand = commands.find((command) => command.body.type === 'poll');
-  rendered.unmount();
+  unmount();
   expect(pollCommand?.signal?.aborted).toBe(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(15000);

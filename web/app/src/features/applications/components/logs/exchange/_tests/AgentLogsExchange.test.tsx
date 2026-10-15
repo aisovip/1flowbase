@@ -190,8 +190,8 @@ test('real partial-import transport error shows committed counts, refreshes rows
   expect(within(dialog).queryByText('日志记录 ID')).not.toBeInTheDocument();
   const failure = within(dialog).getByRole('alert');
   expect(failure).toHaveClass('ant-alert-error');
-  expect(failure.textContent).not.toContain('public-fixture');
-  expect(failure.textContent).not.toContain('secret-fixture');
+  expect(failure).not.toHaveTextContent('public-fixture');
+  expect(failure).not.toHaveTextContent('secret-fixture');
   execute();
   expect(
     await within(dialog).findByText('committed-record, remaining-record')
@@ -224,8 +224,8 @@ test('upstream error diagnostics containing credentials remain hidden and do not
   expect(
     await screen.findByText('交换失败，请检查输入或连接后重试。')
   ).toBeInTheDocument();
-  expect(screen.getByRole('alert').textContent).not.toContain('public-fixture');
-  expect(screen.getByRole('alert').textContent).not.toContain('secret-fixture');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('public-fixture');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('secret-fixture');
   expect(onImported).not.toHaveBeenCalled();
 });
 

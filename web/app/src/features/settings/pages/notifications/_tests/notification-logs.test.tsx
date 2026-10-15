@@ -77,12 +77,14 @@ beforeEach(() => {
     })
   );
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+});
+function renderLogs() {
+  return render(
     <QueryClientProvider client={client}>
       <NotificationLogs />
     </QueryClientProvider>
   );
-});
+}
 afterEach(async () => {
   await appI18n.changeLanguage('zh_Hans');
   client.clear();
@@ -90,6 +92,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 test('uses backend pages and exposes only safe, plain-text log detail', async () => {
+  renderLogs();
   await screen.findByText('Delivery channel');
   fireEvent.click(screen.getByRole('button', { name: '详情' }));
   await screen.findByText('Plain title');
@@ -116,6 +119,7 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
   ).toBe(true);
 });
 test('sends source filter to the server and resets the page', async () => {
+  renderLogs();
   await screen.findByText('Delivery channel');
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '触发来源' }));
   fireEvent.click(await screen.findByText('API 调用'));
@@ -130,6 +134,7 @@ test('sends source filter to the server and resets the page', async () => {
 });
 
 test('hides failure reasons for successful delivery and retains a safe reason for an unknown result', async () => {
+  renderLogs();
   await screen.findByText('Delivery channel');
   detail = { ...log, status: 'success', failure_code: 'input_invalid' };
   fireEvent.click(screen.getByRole('button', { name: '详情' }));
@@ -184,6 +189,7 @@ test.each([
 ])(
   'renders safe translated reason for %s without provider diagnostics',
   async (failure_code, label, english) => {
+    renderLogs();
     await screen.findByText('Delivery channel');
     detail = {
       ...log,

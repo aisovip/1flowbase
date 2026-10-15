@@ -9,8 +9,7 @@ import {
   Empty,
   Flex,
   Select,
-  Spin,
-  Typography
+  Spin
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type {

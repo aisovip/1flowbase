@@ -630,7 +630,7 @@ test('preserves the HTTP snapshot after a failed page fetch and does not falsify
   await waitFor(() =>
     expect(
       screen.getAllByRole('button', { name: '下一页' })[1]
-    ).not.toBeDisabled()
+    ).toBeEnabled()
   );
   expect(screen.getByRole('button', { name: '发布完成' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '标为未读' })).toBeInTheDocument();
