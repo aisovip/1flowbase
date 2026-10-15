@@ -2,10 +2,10 @@
 //! Ordinary builds do not enable frozen legacy digest code.
 use anyhow::{ensure, Context, Result};
 use control_plane::responses_history_migration::{
-    apply_verified_flow, build_plan, inspect_flow, HistorySourceGraph,
+    apply_verified_flow, build_plan, inspect_flow, HistorySourceGraph, ScopedHistoryTarget,
 };
 use control_plane_contracts::ports::responses_history_migration::*;
-use serde_json::{json, Value};
+use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::BTreeMap;
 use storage_durable_postgres::PgControlPlaneStore;
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
             None => break,
         }
     }
-    let mut proofs = BTreeMap::<String, Value>::new();
+    let mut proofs = BTreeMap::<(uuid::Uuid, u64, u64, String), ScopedHistoryTarget>::new();
     let mut versions = BTreeMap::<u64, usize>::new();
     for flow in &flows {
         let snapshot = repository.load_responses_history_flow(flow, &key).await?;
@@ -75,7 +75,25 @@ async fn main() -> Result<()> {
                         .context("invalid history version")?,
                 )
                 .or_default() += 1;
-            proofs.insert(serde_json::to_string(&proof)?, proof);
+            proofs.insert(
+                (
+                    flow.flow_run_id,
+                    proof["version"]
+                        .as_u64()
+                        .context("invalid history version")?,
+                    proof["item_count"]
+                        .as_u64()
+                        .context("invalid history count")?,
+                    proof["digest"]
+                        .as_str()
+                        .context("invalid history digest")?
+                        .to_owned(),
+                ),
+                ScopedHistoryTarget {
+                    flow_run_id: flow.flow_run_id,
+                    proof,
+                },
+            );
         }
     }
     private_files::write_json(

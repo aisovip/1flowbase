@@ -19,7 +19,7 @@ fn fixture() -> (Value, Value, Vec<SourcedReplacement>) {
         replacement: state.verify(&old).unwrap(),
         source: SourceLocator {
             namespace: SourceNamespace::Native,
-            flow_run_id: Uuid::now_v7(),
+            flow_run_id: Uuid::from_u128(1),
             node_run_id: Some(Uuid::now_v7()),
             source_id: Uuid::now_v7(),
             sequence: Some(1),
@@ -37,7 +37,7 @@ fn empty() -> ResponsesHistoryFlowSnapshot {
         flow: ResponsesHistoryFlowKey {
             scope_id: Uuid::now_v7(),
             application_id: Uuid::now_v7(),
-            flow_run_id: Uuid::now_v7(),
+            flow_run_id: Uuid::from_u128(1),
         },
         status: FlowRunStatus::WaitingCallback,
         latest_context_version_id: None,
@@ -590,5 +590,84 @@ fn direct_node_outputs_are_user_data_even_when_they_look_like_host_proofs() {
         overlay.contexts[1].after_content["llm_callback_appends"][0]["state_overlay"]
             ["provider_metadata"]["native_response"]["history"],
         current
+    );
+}
+
+#[test]
+fn foreign_flow_receipt_is_rejected_but_own_explicit_continuation_is_accepted() {
+    use super::super::{HistorySourceGraph, ScopedHistoryTarget};
+    let a = Uuid::from_u128(1);
+    let b = Uuid::from_u128(2);
+    let alpha = json!({"type":"future","id":"alpha"});
+    let beta = json!({"type":"future","id":"beta"});
+    let mut state_a = MigrationAccumulator::new(1).unwrap();
+    state_a.append(&alpha).unwrap();
+    let mut state_b = MigrationAccumulator::new(1).unwrap();
+    state_b.append(&beta).unwrap();
+    let old = state_a.snapshot().old();
+    assert_eq!(old, state_b.snapshot().old());
+    assert_ne!(state_a.snapshot().current(), state_b.snapshot().current());
+    let targets = [
+        ScopedHistoryTarget {
+            flow_run_id: a,
+            proof: old.clone(),
+        },
+        ScopedHistoryTarget {
+            flow_run_id: b,
+            proof: old.clone(),
+        },
+    ];
+    let frame =
+        |body: Value| json!({"frame_kind":"request","encoding":"utf8","body":body.to_string()});
+    let round = |id: &str| ResponsesRoundEvidence {
+        response_id: id.into(),
+        history: old.clone(),
+        output: vec![],
+    };
+    let mut graph = HistorySourceGraph::new(&targets).unwrap();
+    graph
+        .push_public(
+            a,
+            Uuid::now_v7(),
+            &frame(json!({"input":[alpha]})),
+            &round("a-original"),
+        )
+        .unwrap();
+    let resolution = graph.resolve().unwrap();
+    assert_eq!(resolution.unresolved_targets, vec![targets[1].clone()]);
+    let mut snapshot = empty();
+    snapshot.flow.flow_run_id = b;
+    snapshot.documents.push(ResponsesHistoryDocument {
+        owner: ResponsesHistoryDocumentOwner::FlowInput,
+        value: json!({"sys":{"responses_input_history":old}}),
+    });
+    assert!(
+        build_plan(&snapshot, &resolution.verified).is_err(),
+        "B cannot borrow A's verified old hash"
+    );
+    let mut graph = HistorySourceGraph::new(&targets).unwrap();
+    graph
+        .push_public(
+            b,
+            Uuid::now_v7(),
+            &frame(json!({"previous_response_id":"a-original","input":[]})),
+            &round("b-continuation"),
+        )
+        .unwrap();
+    graph
+        .push_public(
+            a,
+            Uuid::now_v7(),
+            &frame(json!({"input":[alpha]})),
+            &round("a-original"),
+        )
+        .unwrap();
+    let resolution = graph.resolve().unwrap();
+    assert!(resolution.unresolved_targets.is_empty());
+    let plan = build_plan(&snapshot, &resolution.verified).unwrap();
+    assert_eq!(plan.documents.len(), 1);
+    assert_eq!(
+        plan.documents[0].after["sys"]["responses_input_history"],
+        state_a.snapshot().current()
     );
 }

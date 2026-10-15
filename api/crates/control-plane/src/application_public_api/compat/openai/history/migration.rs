@@ -9,7 +9,9 @@ use sha2::{Digest, Sha256};
 
 use super::{append_digest, History};
 
+#[path = "migration/legacy.rs"]
 mod legacy;
+#[path = "migration/legacy_v2.rs"]
 mod legacy_v2;
 
 #[derive(Clone, Serialize)]
@@ -166,10 +168,11 @@ impl VerifiedReplacement {
 #[path = "migration/_tests/mod.rs"]
 mod tests;
 
+#[path = "migration/source_graph.rs"]
 mod source_graph;
 pub use source_graph::{
-    HistorySourceGraph, SourceGraphResolution, SourceLocator, SourceNamespace, SourcedReplacement,
-    UnresolvedSource,
+    HistorySourceGraph, ScopedHistoryTarget, SourceGraphResolution, SourceLocator, SourceNamespace,
+    SourcedReplacement, UnresolvedSource,
 };
 
 /// Reuse the runtime checkpoint materializer. The returned pool retains the
@@ -181,6 +184,7 @@ pub fn materialize_checkpoint_content(
     crate::orchestration_runtime::materialize_responses_history_checkpoint(lineage)
 }
 
+#[path = "migration/planner.rs"]
 mod planner;
 pub use planner::{
     apply_verified_flow, build_plan, collect_proofs, inspect_flow, preview_verified_flow,

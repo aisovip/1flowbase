@@ -1,6 +1,19 @@
 use super::*;
 use serde_json::json;
 
+fn test_flow() -> Uuid {
+    Uuid::from_u128(1)
+}
+fn target(proof: Value) -> ScopedHistoryTarget {
+    ScopedHistoryTarget {
+        flow_run_id: test_flow(),
+        proof,
+    }
+}
+fn new_graph(proofs: &[Value]) -> Result<HistorySourceGraph> {
+    HistorySourceGraph::new(&proofs.iter().cloned().map(target).collect::<Vec<_>>())
+}
+
 fn proof(items: &[Value]) -> Value {
     let mut state = MigrationAccumulator::new(2).unwrap();
     for item in items {
@@ -94,10 +107,10 @@ fn native_indexed_tools_are_complete_and_follow_provider_order() {
         json!({"type":"function_call","id":"fc_a","call_id":"a","name":"a_tool","arguments":"{}"});
     let items = vec![input.clone(), first.clone(), second.clone()];
     let expected = proof(&items);
-    let mut graph = HistorySourceGraph::new(&[expected.clone()]).unwrap();
+    let mut graph = new_graph(&[expected.clone()]).unwrap();
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         json!({"input":[input]}),
         &[(17, second), (3, first)],
@@ -125,10 +138,10 @@ fn forward_predecessors_are_retained_then_resolved_across_flows() {
         json!({"type":"function_call","id":"fc_a","call_id":"a","name":"exec","arguments":"{}"});
     let result_item = json!({"type":"function_call_output","call_id":"a","output":"opaque result"});
     let all = vec![input.clone(), call.clone(), result_item.clone()];
-    let mut graph = HistorySourceGraph::new(&[proof(&all)]).unwrap();
+    let mut graph = new_graph(&[proof(&all)]).unwrap();
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         json!({"previous_response_id":"first","input":[result_item]}),
         &[],
@@ -138,7 +151,7 @@ fn forward_predecessors_are_retained_then_resolved_across_flows() {
     assert!(graph.verified.is_empty());
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        Uuid::from_u128(2),
         Uuid::now_v7(),
         json!({"input":[input]}),
         &[(0, call)],
@@ -156,10 +169,10 @@ fn missing_predecessors_and_conflicting_output_indexes_never_publish_receipts() 
     let input = json!({"role":"user","content":"work"});
     let output = json!({"type":"reasoning","encrypted_content":"cipher","summary":[]});
     let expected = proof(&[input.clone(), output.clone()]);
-    let mut missing = HistorySourceGraph::new(&[expected.clone()]).unwrap();
+    let mut missing = new_graph(&[expected.clone()]).unwrap();
     feed_round(
         &mut missing,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         json!({"previous_response_id":"unavailable","input":[input]}),
         &[(0, output.clone())],
@@ -167,14 +180,14 @@ fn missing_predecessors_and_conflicting_output_indexes_never_publish_receipts() 
     );
     let result = missing.resolve().unwrap();
     assert!(result.verified.is_empty());
-    assert_eq!(result.unresolved_targets, vec![expected.clone()]);
+    assert_eq!(result.unresolved_targets, vec![target(expected.clone())]);
     assert!(result.unresolved_sources[0]
         .reason
         .contains("predecessor_unresolved"));
-    let mut conflict = HistorySourceGraph::new(&[expected.clone()]).unwrap();
+    let mut conflict = new_graph(&[expected.clone()]).unwrap();
     feed_round(
         &mut conflict,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         json!({"input":[input]}),
         &[
@@ -185,7 +198,7 @@ fn missing_predecessors_and_conflicting_output_indexes_never_publish_receipts() 
     );
     let result = conflict.resolve().unwrap();
     assert!(result.verified.is_empty());
-    assert_eq!(result.unresolved_targets, vec![expected]);
+    assert_eq!(result.unresolved_targets, vec![target(expected)]);
     assert!(result.unresolved_sources[0]
         .reason
         .contains("output_index_conflict"));
@@ -196,8 +209,8 @@ fn native_requires_original_wire_body_and_matching_attempt() {
     let item = json!({"role":"user","content":"work"});
     let target = proof(std::slice::from_ref(&item));
     for invalid_attempt in [false, true] {
-        let mut graph = HistorySourceGraph::new(&[target.clone()]).unwrap();
-        let flow = Uuid::now_v7();
+        let mut graph = new_graph(&[target.clone()]).unwrap();
+        let flow = test_flow();
         let node = Uuid::now_v7();
         let invocation = Uuid::now_v7();
         let mut start = prepared(json!({"input":[item]}), invocation, 1);
@@ -226,7 +239,10 @@ fn native_requires_original_wire_body_and_matching_attempt() {
             .unwrap();
         let result = graph.resolve().unwrap();
         assert!(result.verified.is_empty());
-        assert_eq!(result.unresolved_targets, vec![target.clone()]);
+        assert_eq!(
+            result.unresolved_targets,
+            vec![self::target(target.clone())]
+        );
         assert_eq!(result.unresolved_sources.len(), 1);
     }
 }
@@ -236,10 +252,10 @@ fn original_json_numbers_and_opaque_arguments_never_cross_node_reserialization()
     let body: Value = serde_json::from_str(r#"{"input":[{"type":"future_item","integer":9007199254740993,"decimal":1.0,"opaque":"雪"},{"type":"function_call","id":"fc_1","call_id":"c","name":"tool","arguments":"{ \"n\": 9007199254740993 }"}]}"#).unwrap();
     let items = body["input"].as_array().unwrap();
     let expected = proof(items);
-    let mut graph = HistorySourceGraph::new(&[expected.clone()]).unwrap();
+    let mut graph = new_graph(&[expected.clone()]).unwrap();
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         body.clone(),
         &[],
@@ -250,10 +266,10 @@ fn original_json_numbers_and_opaque_arguments_never_cross_node_reserialization()
     assert_eq!(result.verified[0].replacement.current(), current(items));
     let mut changed = body;
     changed["input"][0]["integer"] = json!(9007199254740992_u64);
-    let mut graph = HistorySourceGraph::new(&[expected]).unwrap();
+    let mut graph = new_graph(&[expected]).unwrap();
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        test_flow(),
         Uuid::now_v7(),
         changed,
         &[],
@@ -276,9 +292,9 @@ fn public_original_requests_and_round_output_verify_every_full_input_prefix() {
             original["body"] = json!(STANDARD.encode(original["body"].as_str().unwrap()));
             original["encoding"] = json!("base64");
         }
-        let mut graph = HistorySourceGraph::new(&targets).unwrap();
+        let mut graph = new_graph(&targets).unwrap();
         graph
-            .push_public(Uuid::now_v7(), Uuid::now_v7(), &original, &evidence)
+            .push_public(test_flow(), Uuid::now_v7(), &original, &evidence)
             .unwrap();
         assert!(graph.pending.is_empty());
         let result = graph.resolve().unwrap();
@@ -304,10 +320,9 @@ fn public_wrong_input_or_wrong_round_discards_even_matching_prefixes() {
         } else {
             body["input"][0]["content"] = json!("changed");
         }
-        let mut graph =
-            HistorySourceGraph::new(&[proof(&all), proof(std::slice::from_ref(&input))]).unwrap();
+        let mut graph = new_graph(&[proof(&all), proof(std::slice::from_ref(&input))]).unwrap();
         graph
-            .push_public(Uuid::now_v7(), Uuid::now_v7(), &frame(&body), &evidence)
+            .push_public(test_flow(), Uuid::now_v7(), &frame(&body), &evidence)
             .unwrap();
         let result = graph.resolve().unwrap();
         assert!(result.verified.is_empty());
@@ -321,10 +336,10 @@ fn public_cursor_dependencies_resolve_forward_and_cannot_use_native_response_nam
     let input = json!({"role":"user","content":"hello"});
     let delta = json!({"role":"user","content":"next"});
     let all = vec![input.clone(), delta.clone()];
-    let mut graph = HistorySourceGraph::new(&[proof(&all)]).unwrap();
+    let mut graph = new_graph(&[proof(&all)]).unwrap();
     graph
         .push_public(
-            Uuid::now_v7(),
+            test_flow(),
             Uuid::now_v7(),
             &frame(&json!({"previous_response_id":"shared","input":[delta]})),
             &round("public_next", &all, vec![]),
@@ -332,7 +347,7 @@ fn public_cursor_dependencies_resolve_forward_and_cannot_use_native_response_nam
         .unwrap();
     feed_round(
         &mut graph,
-        Uuid::now_v7(),
+        Uuid::from_u128(2),
         Uuid::now_v7(),
         json!({"input":[input]}),
         &[],
@@ -345,7 +360,7 @@ fn public_cursor_dependencies_resolve_forward_and_cannot_use_native_response_nam
     );
     graph
         .push_public(
-            Uuid::now_v7(),
+            Uuid::from_u128(3),
             Uuid::now_v7(),
             &frame(&json!({"input":[input]})),
             &round("shared", std::slice::from_ref(&input), vec![]),
@@ -359,19 +374,17 @@ fn public_cursor_dependencies_resolve_forward_and_cannot_use_native_response_nam
 #[test]
 fn targets_reject_unknown_formats_and_current_format_is_skipped() {
     let item = json!({"role":"user","content":"hello"});
-    assert!(
-        HistorySourceGraph::new(&[current(std::slice::from_ref(&item))])
-            .unwrap()
-            .resolve()
-            .unwrap()
-            .verified
-            .is_empty()
-    );
+    assert!(new_graph(&[current(std::slice::from_ref(&item))])
+        .unwrap()
+        .resolve()
+        .unwrap()
+        .verified
+        .is_empty());
     let legacy = proof(&[item]);
     for version in [json!(0), json!(4), json!("2"), json!(2.0), Value::Null] {
         let mut target = legacy.clone();
         target["version"] = version;
-        assert!(HistorySourceGraph::new(&[target]).is_err());
+        assert!(new_graph(&[target]).is_err());
     }
 }
 
@@ -399,12 +412,12 @@ fn checkpoint_materializer_preserves_user_pool_and_recovery_marker() {
 fn next_prepared_closes_only_the_previous_invocation_window() {
     let first = json!({"role":"user","content":"first"});
     let second = json!({"role":"user","content":"second"});
-    let mut graph = HistorySourceGraph::new(&[
+    let mut graph = new_graph(&[
         proof(std::slice::from_ref(&first)),
         proof(std::slice::from_ref(&second)),
     ])
     .unwrap();
-    let flow = Uuid::now_v7();
+    let flow = test_flow();
     let node = Uuid::now_v7();
     let a = Uuid::now_v7();
     let b = Uuid::now_v7();
@@ -462,10 +475,10 @@ fn conflicting_source_replacements_poison_the_graph() {
     let mut state = MigrationAccumulator::new(1).unwrap();
     state.append(&first).unwrap();
     let target = state.snapshot().old();
-    let mut graph = HistorySourceGraph::new(&[target.clone()]).unwrap();
+    let mut graph = new_graph(&[target.clone()]).unwrap();
     graph
         .push_public(
-            Uuid::now_v7(),
+            test_flow(),
             Uuid::now_v7(),
             &frame(&json!({"input":[first]})),
             &ResponsesRoundEvidence {
@@ -479,7 +492,7 @@ fn conflicting_source_replacements_poison_the_graph() {
     // preserves them. Two authentic sources would imply different replacements.
     assert!(graph
         .push_public(
-            Uuid::now_v7(),
+            test_flow(),
             Uuid::now_v7(),
             &frame(&json!({"input":[second]})),
             &ResponsesRoundEvidence {
@@ -493,4 +506,168 @@ fn conflicting_source_replacements_poison_the_graph() {
         graph.resolve().is_err(),
         "a poisoned graph cannot return write receipts"
     );
+}
+
+fn legacy_v1(item: &Value) -> (Value, Value) {
+    let mut state = MigrationAccumulator::new(1).unwrap();
+    state.append(item).unwrap();
+    (state.snapshot().old(), state.snapshot().current())
+}
+
+#[test]
+fn identical_old_hash_in_another_flow_does_not_establish_source_ownership() {
+    let a = Uuid::from_u128(10);
+    let b = Uuid::from_u128(20);
+    let alpha = json!({"type":"future","id":"alpha"});
+    let beta = json!({"type":"future","id":"beta"});
+    let (old_a, current_a) = legacy_v1(&alpha);
+    let (old_b, current_b) = legacy_v1(&beta);
+    assert_eq!(old_a, old_b);
+    assert_ne!(current_a, current_b);
+    let targets = [
+        ScopedHistoryTarget {
+            flow_run_id: a,
+            proof: old_a.clone(),
+        },
+        ScopedHistoryTarget {
+            flow_run_id: a,
+            proof: old_a.clone(),
+        },
+        ScopedHistoryTarget {
+            flow_run_id: b,
+            proof: old_b.clone(),
+        },
+    ];
+    let mut graph = HistorySourceGraph::new(&targets).unwrap();
+    feed_round(
+        &mut graph,
+        a,
+        Uuid::now_v7(),
+        json!({"input":[alpha]}),
+        &[],
+        "a-original",
+    );
+    let result = graph.resolve().unwrap();
+    assert_eq!(
+        result.verified.len(),
+        1,
+        "deduplication is within the owning flow"
+    );
+    assert_eq!(result.verified[0].source().flow_run_id, a);
+    assert_eq!(result.verified[0].replacement().current(), current_a);
+    assert_eq!(
+        result.unresolved_targets,
+        vec![ScopedHistoryTarget {
+            flow_run_id: b,
+            proof: old_b
+        }]
+    );
+}
+
+#[test]
+fn each_flow_uses_its_own_originals_when_legacy_hashes_collide() {
+    let a = Uuid::from_u128(10);
+    let b = Uuid::from_u128(20);
+    let alpha = json!({"type":"future","id":"alpha"});
+    let beta = json!({"type":"future","id":"beta"});
+    let (old, current_a) = legacy_v1(&alpha);
+    let (_, current_b) = legacy_v1(&beta);
+    let mut graph = HistorySourceGraph::new(&[
+        ScopedHistoryTarget {
+            flow_run_id: a,
+            proof: old.clone(),
+        },
+        ScopedHistoryTarget {
+            flow_run_id: b,
+            proof: old,
+        },
+    ])
+    .unwrap();
+    feed_round(
+        &mut graph,
+        a,
+        Uuid::now_v7(),
+        json!({"input":[alpha]}),
+        &[],
+        "a-original",
+    );
+    feed_round(
+        &mut graph,
+        b,
+        Uuid::now_v7(),
+        json!({"input":[beta]}),
+        &[],
+        "b-original",
+    );
+    let result = graph.resolve().unwrap();
+    assert!(result.unresolved_targets.is_empty());
+    assert_eq!(result.verified.len(), 2);
+    assert_eq!(
+        result
+            .verified
+            .iter()
+            .find(|receipt| receipt.source().flow_run_id == a)
+            .unwrap()
+            .replacement()
+            .current(),
+        current_a
+    );
+    assert_eq!(
+        result
+            .verified
+            .iter()
+            .find(|receipt| receipt.source().flow_run_id == b)
+            .unwrap()
+            .replacement()
+            .current(),
+        current_b
+    );
+}
+
+#[test]
+fn cross_flow_prefix_is_owned_only_after_an_original_explicit_cursor_request() {
+    let a = Uuid::from_u128(10);
+    let b = Uuid::from_u128(20);
+    let alpha = json!({"type":"future","id":"alpha"});
+    let (old, current_a) = legacy_v1(&alpha);
+    let mut graph = HistorySourceGraph::new(&[
+        ScopedHistoryTarget {
+            flow_run_id: a,
+            proof: old.clone(),
+        },
+        ScopedHistoryTarget {
+            flow_run_id: b,
+            proof: old,
+        },
+    ])
+    .unwrap();
+    feed_round(
+        &mut graph,
+        b,
+        Uuid::now_v7(),
+        json!({"previous_response_id":"a-original","input":[]}),
+        &[],
+        "b-explicit-continuation",
+    );
+    assert_eq!(graph.pending.len(), 1);
+    feed_round(
+        &mut graph,
+        a,
+        Uuid::now_v7(),
+        json!({"input":[alpha]}),
+        &[],
+        "a-original",
+    );
+    let result = graph.resolve().unwrap();
+    assert!(result.unresolved_targets.is_empty());
+    let receipt = result
+        .verified
+        .iter()
+        .find(|receipt| receipt.source().flow_run_id == b)
+        .unwrap();
+    assert_eq!(
+        receipt.source().response_id.as_deref(),
+        Some("b-explicit-continuation")
+    );
+    assert_eq!(receipt.replacement().current(), current_a);
 }

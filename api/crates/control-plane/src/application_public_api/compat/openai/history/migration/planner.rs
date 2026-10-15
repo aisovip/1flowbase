@@ -353,9 +353,12 @@ pub fn public_rounds(
 struct Replacements(BTreeMap<ProofKey, (Value, Value)>);
 
 impl Replacements {
-    fn new(verified: &[SourcedReplacement]) -> Result<Self> {
+    fn new(flow_run_id: Uuid, verified: &[SourcedReplacement]) -> Result<Self> {
         let mut replacements = BTreeMap::new();
         for sourced in verified {
+            if sourced.source.flow_run_id != flow_run_id {
+                continue;
+            }
             let old = sourced.replacement.old();
             let current = sourced.replacement.current();
             let parsed = parse_proof(&old)?;
@@ -465,7 +468,7 @@ pub fn build_plan(
     verified: &[SourcedReplacement],
 ) -> Result<ResponsesHistoryMigrationPlan> {
     validate_graph(snapshot)?;
-    let replacements = Replacements::new(verified)?;
+    let replacements = Replacements::new(snapshot.flow.flow_run_id, verified)?;
     let mut plan = ResponsesHistoryMigrationPlan {
         flow: snapshot.flow,
         expected_status: snapshot.status,

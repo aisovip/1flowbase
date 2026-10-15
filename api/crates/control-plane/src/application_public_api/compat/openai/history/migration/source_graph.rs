@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{History, MigrationAccumulator, VerifiedReplacement};
 
+#[path = "source_graph/native.rs"]
 mod native;
 use native::NativeGroup;
 
@@ -35,10 +36,28 @@ pub struct SourceLocator {
     pub response_id: Option<String>,
 }
 
+/// A target proof retains its owning flow even when another flow has the same hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ScopedHistoryTarget {
+    pub flow_run_id: Uuid,
+    pub proof: Value,
+}
+
+/// Source ownership is established only by the graph. External callers cannot
+/// construct or relabel this receipt from a naked verified hash pair.
 #[derive(Serialize)]
 pub struct SourcedReplacement {
-    pub replacement: VerifiedReplacement,
-    pub source: SourceLocator,
+    pub(super) replacement: VerifiedReplacement,
+    pub(super) source: SourceLocator,
+}
+
+impl SourcedReplacement {
+    pub fn replacement(&self) -> &VerifiedReplacement {
+        &self.replacement
+    }
+    pub fn source(&self) -> &SourceLocator {
+        &self.source
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,7 +69,7 @@ pub struct UnresolvedSource {
 #[derive(Serialize)]
 pub struct SourceGraphResolution {
     pub verified: Vec<SourcedReplacement>,
-    pub unresolved_targets: Vec<Value>,
+    pub unresolved_targets: Vec<ScopedHistoryTarget>,
     pub unresolved_sources: Vec<UnresolvedSource>,
 }
 
@@ -63,6 +82,7 @@ pub(super) struct SourceGroup {
 }
 
 type ProofKey = (u32, usize, String);
+type ScopedProofKey = (Uuid, ProofKey);
 type States = [MigrationAccumulator; 2];
 type ResponseKey = (SourceNamespace, String);
 
@@ -70,8 +90,8 @@ type ResponseKey = (SourceNamespace, String);
 /// page: resolved bodies/items are released, and response maps retain hashes only.
 /// Only forward dependencies retain their raw source group until a later flush.
 pub struct HistorySourceGraph {
-    targets: BTreeMap<ProofKey, Value>,
-    verified: BTreeMap<ProofKey, SourcedReplacement>,
+    targets: BTreeMap<ScopedProofKey, Value>,
+    verified: BTreeMap<ScopedProofKey, SourcedReplacement>,
     active_native: BTreeMap<(Uuid, Uuid), NativeGroup>,
     native_sequence: BTreeMap<(Uuid, Uuid), i64>,
     pending: Vec<SourceGroup>,
@@ -99,12 +119,12 @@ fn key(history: &History) -> ProofKey {
 }
 
 impl HistorySourceGraph {
-    pub fn new(targets: &[Value]) -> Result<Self> {
+    pub fn new(targets: &[ScopedHistoryTarget]) -> Result<Self> {
         let mut legacy_targets = BTreeMap::new();
         for target in targets {
-            let parsed = parse_proof(target)?;
+            let parsed = parse_proof(&target.proof)?;
             if parsed.version != 3 {
-                legacy_targets.insert(key(&parsed), target.clone());
+                legacy_targets.insert((target.flow_run_id, key(&parsed)), target.proof.clone());
             }
         }
         Ok(Self {
@@ -293,7 +313,7 @@ impl HistorySourceGraph {
             .targets
             .into_iter()
             .filter(|(key, _)| !self.verified.contains_key(key))
-            .map(|(_, value)| value)
+            .map(|((flow_run_id, _), proof)| ScopedHistoryTarget { flow_run_id, proof })
             .collect();
         Ok(SourceGraphResolution {
             verified: self.verified.into_values().collect(),
@@ -305,7 +325,7 @@ impl HistorySourceGraph {
     fn resolve_group(
         &self,
         group: &SourceGroup,
-    ) -> Result<Option<(States, Vec<(ProofKey, SourcedReplacement)>)>> {
+    ) -> Result<Option<(States, Vec<(ScopedProofKey, SourcedReplacement)>)>> {
         if let Some(failure) = &group.failure {
             anyhow::bail!("{failure}");
         }
@@ -355,7 +375,7 @@ impl HistorySourceGraph {
         states: &mut States,
         item: &Value,
         source: &SourceLocator,
-        receipts: &mut Vec<(ProofKey, SourcedReplacement)>,
+        receipts: &mut Vec<(ScopedProofKey, SourcedReplacement)>,
     ) -> Result<()> {
         for state in states.iter_mut() {
             state.append(item)?;
@@ -367,13 +387,16 @@ impl HistorySourceGraph {
         &self,
         states: &States,
         source: &SourceLocator,
-        receipts: &mut Vec<(ProofKey, SourcedReplacement)>,
+        receipts: &mut Vec<(ScopedProofKey, SourcedReplacement)>,
     ) -> Result<()> {
         for state in states {
             let key = (
-                state.old.version,
-                state.old.item_count,
-                state.old.digest.clone(),
+                source.flow_run_id,
+                (
+                    state.old.version,
+                    state.old.item_count,
+                    state.old.digest.clone(),
+                ),
             );
             if let Some(target) = self.targets.get(&key) {
                 receipts.push((
