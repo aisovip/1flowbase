@@ -141,8 +141,8 @@ test('backend coverage removes stale json summaries before threshold reporting',
     preflightSpawnSyncImpl() {
       return { status: 0, stdout: '', stderr: '' };
     },
-    spawnSyncImpl() {
-      return { status: 0, stdout: 'test result: ok. 1 passed; 0 failed;', stderr: '' };
+    spawnSyncImpl(_command, args) {
+      return { status: 0, stdout: args[1] === 'clean' ? '' : 'test result: ok. 1 passed; 0 failed;', stderr: '' };
     },
     readFileSyncImpl() {
       return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });

@@ -341,7 +341,7 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
     },
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: 'test result: ok. 1 passed; 0 failed;', stderr: '' };
+      return { status: 0, stdout: args[1] === 'clean' ? '' : 'test result: ok. 1 passed; 0 failed;', stderr: '' };
     },
     readFileSyncImpl(filePath) {
       return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });

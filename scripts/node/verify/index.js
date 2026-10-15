@@ -1062,6 +1062,7 @@ async function runCoverage(argv = [], deps = {}) {
             // Every libtest coverage command needs its own executed-test proof;
             // adjacent suites and a valid coverage JSON cannot fill the gap.
             if (!command.label.startsWith('backend-coverage-')
+              || command.args[1] === 'clean'
               || command.args.includes('nextest') || result.status !== 0) return;
             const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
             if (!(counts.passedCount > 0 && counts.failedCount === 0)) {

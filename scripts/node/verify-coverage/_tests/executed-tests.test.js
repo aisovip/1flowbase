@@ -7,7 +7,7 @@ const { main, buildBackendCommands } = require('../../verify-coverage.js');
 
 // Exercise the real coverage orchestration. A passing neighboring suite and a
 // perfect coverage summary must not mask one empty or failed test selection.
-test('each control-plane coverage command requires its own executed passing tests', async (t) => {
+test('each control-plane coverage command requires its own executed passing tests', async () => {
   const labels = buildBackendCommands({
     repoRoot: '/fixture', cargoParallelism: 2, cargoTestThreads: 2,
     backendKeys: ['control-plane'],
@@ -41,7 +41,9 @@ test('each control-plane coverage command requires its own executed passing test
                   JSON.stringify(command.args) === JSON.stringify(args));
                 return {
                   status: 0,
-                  stdout: selected?.label === label ? output : 'test result: ok. 3 passed; 0 failed;',
+                  stdout: args[1] === 'clean'
+                    ? ''
+                    : selected?.label === label ? output : 'test result: ok. 3 passed; 0 failed;',
                   stderr: '',
                 };
               },
