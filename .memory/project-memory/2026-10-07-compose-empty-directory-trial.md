@@ -1,14 +1,20 @@
 ---
 memory_type: project
 topic: 单文件 Compose 空目录部署试验实例
-summary: 用户要求保留可访问的本地 worktree 空目录试验，33100 端口运行最新 GHCR 镜像，配置和数据库在重建后保持一致。
+summary: 2026-10-14 在全新 /tmp 目录仅复制 compose.yaml，最新 GHCR v0.5.6 镜像已通过启动、认证首页与重建持久化验收，33100 实例保留运行。
 created_at: 2026-10-07 11
-updated_at: 2026-10-07 12
+updated_at: 2026-10-14 09
 decision_policy: verify_before_decision
 status: active
 ---
 
-# 当前范围
+# 当前实例（2026-10-14 09）
+
+Root 按用户要求重新验证远端最新镜像能否只靠单个 Compose 文件部署。机器 taichuy-dev，源码 dev@6be2edafa，工作树干净。全新目录 `/tmp/1flowbase-compose-only-20261014-AKsrjO` 启动前仅有 `compose.yaml`，项目 `flowbase-compose-only-20261014`，未使用仓库脚本、额外配置或本地构建镜像。GHCR API/Web latest 均为 v0.5.6、revision 7abe6154891f695bf7859866dea71b23b2c0c696。
+
+宿主进程占用 3100，使用 `WEB_PORT=33100 docker-compose -p flowbase-compose-only-20261014 up -d`。初始化退出 0、PG healthy、health 与默认账号认证 200；浏览器从 `/` 自动进入已认证 Reports 首页。force-recreate 后 config hash、数据库 system identifier 不变，认证仍 200。实例留供用户检查，入口 `http://10.225.25.240:33100`，期限待用户决定；/tmp 是临时目录，不作为永久生产存储。证据 `/home/taichuy/git/1flowbase/tmp/test-governance/compose-only-report.json` 与同前缀文件。无源码修改、commit 或 push；未验收全部业务。
+
+# 历史范围（2026-10-07，以下非当前运行实例）
 
 Root 在 taichuy-dev 的 `/home/taichuy/git/git_worktree/compose-empty-directory`，分支 `codex/compose-empty-directory`、HEAD `f3c5c9411`，按用户要求验证单文件 Compose 部署以判断是否能省去 curl 获取额外配置。无固定截止日期；实例保留供用户访问，结束时间待用户决定。
 

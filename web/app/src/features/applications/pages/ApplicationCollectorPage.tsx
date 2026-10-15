@@ -238,7 +238,10 @@ export function ApplicationCollectorPage({
                       {collector.display_name.slice(0, 1)}
                     </span>
                     <div>
-                      <Typography.Title level={5}>
+                      <Typography.Title
+                        level={5}
+                        className="application-collector__name"
+                      >
                         {collector.display_name}
                       </Typography.Title>
                       <Typography.Text type="secondary">
@@ -247,7 +250,9 @@ export function ApplicationCollectorPage({
                         })}
                       </Typography.Text>
                     </div>
-                    <Tag>{statusLabel(collector)}</Tag>
+                    <Tag className="application-collector__status">
+                      {statusLabel(collector)}
+                    </Tag>
                   </div>
                   <Typography.Paragraph>
                     {collector.description}

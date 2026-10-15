@@ -2,11 +2,25 @@
 title: "Issue 2282 Agent Logs 应用需求对齐"
 memory_type: project
 created_at: "2026-10-07 16"
-updated_at: "2026-10-09 09"
+updated_at: "2026-10-15 11"
 decision_policy: verify_before_decision
 status: reimport_runtime_verified
 tags: [issue-2282, agent-logs, client-trajectory, ingestion, collector-cli]
 ---
+
+## OTLP 交付结算（2026-10-15）
+
+Root 已完成 #2436 既定结果，源码集中验收 SOURCE_QA_PASS 后合入并推送 dev@c6f5fa33da76dca6f74e9d82cfdf16fec13fdbd7；Delivery #2437/#2438/#2439 已关闭，Root 待用户最终验收。双语 Wiki 已发布 master@8a7b14db5f28d0526ec586424bb3395a9b7438f2，十张真实双端截图逐张视觉通过。证据归档主仓 tmp/test-governance/agent-logs-otlp/qa13 与 resume，不依赖已回收的三个任务工作树。
+
+用户本轮明确：另一个网关候选尚未合 dev 时不接管它；本任务只需在独立端口调试通过后合回 dev，网关任务自行处理其集成。故本轮未部署/重启7800，7600受保护原进程未动；不能把未重启主服务列为本任务未完成。动机是并行任务互不覆盖运行态，实际源码版本与运行二进制分别核验。未设截止日期。
+
+已验证完整 Langfuse 来源往返和重复去重、真实 OpenLIT 两次 gpt-6-luna/max、双端正式 UI；后端93/93、前端26及组件一致的既有证据复用。保留历史 QA8 session 独立撤销证明缺失、未新跑全候选 i18n 的边界；完整报告而非记忆承担验收证据。
+
+## OTLP 与 Langfuse 互通：用户已批准实施（2026-10-14）
+
+用户确认 Agent Logs 采用映射协议层（OTLP 与导入导出）—统一语义层（会话、任务与事件事实）—来源适配层（原生客户端）边界，明确要求在不影响现有能力下完成多记录 Langfuse 双向交换、OpenLIT 上报和带真实截图的双语 GitHub Wiki。动机是接入成熟标准生态，同时保留原生来源、恢复、完整正文、真实任务归属与现有会话/轨迹投影；不能以标准遥测替代完整归档，不能把 LLM 历史 Context 当新真人输入或把 Span 正常结束当 Agent 终态。
+
+Root #2436 / Delivery #2437、#2438、#2439 为本轮唯一计划；用户已明确直接实施，未设截止日期。Root 负责 isolated assembly、一次集中 QA 后合回当前 dev；不变更主仓分支或既存 dirty collector 页面。本地 7600 / 1flowbase_gateway 进程是保护观察样本，禁止重启/中断；7800 主 dev 允许按既有 dev-up 重启。允许 gpt-6.1-sol medium 子 agent，使用本地 Langfuse 和实际 OpenLIT SDK 验证；凭据保持私密，不放 Issue、截图或文档。本轮开发/验证是否完成只以 Root 最新 Ledger、冻结 SHA 与 QA receipt 为准，不把此授权记忆当通过证据。
 
 ## 用户目标与边界
 
