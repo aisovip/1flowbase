@@ -188,6 +188,8 @@ jobs:
         with:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: gateway-target-handoff
@@ -221,6 +223,15 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
           cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
           sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
+      - name: Lint maintenance feature targets
+        if: ${{ !cancelled() && inputs.build_history_maintenance }}
+        run: |
+          cargo clippy --locked --manifest-path api/Cargo.toml \
+            -p api-server -p control-plane -p control-plane-contracts \
+            -p storage-durable-postgres -p control-plane-postgres-tests \
+            --all-targets \
+            --features api-server/responses-history-migration,control-plane-postgres-tests/responses-history-migration \
+            -- -D warnings > tmp/test-governance/gateway-target-handoff/ci/history-clippy.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-clippy.log; exit 1; }
       - name: Build combined ordinary runtime artifact
         if: ${{ !cancelled() && inputs.build_history_runtime }}
         run: |
