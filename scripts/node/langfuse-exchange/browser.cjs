@@ -32,13 +32,15 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         const row = id => table.getByTestId(`langfuse-instance-actions-${id}`);
         const close = async title => { await dialog(title).getByRole('button',{name:'Cancel',exact:true}).click(); await dialog(title).waitFor({state:'hidden'}); };
         const setLanguage = async language => {
-          const pending=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/console/me/meta' && r.request().method()==='PATCH');
           await page.getByLabel(/^(Switch language|切换语言)$/,{exact:true}).hover();
-          await page.getByRole('menuitem',{name:language==='en_US'?'English':'简体中文',exact:true}).click();
-          const response=await pending; assert.ok(response.ok(),'host language preference PATCH');
+          const [response]=await Promise.all([
+            page.waitForResponse(r=>new URL(r.url()).pathname==='/api/console/me/meta' && r.request().method()==='PATCH'),
+            page.getByRole('menuitem',{name:language==='en_US'?'English':/^(Chinese|简体中文)$/,exact:true}).click()
+          ]);
+          assert.ok(response.ok(),'host language preference PATCH');
           const value=await response.json(); assert.equal(value.data.meta.ui.locale.preferred_locale,language);
           await table.getByRole('button',{name:language==='en_US'?'Add instance':'添加实例',exact:true}).waitFor();
-          assert.equal(await settings.getByRole('button',{name:/^(English|简体中文|Switch language|切换语言)$/}).count(),0,'no plugin language toggle');
+          assert.equal(await settings.getByRole('button',{name:/^(English|Chinese|简体中文|Switch language|切换语言)$/}).count(),0,'no plugin language toggle');
         };
         await setLanguage('en_US');
         const settledReceipt = async value => {
@@ -54,8 +56,10 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
           receipt.screenshots.push({path:output,viewport}); checkpoint();
         };
         const action = async (operation,button,method='POST',success=true) => {
-          const pending = page.waitForResponse(r => new URL(r.url()).pathname === route+operation && r.request().method() === method,{timeout:args.deadlineMs});
-          await button.click(); const response = await pending;
+          const [response] = await Promise.all([
+            page.waitForResponse(r => new URL(r.url()).pathname === route+operation && r.request().method() === method,{timeout:args.deadlineMs}),
+            button.click()
+          ]);
           assert.ok(response.ok(), `${operation} HTTP ${response.status()}`);
           const envelope = await response.json(); const result = envelope.data;
           if(operation==='instances' && method==='POST' && result?.instance?.instance_id) {
@@ -198,6 +202,10 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
             await remotePage.screenshot({path:output,fullPage:true,animations:'disabled'}); receipt.screenshots.push({path:output,viewport,external:true,trace_id:publicationTraceId,source_kind:'synthetic'});
           } finally { await external.close(); }
         }
+      } catch(error) {
+        const output=path.join(args.outDir,`failure-${name}-private.png`);
+        await context.pages()[0]?.screenshot({path:output,fullPage:true,animations:'disabled'}).catch(()=>{});
+        receipt.browser_failure={viewport:name,error:error.message,screenshot:output};checkpoint();throw error;
       } finally { try { await context.close(); } finally { await browser.close(); browser=null; } }
     }
     return [...traceIds];
