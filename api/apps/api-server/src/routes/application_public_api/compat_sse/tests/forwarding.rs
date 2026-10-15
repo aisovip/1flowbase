@@ -374,7 +374,7 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         reserved_attempt_id: None,
     };
     let mut attached =
-        start_compatible_typed_resume_stream_for_actor(dependencies, run, command, actor)
+        start_compatible_typed_resume_stream_for_actor(dependencies.clone(), run, command, actor)
             .await
             .unwrap();
     let mut events = Vec::new();
@@ -398,7 +398,10 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
                 .is_err(),
             "a missing local marker must wait for durable completion"
         );
-        complete_attached_callback_round(
+        // Diagnostic persistence can expose the terminal fact before its
+        // flow_started identity, while the business run is still open. Keep
+        // that legal write window until the delayed identity has committed.
+        append_attached_callback_round_events(
             &state,
             attached.initial_run.id,
             &first_item,
@@ -406,6 +409,16 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
         )
         .await;
         if live_mode == 3 {
+            assert!(matches!(
+                durable_compatible_round_replay(
+                    &dependencies,
+                    &attached.initial_run,
+                    callback_task_id,
+                )
+                .await
+                .unwrap(),
+                DurableCompatibleRoundReplay::PendingIdentity
+            ));
             // Let the bridge consume the terminal page while its durable
             // identity remains Pending. The next write contains no terminal.
             assert!(
@@ -422,6 +435,9 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mo
             )
             .await;
         }
+        // Seal only after all diagnostic writes: the repository correctly
+        // rejects late flow_started writes once this status is terminal.
+        seal_attached_callback_round(&state, attached.initial_run.id).await;
     }
     while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
         .await
