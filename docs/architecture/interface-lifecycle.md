@@ -72,6 +72,8 @@ Business Endpoint → exactly-one Binding → exactly-one Compiled Plan
 
 SQLx 的动态 SQL 安全标记属于 PostgreSQL adapter，不是授权或输入校验的替代：受控 SQL 结构仍由现有标识符 quoting、有限语义映射和 catalog owner 产生，业务值继续绑定。明确开放的 native SQL 执行入口保持既有调用方授权；不得在依赖升级时暗加 SQL 能力或容量限制。Native Template 的唯一物理连接与精确事务深度检查是同一事务的语义约束，不是对部署资源的容量猜测；依赖 API 变化不得绕过 savepoint bookkeeping 或以原始 COMMIT 替代 owner 收尾。
 
+工作流执行器在 LLM 节点边界持有堆上固定的子 future，并在原调用内等待它；嵌套的 provider / tool 异步状态不内联传播到工作流 future。这个边界只管理异步状态布局，不创建后台任务，也不转移取消、节点生命周期、错误投影或调用收尾的 owner。依赖升级引发的栈占用问题应在真实执行边界处理，不能用扩大线程栈或跳过原有行为断言替代修复。
+
 ### 四个责任平面
 
 | 平面 | 拥有的复杂度 | 不负责 |
