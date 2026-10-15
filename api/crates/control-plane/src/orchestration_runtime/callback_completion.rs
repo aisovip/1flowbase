@@ -2,7 +2,7 @@ use super::*;
 
 pub(crate) enum PreparedCallbackTask {
     Execution(Box<PreparedCallbackExecution>),
-    NoExecution(domain::FlowRunRecord),
+    NoExecution(Box<domain::FlowRunRecord>),
 }
 
 /// Frozen callback execution inputs. Claim acquisition is complete; execution never reclaims.
@@ -71,7 +71,7 @@ where
         R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
         match self.prepare_callback_task_execution(command, None).await? {
-            PreparedCallbackTask::NoExecution(run) => Ok(run),
+            PreparedCallbackTask::NoExecution(run) => Ok(*run),
             PreparedCallbackTask::Execution(prepared) => {
                 let renew = prepared.renew_input();
                 run_with_resume_claim_heartbeat(
@@ -234,7 +234,7 @@ where
                 };
                 match acquired.disposition {
                     ResumeClaimDisposition::Completed => {
-                        return Ok(PreparedCallbackTask::NoExecution(flow_run))
+                        return Ok(PreparedCallbackTask::NoExecution(Box::new(flow_run)))
                     }
                     ResumeClaimDisposition::InProgress => {
                         return Err(
@@ -251,7 +251,7 @@ where
                 committed
             };
             if committed.disposition != ToolCallbackRoundDisposition::Acquired {
-                return Ok(PreparedCallbackTask::NoExecution(flow_run));
+                return Ok(PreparedCallbackTask::NoExecution(Box::new(flow_run)));
             }
             let claim = committed
                 .claim
@@ -290,7 +290,7 @@ where
                     })
                     .await?;
                 if claim.disposition != ResumeClaimDisposition::Acquired {
-                    return Ok(PreparedCallbackTask::NoExecution(flow_run));
+                    return Ok(PreparedCallbackTask::NoExecution(Box::new(flow_run)));
                 }
                 let callback_task = self
                     .repository
