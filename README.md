@@ -104,7 +104,7 @@ Follow the prompts to finish configuration and start 1flowbase. Storing full con
 
 - Node.js `>=24.0.0`
 - pnpm `12.11.2` (run `corepack enable` and `corepack install --global pnpm@12.11.2`)
-- Rust stable toolchain (Cargo)
+- Rust stable toolchain (Cargo), version `1.99` or newer
 - Docker with Docker Compose (for middleware such as PostgreSQL)
 
 **Start**

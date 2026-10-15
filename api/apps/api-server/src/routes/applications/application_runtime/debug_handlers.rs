@@ -143,7 +143,7 @@ pub async fn subscribe_flow_debug_run_stream(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(stream_query): Query<DebugRunStreamQuery>,
-) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, ApiError> {
     let from_sequence = debug_run_stream_from_sequence(run_id, &stream_query, &headers);
     let stream = crate::routes::console_interface::invoke_server_stream::<
         interface_debug_commands::ApplicationRuntimeDebugStreamInput,

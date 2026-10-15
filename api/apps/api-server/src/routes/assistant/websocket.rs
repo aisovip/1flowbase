@@ -642,7 +642,8 @@ async fn execute_command(
                             "client tool call is not pending",
                         )
                         .into_text()
-                        .unwrap_or_default(),
+                        .unwrap_or_default()
+                        .to_string(),
                     )
                     .await
                     .map_err(|_| {

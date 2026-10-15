@@ -652,7 +652,12 @@ pub async fn start_run_stream(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<StartAssistantRunBody>,
-) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
+) -> Result<
+    Sse<
+        impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    ApiError,
+> {
     let stream = crate::routes::console_interface::invoke_server_stream::<
         interface::AssistantRunInput,
         interface::AssistantRunStreamEvent,
