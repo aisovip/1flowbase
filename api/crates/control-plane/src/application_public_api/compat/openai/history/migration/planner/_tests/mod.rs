@@ -479,6 +479,10 @@ fn malformed_owned_delta_fields_block_but_nested_user_lookalikes_do_not() {
         json!({"format":"runtime_delta_v1","set":{"user":{"sys":{"responses_input_history":{"version":999}}}},"remove":[],
         "llm_callback_appends":[{"node_id":"llm","node_set":{},"node_remove":[],"state_set":{"provider_metadata":{"native_response":{"history":old}}},"state_remove":[],"history_append":[{"native_history":{"version":999}}]}]}),
     );
+    snapshot.checkpoints.push(checkpoint(
+        Some(&delta),
+        json!({MARKER:{"context_version_id":delta.identity.context_version_id}}),
+    ));
     snapshot.latest_context_version_id = Some(delta.identity.context_version_id);
     snapshot.contexts = vec![root, delta];
     assert_eq!(collect_proofs(&snapshot).unwrap(), vec![old]);
@@ -552,6 +556,10 @@ fn direct_node_outputs_are_user_data_even_when_they_look_like_host_proofs() {
             "state_set":{"provider_metadata":{"native_response":{"history":old}}},"state_remove":[],
             "history_append":[user_node]}]}),
     );
+    snapshot.checkpoints.push(checkpoint(
+        Some(&delta),
+        json!({MARKER:{"context_version_id":delta.identity.context_version_id}}),
+    ));
     snapshot.latest_context_version_id = Some(delta.identity.context_version_id);
     snapshot.contexts = vec![root, delta];
     assert_eq!(collect_proofs(&snapshot).unwrap(), vec![old.clone()]);
@@ -670,4 +678,192 @@ fn foreign_flow_receipt_is_rejected_but_own_explicit_continuation_is_accepted() 
         plan.documents[0].after["sys"]["responses_input_history"],
         state_a.snapshot().current()
     );
+}
+
+#[test]
+fn provider_only_contexts_are_opaque_without_checkpoint_references() {
+    let mut snapshot = empty();
+    let observation = context(
+        1,
+        None,
+        json!({"effective_system":[{"text":"system"}],
+        "provider_messages":[{"role":"user","content":{"native_history":{"version":999}}}],
+        "integer":9007199254740993_u64,"opaque":"{ \"n\": 1 }"}),
+    );
+    // A known-format-looking payload still has no checkpoint ownership. Neither
+    // valid-looking nor malformed proof slots inside it belong to recovery here.
+    let lookalike = context(
+        2,
+        Some(observation.identity.context_version_id),
+        json!({"format":"runtime_snapshot_v1",
+        "variable_pool":{"sys":{"responses_input_history":{"version":999}},
+            "llm":{"__llm_tool_callback":{"responses_round":{"history":"user"}}}}}),
+    );
+    snapshot.latest_context_version_id = Some(lookalike.identity.context_version_id);
+    snapshot.contexts = vec![observation, lookalike];
+    let original = serde_json::to_vec(&snapshot).unwrap();
+    let inspection = inspect_flow(&snapshot).unwrap();
+    assert!(inspection.proofs.is_empty() && inspection.public_rounds.is_empty());
+    let plan = build_plan(&snapshot, &[]).unwrap();
+    assert!(plan.contexts.is_empty() && plan.checkpoints.is_empty() && plan.documents.is_empty());
+    assert_eq!(serde_json::to_vec(&snapshot).unwrap(), original);
+}
+
+#[test]
+fn checkpoint_migration_keeps_separate_provider_latest_and_ancestor_opaque() {
+    let (old, current, verified) = fixture();
+    let mut snapshot = empty();
+    let cp_root = context(
+        1,
+        None,
+        json!({"format":"runtime_snapshot_v1","variable_pool":{
+        "sys":{"responses_input_history":old},"user":{"integer":9007199254740993_u64,"opaque":"raw text"}}}),
+    );
+    let cp_head = context(
+        2,
+        Some(cp_root.identity.context_version_id),
+        json!({"format":"runtime_delta_v1","set":{"user_delta":{"unchanged":true}},"remove":[]}),
+    );
+    let provider_root = context(
+        3,
+        None,
+        json!({"effective_system":[{"text":"provider system"}],
+        "provider_messages":[{"role":"user","content":{"history":old}}],"sys":{"responses_input_history":{"version":999}}}),
+    );
+    let provider_latest = context(
+        4,
+        Some(provider_root.identity.context_version_id),
+        json!({"effective_system":"latest provider system",
+        "provider_messages":[{"opaque":"{ \"n\": 9007199254740993 }"}],"native_response":{"history":old},
+        "integer":9007199254740993_u64,"variable_pool":{"sys":{"responses_input_history":{"version":999}}}}),
+    );
+    snapshot.checkpoints.push(checkpoint(
+        Some(&cp_head),
+        json!({MARKER:{"context_version_id":cp_head.identity.context_version_id}}),
+    ));
+    snapshot.latest_context_version_id = Some(provider_latest.identity.context_version_id);
+    snapshot.contexts = vec![cp_root, cp_head, provider_root, provider_latest];
+    assert_eq!(collect_proofs(&snapshot).unwrap(), vec![old]);
+    let plan = build_plan(&snapshot, &verified).unwrap();
+    assert_eq!(
+        plan.contexts.len(),
+        3,
+        "only CP branch and the unchanged latest anchor are copied"
+    );
+    assert!(!plan
+        .contexts
+        .iter()
+        .any(|change| change.before.identity.context_version_id
+            == snapshot.contexts[2].identity.context_version_id));
+    let anchor = plan.contexts.last().unwrap();
+    assert_eq!(anchor.before.identity, snapshot.contexts[3].identity);
+    assert_eq!(
+        anchor.before.previous_projection_id,
+        Some(snapshot.contexts[2].identity.context_version_id)
+    );
+    assert_eq!(
+        serde_json::to_vec(&anchor.after_content).unwrap(),
+        serde_json::to_vec(&snapshot.contexts[3].content).unwrap()
+    );
+    assert_eq!(plan.checkpoints.len(), 1);
+    let (copies, remap) = simulated_copies(&snapshot, &plan);
+    let head = snapshot.contexts[1].identity.context_version_id;
+    let mut expected = materialized(&snapshot.contexts, head);
+    expected["sys"]["responses_input_history"] = current;
+    assert_eq!(
+        materialized(&copies, remap[&head]),
+        expected,
+        "recovered user content stays identical"
+    );
+}
+
+#[test]
+fn unknown_or_plain_observation_content_on_checkpoint_lineage_is_rejected() {
+    for content in [
+        json!({"effective_system":"not a checkpoint snapshot","provider_messages":[]}),
+        json!({"format":"future_recovery_format","variable_pool":{}}),
+        json!({"format":"runtime_delta_v1","set":{},"remove":[]}),
+    ] {
+        let mut snapshot = empty();
+        let root = context(1, None, content);
+        snapshot.checkpoints.push(checkpoint(
+            Some(&root),
+            json!({MARKER:{"context_version_id":root.identity.context_version_id}}),
+        ));
+        snapshot.latest_context_version_id = Some(root.identity.context_version_id);
+        snapshot.contexts.push(root);
+        assert!(inspect_flow(&snapshot).is_err());
+        assert!(build_plan(&snapshot, &[]).is_err());
+    }
+    let mut snapshot = empty();
+    let root = context(
+        1,
+        None,
+        json!({"format":"runtime_snapshot_v1","variable_pool":{}}),
+    );
+    let unknown_child = context(
+        2,
+        Some(root.identity.context_version_id),
+        json!({"format":"future_recovery_format"}),
+    );
+    snapshot.checkpoints.push(checkpoint(
+        Some(&unknown_child),
+        json!({MARKER:{"context_version_id":unknown_child.identity.context_version_id}}),
+    ));
+    snapshot.latest_context_version_id = Some(unknown_child.identity.context_version_id);
+    snapshot.contexts = vec![root, unknown_child];
+    assert!(inspect_flow(&snapshot).is_err());
+    assert!(build_plan(&snapshot, &[]).is_err());
+}
+
+#[test]
+fn opaque_provider_descendant_of_copied_checkpoint_is_copied_without_scanning() {
+    let (old, current, verified) = fixture();
+    let mut snapshot = empty();
+    let root = context(
+        1,
+        None,
+        json!({"format":"runtime_snapshot_v1","variable_pool":{"sys":{"responses_input_history":old}}}),
+    );
+    let opaque = context(
+        2,
+        Some(root.identity.context_version_id),
+        json!({"effective_system":"provider", "provider_messages":[],
+        "format":"runtime_snapshot_v1","variable_pool":{"sys":{"responses_input_history":{"version":999}}}}),
+    );
+    snapshot.checkpoints.push(checkpoint(
+        Some(&root),
+        json!({MARKER:{"context_version_id":root.identity.context_version_id}}),
+    ));
+    snapshot.latest_context_version_id = Some(opaque.identity.context_version_id);
+    snapshot.contexts = vec![root, opaque];
+    let plan = build_plan(&snapshot, &verified).unwrap();
+    assert_eq!(plan.contexts.len(), 2);
+    assert_eq!(
+        plan.contexts[0].after_content["variable_pool"]["sys"]["responses_input_history"],
+        current
+    );
+    assert_eq!(plan.contexts[1].after_content, snapshot.contexts[1].content);
+    assert_eq!(
+        plan.contexts[1].before.previous_projection_id,
+        Some(snapshot.contexts[0].identity.context_version_id)
+    );
+}
+
+#[test]
+fn opaque_contexts_still_require_valid_topology_and_latest_identity() {
+    let mut snapshot = empty();
+    let root = context(
+        1,
+        Some(Uuid::now_v7()),
+        json!({"effective_system":"provider"}),
+    );
+    snapshot.latest_context_version_id = Some(root.identity.context_version_id);
+    snapshot.contexts.push(root);
+    assert!(inspect_flow(&snapshot).is_err());
+    assert!(build_plan(&snapshot, &[]).is_err());
+    snapshot.contexts[0].previous_projection_id = None;
+    snapshot.latest_context_version_id = Some(Uuid::now_v7());
+    assert!(inspect_flow(&snapshot).is_err());
+    assert!(build_plan(&snapshot, &[]).is_err());
 }

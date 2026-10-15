@@ -206,6 +206,8 @@ jobs:
       - name: Changed history storage and offline executable
         if: ${{ !cancelled() && inputs.build_history_maintenance }}
         run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --features responses-history-migration --lib application_public_api::compat::openai::history > tmp/test-governance/gateway-target-handoff/ci/history-migration.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-migration.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-migration.log
           cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --features responses-history-migration --lib responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-storage.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-storage.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-storage.log
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-cli.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-cli.log; exit 1; }

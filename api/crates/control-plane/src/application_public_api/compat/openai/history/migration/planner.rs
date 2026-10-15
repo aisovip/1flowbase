@@ -130,9 +130,10 @@ fn inline_pool(checkpoint: &ResponsesHistoryCheckpoint) -> Result<&Value> {
     Ok(&checkpoint.variable_snapshot)
 }
 
-/// Validate unique topology and checkpoint identity without loading or expanding
-/// any lineage. Storage supplied the application/flow-scoped reachable DAG once.
-fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<()> {
+/// Validate all loaded topology/identities, then identify recovery-owned contexts
+/// from checkpoint references. The implicit latest head may instead belong to a
+/// provider observation lineage whose content must remain opaque to migration.
+fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<BTreeSet<Uuid>> {
     let mut nodes = BTreeMap::new();
     for entry in &snapshot.contexts {
         let id = entry.identity.context_version_id;
@@ -148,11 +149,6 @@ fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<()> {
             ensure!(
                 parent.sequence < entry.sequence,
                 "responses_history_context_sequence_invalid"
-            );
-        } else {
-            ensure!(
-                entry.content.get("format").and_then(Value::as_str) == Some("runtime_snapshot_v1"),
-                "responses_history_context_root_snapshot_missing"
             );
         }
         nodes.insert(id, entry);
@@ -172,6 +168,7 @@ fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<()> {
         }
         None => ensure!(nodes.is_empty(), "responses_history_context_latest_missing"),
     }
+    let mut checkpoint_contexts = BTreeSet::new();
     for checkpoint in &snapshot.checkpoints {
         ensure!(
             checkpoint.variable_snapshot.is_object(),
@@ -203,6 +200,32 @@ fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<()> {
                     &node.identity == identity,
                     "responses_history_checkpoint_context_identity_mismatch"
                 );
+                // Shared ancestors are visited once. Reachability, never payload
+                // shape, establishes which context content recovery actually reads.
+                let mut next = Some(identity.context_version_id);
+                while let Some(id) = next {
+                    if !checkpoint_contexts.insert(id) {
+                        break;
+                    }
+                    let entry = nodes.get(&id).ok_or_else(|| {
+                        anyhow::anyhow!("responses_history_checkpoint_context_missing")
+                    })?;
+                    ensure!(
+                        matches!(
+                            entry.content.get("format").and_then(Value::as_str),
+                            Some("runtime_snapshot_v1" | "runtime_delta_v1")
+                        ),
+                        "responses_history_context_format_unsupported"
+                    );
+                    if entry.previous_projection_id.is_none() {
+                        ensure!(
+                            entry.content.get("format").and_then(Value::as_str)
+                                == Some("runtime_snapshot_v1"),
+                            "responses_history_context_root_snapshot_missing"
+                        );
+                    }
+                    next = entry.previous_projection_id;
+                }
             }
             None => {
                 ensure!(
@@ -213,7 +236,7 @@ fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(checkpoint_contexts)
 }
 
 fn visit_node(
@@ -287,7 +310,7 @@ fn context_appends(content: &Value) -> Result<&[Value]> {
 }
 
 pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspection> {
-    validate_graph(snapshot)?;
+    let checkpoint_contexts = validate_graph(snapshot)?;
     let mut proofs = BTreeMap::new();
     let mut rounds = Vec::new();
     let mut collect = |value: &Value| -> Result<()> {
@@ -311,7 +334,9 @@ pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspe
         }
     }
     for context in &snapshot.contexts {
-        visit_context(&context.content, &mut collect, &mut rounds)?;
+        if checkpoint_contexts.contains(&context.identity.context_version_id) {
+            visit_context(&context.content, &mut collect, &mut rounds)?;
+        }
     }
     for checkpoint in &snapshot.checkpoints {
         if checkpoint.context.is_none() {
@@ -467,7 +492,7 @@ pub fn build_plan(
     snapshot: &ResponsesHistoryFlowSnapshot,
     verified: &[SourcedReplacement],
 ) -> Result<ResponsesHistoryMigrationPlan> {
-    validate_graph(snapshot)?;
+    let checkpoint_contexts = validate_graph(snapshot)?;
     let replacements = Replacements::new(snapshot.flow.flow_run_id, verified)?;
     let mut plan = ResponsesHistoryMigrationPlan {
         flow: snapshot.flow,
@@ -492,7 +517,9 @@ pub fn build_plan(
     let mut remapped = BTreeSet::new();
     for context in &snapshot.contexts {
         let mut after_content = context.content.clone();
-        replacements.replace_context(&mut after_content)?;
+        if checkpoint_contexts.contains(&context.identity.context_version_id) {
+            replacements.replace_context(&mut after_content)?;
+        }
         if after_content != context.content
             || context
                 .previous_projection_id

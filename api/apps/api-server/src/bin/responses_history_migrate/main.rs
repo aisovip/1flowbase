@@ -66,8 +66,14 @@ async fn main() -> Result<()> {
     let mut proofs = BTreeMap::<(uuid::Uuid, u64, u64, String), ScopedHistoryTarget>::new();
     let mut versions = BTreeMap::<u64, usize>::new();
     for flow in &flows {
-        let snapshot = repository.load_responses_history_flow(flow, &key).await?;
-        for proof in inspect_flow(&snapshot)?.proofs {
+        let snapshot = repository
+            .load_responses_history_flow(flow, &key)
+            .await
+            .with_context(|| format!("inventory load flow {}", flow.flow_run_id))?;
+        for proof in inspect_flow(&snapshot)
+            .with_context(|| format!("inventory inspect flow {}", flow.flow_run_id))?
+            .proofs
+        {
             *versions
                 .entry(
                     proof["version"]
@@ -107,10 +113,16 @@ async fn main() -> Result<()> {
         .iter()
         .filter(|_| versions.keys().any(|version| *version != 3))
     {
-        let snapshot = repository.load_responses_history_flow(flow, &key).await?;
-        let inspection = inspect_flow(&snapshot)?;
+        let snapshot = repository
+            .load_responses_history_flow(flow, &key)
+            .await
+            .with_context(|| format!("source load flow {}", flow.flow_run_id))?;
+        let inspection = inspect_flow(&snapshot)
+            .with_context(|| format!("source inspect flow {}", flow.flow_run_id))?;
         drop(snapshot);
-        sources::feed(&repository, &mut graph, flow, inspection, options.page_size).await?;
+        sources::feed(&repository, &mut graph, flow, inspection, options.page_size)
+            .await
+            .with_context(|| format!("source feed flow {}", flow.flow_run_id))?;
     }
     let resolution = graph.resolve()?;
     private_files::write_json(
@@ -125,14 +137,19 @@ async fn main() -> Result<()> {
     // evidence, never trusted input. Apply below reloads and rebuilds each plan.
     let mut planned = Vec::new();
     for flow in &flows {
-        let snapshot = repository.load_responses_history_flow(flow, &key).await?;
-        let plan = build_plan(&snapshot, &resolution.verified)?;
+        let snapshot = repository
+            .load_responses_history_flow(flow, &key)
+            .await
+            .with_context(|| format!("prepare load flow {}", flow.flow_run_id))?;
+        let plan = build_plan(&snapshot, &resolution.verified)
+            .with_context(|| format!("prepare plan flow {}", flow.flow_run_id))?;
         if empty(&plan) {
             continue;
         }
         repository
             .preview_responses_history_migration(&plan, &key)
-            .await?;
+            .await
+            .with_context(|| format!("prepare preview flow {}", flow.flow_run_id))?;
         private_files::write_json(
             &options
                 .output
@@ -159,8 +176,12 @@ async fn main() -> Result<()> {
     let mut receipts: Vec<ResponsesHistoryMigrationReceipt> = Vec::new();
     let applied: Result<()> = async {
         for flow in &planned {
-            let snapshot = repository.load_responses_history_flow(flow, &key).await?;
-            let plan = build_plan(&snapshot, &resolution.verified)?;
+            let snapshot = repository
+                .load_responses_history_flow(flow, &key)
+                .await
+                .with_context(|| format!("apply load flow {}", flow.flow_run_id))?;
+            let plan = build_plan(&snapshot, &resolution.verified)
+                .with_context(|| format!("apply plan flow {}", flow.flow_run_id))?;
             // fsync before commit. A process crash in the receipt window is explicit
             // in the journal and recoverable from before.dump with writers stopped.
             private_files::write_json(
@@ -169,8 +190,9 @@ async fn main() -> Result<()> {
                     .join(format!("{}.intent.json", flow.flow_run_id)),
                 &plan,
             )?;
-            let receipt =
-                apply_verified_flow(&repository, &snapshot, &resolution.verified, &key).await?;
+            let receipt = apply_verified_flow(&repository, &snapshot, &resolution.verified, &key)
+                .await
+                .with_context(|| format!("apply flow {}", flow.flow_run_id))?;
             receipts.push(receipt);
             private_files::write_json(
                 &options
@@ -180,13 +202,18 @@ async fn main() -> Result<()> {
             )?;
         }
         for flow in &flows {
-            let snapshot = repository.load_responses_history_flow(flow, &key).await?;
+            let snapshot = repository
+                .load_responses_history_flow(flow, &key)
+                .await
+                .with_context(|| format!("postscan load flow {}", flow.flow_run_id))?;
             ensure!(
-                inspect_flow(&snapshot)?
+                inspect_flow(&snapshot)
+                    .with_context(|| format!("postscan inspect flow {}", flow.flow_run_id))?
                     .proofs
                     .iter()
                     .all(|p| p["version"] == 3),
-                "legacy effective recovery proof remains"
+                "postscan verify flow {}: legacy effective recovery proof remains",
+                flow.flow_run_id
             );
         }
         private_files::write_json(
