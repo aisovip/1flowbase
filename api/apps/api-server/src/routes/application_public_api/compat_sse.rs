@@ -53,6 +53,8 @@ use crate::{
     },
 };
 
+mod callback_attachment;
+use callback_attachment::attach_live_compatible_callback_round;
 mod event_forwarding;
 mod protocol_mappers;
 #[cfg(test)]
@@ -633,12 +635,11 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
         if let Some(start) =
             live_compatible_round_start(&dependencies, &initial_run, round_id).await
         {
-            return attach_compatible_typed_stream_with_replay(
-                native::native_run_terminal_dependencies(&dependencies.native),
-                dependencies.native.runtime_event_stream.clone(),
+            return attach_live_compatible_callback_round(
+                &dependencies,
                 initial_run,
-                Some(start),
-                Vec::new(),
+                round_id,
+                start,
             )
             .await;
         }
@@ -763,12 +764,11 @@ async fn follow_missing_compatible_round_events(
             live_compatible_round_start(&dependencies, &initial_run, round_id).await
         {
             Some(
-                attach_compatible_typed_stream_with_replay(
-                    native::native_run_terminal_dependencies(&dependencies.native),
-                    dependencies.native.runtime_event_stream.clone(),
+                attach_live_compatible_callback_round(
+                    &dependencies,
                     initial_run.clone(),
-                    Some(start),
-                    Vec::new(),
+                    round_id,
+                    start,
                 )
                 .await?,
             )

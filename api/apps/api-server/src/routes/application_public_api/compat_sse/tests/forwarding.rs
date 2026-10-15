@@ -204,15 +204,25 @@ impl crate::routes::application_public_api::native_read_interface::NativeRuntime
 
 #[tokio::test]
 async fn terminal_callback_attach_replays_ordered_durable_round_without_executor() {
-    assert_terminal_callback_attach(false).await;
+    assert_terminal_callback_attach(false, 0).await;
 }
 
 #[tokio::test]
 async fn missing_local_round_follows_later_durable_terminal_without_executor() {
-    assert_terminal_callback_attach(true).await;
+    assert_terminal_callback_attach(true, 0).await;
 }
 
-async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
+#[tokio::test]
+async fn callback_attach_follows_durable_completion_with_stalled_live_generation() {
+    assert_terminal_callback_attach(true, 1).await;
+}
+
+#[tokio::test]
+async fn callback_attach_partial_live_then_durable_does_not_repeat_items_or_deltas() {
+    assert_terminal_callback_attach(true, 2).await;
+}
+
+async fn assert_terminal_callback_attach(terminal_after_subscribe: bool, live_mode: u8) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -241,7 +251,69 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
         complete_attached_callback_round(&state, run.id, &first_item, &second_item).await;
     }
 
+    let tool_payload = json!({"output_index": 2, "committed_delivery": true,
+        "item": {"type": "function_call", "call_id": "attach-once", "name": "lookup"}});
+    let tool = if live_mode == 2 {
+        Some(seed_pending_committed_delivery(&state, &run, tool_payload.clone()).await)
+    } else {
+        None
+    };
     let stream = Arc::new(LocalRuntimeEventStream::new());
+    if live_mode > 0 {
+        stream
+            .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        let mut started = debug_stream_events::flow_started(run.id);
+        started.payload["response_round_id"] = json!(callback_task_id);
+        stream.append(run.id, started).await.unwrap();
+        if live_mode == 2 {
+            stream
+                .append(
+                    run.id,
+                    RuntimeEventPayload {
+                        event_type: "provider_output_item_done".into(),
+                        source: RuntimeEventSource::Provider,
+                        durability: RuntimeEventDurability::DurableRequired,
+                        persist_required: false,
+                        trace_visible: true,
+                        payload: json!({"output_index": 0, "item": first_item}),
+                    },
+                )
+                .await
+                .unwrap();
+            stream
+                .append(
+                    run.id,
+                    debug_stream_events::answer_text_delta(
+                        "assistant",
+                        "partial live".into(),
+                        0,
+                        None,
+                        None,
+                        None,
+                    ),
+                )
+                .await
+                .unwrap();
+        }
+    }
+    if live_mode == 2 {
+        stream
+            .append(
+                run.id,
+                RuntimeEventPayload {
+                    event_type: "provider_output_item_done".into(),
+                    source: RuntimeEventSource::Provider,
+                    durability: RuntimeEventDurability::DurableRequired,
+                    persist_required: false,
+                    trace_visible: true,
+                    payload: tool_payload.clone(),
+                },
+            )
+            .await
+            .unwrap();
+    }
     let native = crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
         store: state.store.clone(),
         cache_store: state.infrastructure.cache_store(),
@@ -290,6 +362,20 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
         start_compatible_typed_resume_stream_for_actor(dependencies, run, command, actor)
             .await
             .unwrap();
+    let mut events = Vec::new();
+    if live_mode > 0 {
+        for _ in 0..if live_mode == 2 { 4 } else { 1 } {
+            let input = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+                .await
+                .expect("live delivery must remain immediate")
+                .unwrap();
+            let (_, event, receipt) = input.into_parts();
+            if let Some(receipt) = receipt {
+                receipt.projected();
+            }
+            events.push(event);
+        }
+    }
     if terminal_after_subscribe {
         assert!(
             tokio::time::timeout(Duration::from_millis(50), attached.events.recv())
@@ -305,27 +391,57 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
         )
         .await;
     }
-    let mut events = Vec::new();
     while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
         .await
         .expect("terminal replay must finish")
     {
         events.push(input.envelope);
     }
-    assert_eq!(
-        events
-            .iter()
-            .map(|event| event.event_type.as_str())
-            .collect::<Vec<_>>(),
-        vec![
-            "flow_started",
-            "provider_output_item_done",
-            "provider_output_item_done",
-            "flow_finished"
-        ]
-    );
-    assert_eq!(events[1].payload["item"], first_item);
-    assert_eq!(events[2].payload["item"], second_item);
+    let types = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect::<Vec<_>>();
+    if live_mode == 2 {
+        assert_eq!(
+            types,
+            vec![
+                "flow_started",
+                "provider_output_item_done",
+                "text_delta",
+                "provider_output_item_done",
+                "provider_output_item_done",
+                "flow_finished"
+            ]
+        );
+        assert_eq!(events[2].text.as_deref(), Some("partial live"));
+    } else {
+        assert_eq!(
+            types,
+            vec![
+                "flow_started",
+                "provider_output_item_done",
+                "provider_output_item_done",
+                "flow_finished"
+            ]
+        );
+    }
+    let items = events
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .map(|event| event.payload["item"].clone())
+        .collect::<Vec<_>>();
+    if live_mode == 2 {
+        assert_eq!(
+            items,
+            vec![first_item, tool_payload["item"].clone(), second_item]
+        );
+        assert_eq!(
+            delivery_statuses(&state, &[tool.unwrap().id]).await,
+            vec!["acked"]
+        );
+    } else {
+        assert_eq!(items, vec![first_item, second_item]);
+    }
     let attempt_count: i64 = sqlx::query_scalar(
         "select count(*) from flow_run_callback_resume_attempts where flow_run_id = $1",
     )
@@ -334,13 +450,26 @@ async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
     .await
     .unwrap();
     assert_eq!(attempt_count, 0, "attach must not reserve another attempt");
-    assert!(
-        stream
-            .replay(attached.initial_run.id, None, 1)
-            .await
-            .is_err(),
-        "durable terminal replay must not create an empty local stream"
-    );
+    if live_mode == 0 {
+        assert!(
+            stream
+                .replay(attached.initial_run.id, None, 1)
+                .await
+                .is_err(),
+            "durable terminal replay must not create an empty local stream"
+        );
+    } else {
+        assert!(
+            stream
+                .subscribe(attached.initial_run.id, None)
+                .await
+                .unwrap()
+                .closure
+                .borrow()
+                .is_none(),
+            "read-only attachment must not close the original producer generation"
+        );
+    }
 }
 
 async fn complete_attached_callback_round(
