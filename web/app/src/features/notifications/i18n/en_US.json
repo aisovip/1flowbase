@@ -75,7 +75,6 @@
   "log_id": "Log ID",
   "channel_identifier": "Channel identifier",
   "message": "Message",
-  "system_message_type": "In-app message",
   "authorization_status": "Authorization",
   "authorization_unauthorized": "Not authorized",
   "authorization_pending": "Awaiting authorization",
@@ -104,5 +103,8 @@
   "delivery_window_message_hint": "Send any message to the bot to open or renew the 24-hour notification subscription window, then refresh its status. The channel must also be enabled before sending notifications.",
   "failure_subscription_required": "No verifiable user message received. Send any message to the bot to open the notification subscription window",
   "failure_subscription_expired": "The 24-hour notification subscription window has expired. Send any message to the bot to renew it and try again",
-  "failure_subscription_unavailable": "The notification subscription status cannot be confirmed. Try again later"
+  "failure_subscription_unavailable": "The notification subscription status cannot be confirmed. Try again later",
+  "system_notification_type": "System notification",
+  "system_notification_description": "Deliver a message to workspace members’ inboxes",
+  "system_notification_recipients": "Recipients"
 }

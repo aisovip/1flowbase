@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Alert, Form, Input, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -16,10 +16,11 @@ import {
 } from '../../../notifications/api/queries';
 import { NotificationAuthorization } from './NotificationAuthorization';
 import { useAuthStore } from '../../../../state/auth-store';
+import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 
 export function NotificationInstanceDrawer({
   instance,
-  type,
+  type: sourceType,
   onClose,
   onSaved
 }: {
@@ -29,6 +30,12 @@ export function NotificationInstanceDrawer({
   onSaved: (options?: { keepOpen: boolean }) => void;
 }) {
   const { t } = useTranslation('notifications');
+  const localizeType = useNotificationTypeLocalization();
+  const type = useMemo(
+    () => sourceType && localizeType(sourceType),
+    [sourceType, localizeType]
+  );
+  const draftConfig = useRef<SchemaFormValues | undefined>(undefined);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const [savedInstance, setSavedInstance] = useState(instance);
   const [beginOnMount, setBeginOnMount] = useState(false);
@@ -53,8 +60,8 @@ export function NotificationInstanceDrawer({
     };
   }, [savedInstance, type, t]);
   const initialValues = useMemo(
-    () => savedInstance?.config_json as SchemaFormValues | undefined,
-    [savedInstance]
+    () => ({ ...savedInstance?.config_json, ...draftConfig.current }),
+    [savedInstance, type, t]
   );
   const unavailable = !!savedInstance && !savedInstance.available;
   const unavailableTitle =
@@ -129,6 +136,10 @@ export function NotificationInstanceDrawer({
         !display_name.trim() || (!savedInstance && !type?.available)
       }
       onCancel={onClose}
+      onValuesChange={(values) => {
+        // A language change refreshes labels, while the open form keeps its draft.
+        draftConfig.current = values;
+      }}
       onBeforeSubmit={() => {
         if (!display_name.trim()) {
           setNameError(true);
@@ -172,6 +183,7 @@ export function NotificationInstanceDrawer({
         }
       }}
       onSubmitSuccess={(result) => {
+        draftConfig.current = undefined;
         if (type?.authorization) {
           setBeginOnMount(!savedInstance);
           setSavedInstance(result as NotificationInstance);

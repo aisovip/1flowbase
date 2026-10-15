@@ -6,6 +6,7 @@ import type {
   NotificationInstanceListInput,
   NotificationType
 } from '@1flowbase/api-client';
+import { useNotificationTypeLocalization } from '../../../notifications/hooks/use-notification-type-localization';
 
 export function NotificationInstanceFilters({
   types,
@@ -17,6 +18,7 @@ export function NotificationInstanceFilters({
   onChange: (value: NotificationInstanceListInput) => void;
 }) {
   const { t } = useTranslation('notifications');
+  const localizeType = useNotificationTypeLocalization();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<NotificationInstanceListInput>();
   const count = Object.values(value).filter(Boolean).length;
@@ -26,7 +28,7 @@ export function NotificationInstanceFilters({
         type.type_code,
         {
           value: type.type_code,
-          label: type.display_name
+          label: localizeType(type).display_name
         }
       ])
     ).values()
