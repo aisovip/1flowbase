@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 # Offline proof conversion only. Production hosts must not enable this feature.
-responses-history-migration = []
+responses-history-migration = ["control-plane-contracts/responses-history-migration"]
 
 [dependencies]
 flate2.workspace = true

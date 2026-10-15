@@ -180,3 +180,9 @@ pub fn materialize_checkpoint_content(
 ) -> Result<serde_json::Map<String, Value>> {
     crate::orchestration_runtime::materialize_responses_history_checkpoint(lineage)
 }
+
+mod planner;
+pub use planner::{
+    apply_verified_flow, build_plan, collect_proofs, inspect_flow, preview_verified_flow,
+    public_rounds, FlowInspection,
+};
