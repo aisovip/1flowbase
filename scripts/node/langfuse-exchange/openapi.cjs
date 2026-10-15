@@ -84,6 +84,9 @@ async function verifyOpenApi({request, args, instanceId, secrets, receipt, check
   const listed=await rpc('mcp_list',{path:'/plugins/langfuse',depth:1}); assert.ok(Array.isArray(listed.result),'MCP list array wrapper');
   const calls=[['instances.list',{},'items'],['openapi.discover',{instance_id:instanceId,search:projects.path},'operations'],['openapi.get',{instance_id:instanceId,operationId:projects.operationId},'operationId'],['openapi.execute',{instance_id:instanceId,operationId:projects.operationId},'response']];
   const summaries=[];
+  const leafEntries=(value,path_)=>value && typeof value==='object' && Object.keys(value).length
+    ? Object.entries(value).flatMap(([key,child])=>leafEntries(child,`${path_}/${key.replace(/~/g,'~0').replace(/\//g,'~1')}`))
+    : [{path:path_,value}];
   for(const [name,arguments_,field] of calls) {
     const tool_id=`plugin.langfuse.${name}`;
     assert.ok(listed.result.some(item=>item.id===tool_id),'fixed tool is discoverable');
@@ -92,9 +95,27 @@ async function verifyOpenApi({request, args, instanceId, secrets, receipt, check
     if(description.description_tool_id) des_id=(await rpc('mcp_get',{tool_id:description.description_tool_id})).des_id;
     const controls={tool_id,arguments:arguments_};
     if(description.des_id_required) {assert.ok(des_id);controls.des_id=des_id;}
-    // Current managed tools do not open call controls. Read oversized values through
-    // mcp_result's documented JSON-pointer projection, never rerun an operation.
+    // Use controls advertised by mcp_get. Raw HTTP bytes stay in the HTTP API;
+    // request the complete parsed JSON and metadata before this one execution.
+    if(name==='openapi.execute') {
+      assert.ok(description.call_parameters.includes('response_fields'));
+      assert.ok(description.call_parameters.includes('max_inline_chars'));
+      controls.response_fields=['/success','/instance_id','/operationId','/response/status','/response/headers','/response/body'];
+      controls.max_inline_chars=16000;
+    }
+    receipt.mcp_phase={tool_id,stage:'call'};checkpoint();
     let value=await rpc('mcp_call',controls);
+    receipt.mcp_phase={tool_id,stage:'response',outcome:value.outcome,detail_status:value.detail?.status,detail_reason:value.detail?.reason,selected_entries:Array.isArray(value.entries)?value.entries.length:undefined};checkpoint();
+    if(name==='openapi.execute' && Array.isArray(value.entries)) {
+      assert.equal(value.outcome,'succeeded');assert.equal(value.retry_original,false);
+      assert.ok(!value.selection_error);assert.equal(value.next_cursor,null,'complete selected response fits inline');
+      const actual=new Map(value.entries.map(entry=>[entry.path,entry.value]));
+      const expected=[{path:'/success',value:true},{path:'/instance_id',value:instanceId},{path:'/operationId',value:projects.operationId},{path:'/response/status',value:200},...leafEntries(projectResult.response.body,'/response/body')];
+      for(const entry of expected){assert.ok(actual.has(entry.path),`complete selected MCP field ${entry.path}`);assert.deepEqual(actual.get(entry.path),entry.value,'complete parsed upstream JSON preserved');}
+      assert.ok(value.entries.some(entry=>entry.path.startsWith('/response/headers/')),'actual upstream headers selected');
+      assert.ok(!value.entries.some(entry=>entry.path.startsWith('/response/body_base64')),'raw bytes were deliberately unselected');
+      value={success:true,response:{status:200}};
+    }
     if(value.detail) {
       assert.equal(value.outcome,'succeeded'); assert.equal(value.retry_original,false);
       assert.equal(value.detail.status,'continuation_available');
