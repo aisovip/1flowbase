@@ -114,10 +114,10 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         await action(`instances/${first.instance_id}/test`,row(first.instance_id).getByRole('button',{name:'Test connection',exact:true}));
         await screenshot('01-saved-connection');
         await setLanguage('zh_Hans'); await screenshot('00-instances-table-zh');
-        await row(first.instance_id).getByRole('button',{name:'编辑',exact:true}).click();
+        await row(first.instance_id).getByRole('button',{name:/^编\s*辑$/,exact:true}).click();
         await dialog('实例').getByLabel('名称',{exact:true}).waitFor();
         await screenshot('00-instance-drawer-zh');
-        await dialog('实例').getByRole('button',{name:'取消',exact:true}).click(); await dialog('实例').waitFor({state:'hidden'});
+        await dialog('实例').getByRole('button',{name:/^取\s*消$/,exact:true}).click(); await dialog('实例').waitFor({state:'hidden'});
         await setLanguage('en_US');
         await row(second.instance_id).getByRole('button',{name:'Delete',exact:true}).click();
         await action(`instances/${second.instance_id}`,page.getByRole('tooltip').getByRole('button',{name:'Delete',exact:true}),'DELETE');
@@ -205,7 +205,10 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
       } catch(error) {
         const output=path.join(args.outDir,`failure-${name}-private.png`);
         await context.pages()[0]?.screenshot({path:output,fullPage:true,animations:'disabled'}).catch(()=>{});
-        receipt.browser_failure={viewport:name,error:error.message,screenshot:output};checkpoint();throw error;
+        const accessibility=path.join(args.outDir,`failure-${name}-accessibility-private.txt`);
+        const snapshot=await context.pages()[0]?.locator('body').ariaSnapshot({timeout:5000}).catch(()=>undefined);
+        if(snapshot)fs.writeFileSync(accessibility,snapshot,{mode:0o600});
+        receipt.browser_failure={viewport:name,error:error.message,screenshot:output,accessibility};checkpoint();throw error;
       } finally { try { await context.close(); } finally { await browser.close(); browser=null; } }
     }
     return [...traceIds];
