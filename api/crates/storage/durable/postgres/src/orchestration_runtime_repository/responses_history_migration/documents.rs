@@ -66,9 +66,18 @@ pub(super) async fn read_current(
         locked.is_some(),
         "responses_history_document_owner_mismatch"
     );
+    // Spans use direct JSONB metadata in the formal schema. Only the other
+    // finite owners have a lossless originals sidecar.
+    let value_expression = match owner {
+        ResponsesHistoryDocumentOwner::SpanMetadata { .. } => column.to_owned(),
+        _ => format!("runtime_original_json({column},raw_json_payloads,'{column}')"),
+    };
     Ok(sqlx::query_scalar::<_, Value>(&format!(
-        "select runtime_original_json({column},raw_json_payloads,'{column}') from {table} where id=$1"
-    )).bind(id).fetch_one(&mut **tx).await?)
+        "select {value_expression} from {table} where id=$1"
+    ))
+    .bind(id)
+    .fetch_one(&mut **tx)
+    .await?)
 }
 
 pub(super) async fn read_shadow(
@@ -128,9 +137,17 @@ async fn write_document(
     value: &Value,
 ) -> Result<()> {
     let (table, _, column, id) = location(owner, flow);
-    let updated = sqlx::query(&format!(
-        "update {table} set {column}=($2::jsonb->0),raw_json_payloads=(raw_json_payloads-'{column}') || jsonb_strip_nulls(jsonb_build_object('{column}',($2::jsonb->1))) where id=$1"
-    )).bind(id).bind(lossless_json_parameter(value)).execute(&mut **tx).await?;
+    let updated=match owner {
+        ResponsesHistoryDocumentOwner::SpanMetadata { .. } => {
+            // Preserve the existing span writer's plain JSONB contract, without
+            // projecting values into an originals column this table does not own.
+            sqlx::query("update runtime_spans set metadata=$2 where id=$1")
+                .bind(id).bind(value).execute(&mut **tx).await?
+        }
+        _ => sqlx::query(&format!(
+            "update {table} set {column}=($2::jsonb->0),raw_json_payloads=(raw_json_payloads-'{column}') || jsonb_strip_nulls(jsonb_build_object('{column}',($2::jsonb->1))) where id=$1"
+        )).bind(id).bind(lossless_json_parameter(value)).execute(&mut **tx).await?,
+    };
     anyhow::ensure!(
         updated.rows_affected() == 1,
         "responses_history_document_write_conflict"
