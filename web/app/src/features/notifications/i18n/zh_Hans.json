@@ -74,5 +74,22 @@
   "log_id": "日志 ID",
   "channel_identifier": "渠道标识",
   "message": "消息",
-  "system_message_type": "站内信"
+  "system_message_type": "站内信",
+  "authorization_status": "授权状态",
+  "authorization_unauthorized": "未授权",
+  "authorization_pending": "授权待确认",
+  "authorization_authorized": "已授权",
+  "authorization_invalid": "授权已失效",
+  "authorization_failed": "授权操作未完成，请重试。",
+  "authorization_waiting": "请扫码并在设备上确认授权。",
+  "authorization_not_delivery": "授权完成不代表消息已送达。",
+  "authorization_cancel": "取消授权",
+  "authorization_reauthorize": "重新授权：{{action}}",
+  "authorization_ready": "授权已完成，渠道启用后可发送消息。",
+  "authorization_session_hint": "如供应商要求恢复会话，请向机器人发送一条消息后再尝试发送通知。",
+  "save_and_authorize": "保存并扫码授权",
+  "failure_authorization_required": "渠道尚未授权，请先完成扫码授权",
+  "failure_authorization_invalid": "渠道授权已失效，请重新扫码授权",
+  "failure_recipient_not_ready": "收件人会话尚未就绪，请向机器人发送一条消息后重试",
+  "failure_provider_rejected": "供应商拒绝了本次消息发送"
 }

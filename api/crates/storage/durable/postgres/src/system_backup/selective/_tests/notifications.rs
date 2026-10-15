@@ -8,9 +8,12 @@ fn notification_rekey_preserves_bound_identity_and_never_accepts_wrong_keys() {
     let instance = Uuid::now_v7();
     let aad = crate::notification_repository::aad(workspace, instance);
     let plain = json!({"token":"notification-backup-secret"});
+    let managed_aad = crate::notification_repository::managed_aad(workspace, instance);
+    let managed = json!({"bot_token":"managed-backup-secret","context_token":"private-context"});
     let original = json!({
         "id":instance,"workspace_id":workspace,
-        "encrypted_secret_json":encrypt_secret_json_with_aad(&plain,"source",&aad).unwrap()
+        "encrypted_secret_json":encrypt_secret_json_with_aad(&plain,"source",&aad).unwrap(),
+        "encrypted_managed_secret_json":encrypt_secret_json_with_aad(&managed,"source",&managed_aad).unwrap()
     });
     let mut same = original.clone();
     validation::rekey("notification_instances", &mut same, "source", "source").unwrap();
@@ -25,6 +28,22 @@ fn notification_rekey_preserves_bound_identity_and_never_accepts_wrong_keys() {
         decrypt_secret_json_with_aad(&rekeyed["encrypted_secret_json"], "source", &aad).is_err()
     );
     assert!(!rekeyed.to_string().contains("notification-backup-secret"));
+    assert!(!rekeyed.to_string().contains("managed-backup-secret"));
+    assert_eq!(
+        decrypt_secret_json_with_aad(
+            &rekeyed["encrypted_managed_secret_json"],
+            "target",
+            &managed_aad
+        )
+        .unwrap(),
+        managed
+    );
+    assert!(decrypt_secret_json_with_aad(
+        &rekeyed["encrypted_managed_secret_json"],
+        "target",
+        &aad
+    )
+    .is_err());
     assert!(validation::rekey(
         "notification_instances",
         &mut original.clone(),
@@ -57,8 +76,12 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
     let aad = crate::notification_repository::aad(workspace.id, instance);
     let plain = json!({"token":"notification-backup-secret"});
     let encrypted = encrypt_secret_json_with_aad(&plain, "source", &aad).unwrap();
+    let managed_aad = crate::notification_repository::managed_aad(workspace.id, instance);
+    let managed_plain = json!({"bot_token":"notification-managed-backup-secret"});
+    let managed = encrypt_secret_json_with_aad(&managed_plain, "source", &managed_aad).unwrap();
     sqlx::query("insert into notification_instances(id,workspace_id,type_code,display_name,encrypted_secret_json,configured_secret_fields) values($1,$2,'fixture','Original',$3,'[\"token\"]'::jsonb)")
         .bind(instance).bind(workspace.id).bind(encrypted).execute(&db).await.unwrap();
+    sqlx::query("UPDATE notification_instances SET encrypted_managed_secret_json=$2,authorization_json='{\"status\":\"authorized\"}'::jsonb,authorization_revision=7 WHERE id=$1").bind(instance).bind(managed).execute(&db).await.unwrap();
     let message = Uuid::now_v7();
     sqlx::query("insert into system_notifications(id,workspace_id,instance_id,recipient_user_id,title,content) values($1,$2,$3,$4,'Inbox','Original inbox')")
         .bind(message).bind(workspace.id).bind(instance).bind(actor).execute(&db).await.unwrap();
@@ -135,6 +158,24 @@ async fn selective_notification_configuration_roundtrips_credentials_without_inb
         decrypt_secret_json_with_aad(&restored, "target", &aad).unwrap(),
         plain
     );
+    let restored_managed: serde_json::Value = sqlx::query_scalar(
+        "select encrypted_managed_secret_json from notification_instances where id=$1",
+    )
+    .bind(instance)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        decrypt_secret_json_with_aad(&restored_managed, "target", &managed_aad).unwrap(),
+        managed_plain
+    );
+    let revision: i64 =
+        sqlx::query_scalar("select authorization_revision from notification_instances where id=$1")
+            .bind(instance)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(revision, 7);
     let inbox: String = sqlx::query_scalar("select content from system_notifications where id=$1")
         .bind(message)
         .fetch_one(&db)

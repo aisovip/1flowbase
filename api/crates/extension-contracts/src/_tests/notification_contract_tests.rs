@@ -11,6 +11,7 @@ fn descriptor() -> NotificationTypeDescriptor {
         input_schema: json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}),
         input_form: serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"text","label":"Text","type":"string"}]})).unwrap(),
         output_schema: json!({"type":"object","properties":{"accepted":{"type":"boolean"}},"required":["accepted"],"additionalProperties":false}),
+        authorization: None,
         contribution_id: ContributionId::new("fixture.send").unwrap(),
     }
 }
@@ -104,4 +105,125 @@ fn multi_select_validates_options_as_items_and_defaults_as_arrays() {
     value.input_form.fields[0].options[0].value = json!("alice");
     value.input_form.fields[0].default_value = Some(json!("alice"));
     assert!(value.validate().is_err());
+}
+
+fn authorizable_descriptor() -> NotificationTypeDescriptor {
+    let mut descriptor = descriptor();
+    descriptor.authorization = Some(serde_json::from_value(json!({
+        "actions":[{"code":"qr","label":"Scan QR code","kind":"qr_code"}],
+        "managed_secret_keys":["qr_credential","bot_token","bound_user_id","context_token","cursor"]
+    })).unwrap());
+    descriptor
+}
+
+#[test]
+fn notification_authorization_is_opt_in_and_rejects_user_owned_managed_keys() {
+    let mut descriptor = authorizable_descriptor();
+    descriptor.validate().unwrap();
+    let mut legacy = serde_json::to_value(&descriptor).unwrap();
+    legacy.as_object_mut().unwrap().remove("authorization");
+    let legacy: NotificationTypeDescriptor = serde_json::from_value(legacy).unwrap();
+    assert!(legacy.authorization.is_none());
+    assert!(serde_json::to_value(legacy)
+        .unwrap()
+        .get("authorization")
+        .is_none());
+    descriptor.config_schema["additionalProperties"] = json!(true);
+    assert!(descriptor
+        .validate_config(&json!({"token":"safe","bot_token":"private"}))
+        .is_err());
+    descriptor.config_schema["properties"]["bot_token"] = json!({"type":"string"});
+    assert!(descriptor.validate().is_err());
+    for value in [
+        json!({"actions":[],"managed_secret_keys":["bot_token"]}),
+        json!({"actions":[{"code":"qr","label":"QR","kind":"qr_code"}],"managed_secret_keys":["bot_token","bot_token"]}),
+        json!({"actions":[{"code":"qr","label":"QR","kind":"qr_code"},{"code":"qr","label":"QR","kind":"qr_code"}],"managed_secret_keys":["bot_token"]}),
+    ] {
+        let value: crate::NotificationAuthorizationDescriptor =
+            serde_json::from_value(value).unwrap();
+        assert!(value.validate().is_err());
+    }
+}
+
+#[test]
+fn notification_authorization_pending_qr_and_declared_patch_are_checked() {
+    use crate::{NotificationRuntimeInput, NotificationRuntimeResult};
+    let descriptor = authorizable_descriptor();
+    let input: NotificationRuntimeInput = serde_json::from_value(json!({
+        "operation":{"type":"authorize","operation":{"type":"begin","action":"qr"}}
+    }))
+    .unwrap();
+    let response = json!({"type":"authorization","authorization":{
+        "status":"pending","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/qr","poll_interval_seconds":2}
+    },"managed_secret_patch":{"qr_credential":"host-only"}});
+    let valid: NotificationRuntimeResult = serde_json::from_value(response.clone()).unwrap();
+    valid.validate_for(&input, &descriptor).unwrap();
+    // Public DTO has no way to carry a managed credential or raw provider error.
+    assert!(
+        serde_json::from_value::<crate::NotificationAuthorizationView>(
+            json!({"status":"authorized","bot_token":"private"})
+        )
+        .is_err()
+    );
+    for invalid in [
+        json!({"type":"authorization","authorization":{"status":"pending"}}),
+        json!({"type":"authorization","authorization":{"status":"authorized","user_action":{"kind":"qr_code","qr_code_url":"https://example.com/qr","poll_interval_seconds":2}}}),
+        json!({"type":"authorization","authorization":{"status":"unauthorized"},"managed_secret_patch":{"unknown_secret":"private"}}),
+        json!({"type":"send","outcome":{"status":"unknown","failure_code":"provider_result_unknown"}}),
+    ] {
+        let invalid: NotificationRuntimeResult = serde_json::from_value(invalid).unwrap();
+        assert!(invalid.validate_for(&input, &descriptor).is_err());
+    }
+    for url in [
+        "file:///credential",
+        "http://example.com/qr",
+        "https://token@example.com/qr",
+        "not-a-url",
+    ] {
+        let mut value = response.clone();
+        value["authorization"]["user_action"]["qr_code_url"] = json!(url);
+        let value: NotificationRuntimeResult = serde_json::from_value(value).unwrap();
+        assert!(value.validate_for(&input, &descriptor).is_err());
+    }
+    for operation in ["poll", "cancel", "maintain"] {
+        let input: NotificationRuntimeInput = serde_json::from_value(json!({"operation":{"type":"authorize","operation":{"type":operation}},"managed_secrets":{"qr_credential":"persisted"}})).unwrap();
+        input.validate(&descriptor).unwrap();
+    }
+    let invalid: NotificationRuntimeInput = serde_json::from_value(
+        json!({"operation":{"type":"authorize","operation":{"type":"begin","action":"other"}}}),
+    )
+    .unwrap();
+    assert!(invalid.validate(&descriptor).is_err());
+}
+
+#[test]
+fn notification_send_outcomes_never_conflate_ambiguous_delivery_or_revoke_ready_account() {
+    use crate::{NotificationRuntimeInput, NotificationRuntimeResult};
+    let descriptor = authorizable_descriptor();
+    let input: NotificationRuntimeInput = serde_json::from_value(json!({"operation":{"type":"send","input_payload":{"text":"hello"}},"managed_secrets":{"bound_user_id":"scanned-peer"}})).unwrap();
+    for value in [
+        json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":true}},"authorization":{"status":"authorized"},"managed_secret_patch":{"cursor":"next","context_token":"host-only"}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"recipient_not_ready"},"authorization":{"status":"authorized"}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"authorization_invalid"},"authorization":{"status":"invalid"},"managed_secret_patch":{"bot_token":null,"context_token":null}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"authorization_required"},"authorization":{"status":"unauthorized"}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"provider_rejected"}}),
+        json!({"type":"send","outcome":{"status":"unknown","failure_code":"provider_result_unknown"}}),
+    ] {
+        let value: NotificationRuntimeResult = serde_json::from_value(value).unwrap();
+        value.validate_for(&input, &descriptor).unwrap();
+    }
+    for value in [
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"provider_result_unknown"}}),
+        json!({"type":"send","outcome":{"status":"unknown","failure_code":"provider_rejected"}}),
+        json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":"yes"}}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"authorization_invalid"}}),
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"recipient_not_ready"},"authorization":{"status":"invalid"}}),
+    ] {
+        let value: NotificationRuntimeResult = serde_json::from_value(value).unwrap();
+        assert!(value.validate_for(&input, &descriptor).is_err());
+    }
+    assert!(serde_json::from_value::<NotificationRuntimeResult>(
+        json!({"type":"send","outcome":{"status":"failed","failure_code":"raw-provider-error"}})
+    )
+    .is_err());
 }

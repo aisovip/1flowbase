@@ -24,3 +24,7 @@ path = "src/_tests/managed_event_worker.rs"
 [[example]]
 name = "notification_worker"
 path = "src/_tests/notification_worker.rs"
+
+[[example]]
+name = "notification_authorization_worker"
+path = "src/_tests/notification/authorizable_worker.rs"

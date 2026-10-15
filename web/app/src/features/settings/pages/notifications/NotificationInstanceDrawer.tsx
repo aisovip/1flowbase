@@ -14,6 +14,7 @@ import {
   createNotificationInstance,
   updateNotificationInstance
 } from '../../../notifications/api/queries';
+import { NotificationAuthorization } from './NotificationAuthorization';
 import { useAuthStore } from '../../../../state/auth-store';
 
 export function NotificationInstanceDrawer({
@@ -25,10 +26,12 @@ export function NotificationInstanceDrawer({
   instance?: NotificationInstance;
   type?: NotificationType;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (options?: { keepOpen: boolean }) => void;
 }) {
   const { t } = useTranslation('notifications');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
+  const [savedInstance, setSavedInstance] = useState(instance);
+  const [beginOnMount, setBeginOnMount] = useState(false);
   const [display_name, setDisplayName] = useState(instance?.display_name ?? '');
   const [nameError, setNameError] = useState(false);
   const schema = useMemo<PluginFormSchema>(() => {
@@ -38,7 +41,7 @@ export function NotificationInstanceDrawer({
     return {
       ...form,
       fields: form.fields.map((field) =>
-        instance?.configured_secret_fields.includes(field.key)
+        savedInstance?.configured_secret_fields.includes(field.key)
           ? {
               ...field,
               required: false,
@@ -48,22 +51,22 @@ export function NotificationInstanceDrawer({
           : field
       )
     };
-  }, [instance, type, t]);
+  }, [savedInstance, type, t]);
   const initialValues = useMemo(
-    () => instance?.config_json as SchemaFormValues | undefined,
-    [instance]
+    () => savedInstance?.config_json as SchemaFormValues | undefined,
+    [savedInstance]
   );
-  const unavailable = !!instance && !instance.available;
+  const unavailable = !!savedInstance && !savedInstance.available;
   const unavailableTitle =
-    instance?.unavailable_reason === 'instance_disabled'
+    savedInstance?.unavailable_reason === 'instance_disabled'
       ? t('instance_disabled')
-      : instance?.unavailable_reason === 'plugin_unavailable'
+      : savedInstance?.unavailable_reason === 'plugin_unavailable'
         ? t('plugin_unavailable')
         : t('type_unavailable');
   return (
     <SchemaFormDrawer
       open
-      title={instance ? t('edit_instance') : t('create_instance')}
+      title={savedInstance ? t('edit_instance') : t('create_instance')}
       rootClassName="notification-instance-drawer"
       footerAlign="end"
       schema={schema}
@@ -73,7 +76,11 @@ export function NotificationInstanceDrawer({
       minWidth={480}
       maxWidth={1200}
       resizeLabel={t('resize_drawer')}
-      submitText={t('submit')}
+      submitText={
+        !savedInstance && type?.authorization
+          ? t('save_and_authorize')
+          : t('submit')
+      }
       cancelText={t('cancel')}
       leadingContent={
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
@@ -103,13 +110,24 @@ export function NotificationInstanceDrawer({
               />
             </Form.Item>
           </Form>
+          {type?.authorization && savedInstance?.authorization && (
+            <NotificationAuthorization
+              instance_id={savedInstance.id}
+              descriptor={type.authorization}
+              authorization={savedInstance.authorization}
+              beginOnMount={beginOnMount}
+              onChanged={() => onSaved({ keepOpen: true })}
+            />
+          )}
           {unavailable && <Alert type="warning" title={unavailableTitle} />}
           {!type && instance && (
             <Alert type="info" title={t('config_unavailable')} />
           )}
         </Space>
       }
-      submitDisabled={!display_name.trim() || (!instance && !type?.available)}
+      submitDisabled={
+        !display_name.trim() || (!savedInstance && !type?.available)
+      }
       onCancel={onClose}
       onBeforeSubmit={() => {
         if (!display_name.trim()) {
@@ -118,38 +136,50 @@ export function NotificationInstanceDrawer({
         }
       }}
       onSubmit={async (values) => {
-        const config_json = Object.fromEntries(
-          Object.entries(values).filter(
-            ([key, value]) =>
-              value !== undefined &&
-              !(
-                instance?.configured_secret_fields.includes(key) &&
-                (value === '' || value === null)
-              )
-          )
-        );
-        if (instance) {
-          await updateNotificationInstance(
-            instance.id,
-            {
-              display_name: display_name.trim(),
-              ...(type ? { config_json } : {})
-            },
-            csrfToken
+        try {
+          const config_json = Object.fromEntries(
+            Object.entries(values).filter(
+              ([key, value]) =>
+                value !== undefined &&
+                !(
+                  savedInstance?.configured_secret_fields.includes(key) &&
+                  (value === '' || value === null)
+                )
+            )
           );
-        } else if (type?.available) {
-          await createNotificationInstance(
-            {
-              display_name: display_name.trim(),
-              type_code: type.type_code,
-              installation_id: type.installation_id,
-              config_json
-            },
-            csrfToken
-          );
+          if (savedInstance) {
+            return await updateNotificationInstance(
+              savedInstance.id,
+              {
+                display_name: display_name.trim(),
+                ...(type ? { config_json } : {})
+              },
+              csrfToken
+            );
+          } else if (type?.available) {
+            return await createNotificationInstance(
+              {
+                display_name: display_name.trim(),
+                type_code: type.type_code,
+                installation_id: type.installation_id,
+                config_json
+              },
+              csrfToken
+            );
+          }
+        } catch {
+          throw new Error(t('instances_failed'));
         }
       }}
-      onSubmitSuccess={onSaved}
+      onSubmitSuccess={(result) => {
+        if (type?.authorization) {
+          setBeginOnMount(!savedInstance);
+          setSavedInstance(result as NotificationInstance);
+          onSaved({ keepOpen: true });
+        } else {
+          onSaved();
+        }
+      }}
     />
   );
 }

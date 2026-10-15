@@ -19,6 +19,31 @@ impl ManagedExtensionComposition {
         self.snapshots.lock().await.current.clone()
     }
 
+    /// Complete startup graphs after the interface catalogue is attached, before ingress is pinned.
+    pub(crate) async fn refresh_boot_snapshots(self: &Arc<Self>) -> Result<()> {
+        anyhow::ensure!(
+            self.generation_publisher.get().is_none() && self.interface_module.get().is_some(),
+            "managed boot refresh requires an attached interface catalogue and unpublished ingress"
+        );
+        let snapshots = self.current_snapshots().await;
+        anyhow::ensure!(
+            snapshots
+                .values()
+                .all(|snapshot| !snapshot.bindings.is_empty()),
+            "managed boot snapshot has no installation binding to refresh"
+        );
+        let installations = snapshots
+            .values()
+            .flat_map(|snapshot| snapshot.bindings.values())
+            .map(|binding| binding.installation.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        drop(snapshots);
+        for installation in installations {
+            self.rebuild_installation(installation).await?;
+        }
+        Ok(())
+    }
+
     pub(super) fn publisher(&self) -> Option<Arc<ManagedGenerationPublisher>> {
         self.generation_publisher
             .get()

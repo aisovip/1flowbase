@@ -239,6 +239,7 @@ async fn credentials_are_encrypted_bound_to_instance_and_excluded_from_public_re
             secret_config_json: json!({"token":"private-token"}),
             master_key: key.into(),
             create: true,
+            initial_authorization: None,
         })
         .await
         .unwrap();
@@ -267,6 +268,120 @@ async fn credentials_are_encrypted_bound_to_instance_and_excluded_from_public_re
     sqlx::query("INSERT INTO notification_instances (id,workspace_id,type_code,display_name,encrypted_secret_json) VALUES ($1,$2,'system','copied',$3)").bind(other_id).bind(workspace.id).bind(encrypted).execute(store.pool()).await.unwrap();
     assert!(store
         .resolve_notification_secret_config(workspace.id, other_id, key)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn notification_managed_secrets_are_workspace_bound_encrypted_and_revision_fenced() {
+    use control_plane::ports::{
+        NotificationRepository, SaveNotificationAuthorizationInput, SaveNotificationInstanceInput,
+    };
+    use extension_contracts::NotificationAuthorizationView;
+    let (store, workspace, _) = super::support::seed_store().await;
+    let now = time::OffsetDateTime::now_utc();
+    let id = Uuid::now_v7();
+    let view: NotificationAuthorizationView =
+        serde_json::from_value(json!({"status":"unauthorized"})).unwrap();
+    store
+        .save_notification_instance(SaveNotificationInstanceInput {
+            record: domain::NotificationInstanceRecord {
+                id,
+                workspace_id: workspace.id,
+                type_code: "fixture/managed/notification".into(),
+                installation_id: Some(Uuid::now_v7()),
+                display_name: "Managed".into(),
+                status: NotificationInstanceStatus::Disabled,
+                config_json: json!({}),
+                configured_secret_fields: vec![],
+                created_at: now,
+                updated_at: now,
+            },
+            secret_config_json: json!({}),
+            master_key: "managed-fixture-key".into(),
+            create: true,
+            initial_authorization: Some(view.clone()),
+        })
+        .await
+        .unwrap();
+    let save = |expected_revision, authorization| SaveNotificationAuthorizationInput {
+        workspace_id: workspace.id,
+        instance_id: id,
+        expected_revision,
+        authorization,
+        managed_secrets: std::collections::BTreeMap::from([(
+            "bot_token".into(),
+            json!("private-managed-bot-token"),
+        )]),
+        master_key: "managed-fixture-key".into(),
+    };
+    let initial = store
+        .resolve_notification_authorization(workspace.id, id, "managed-fixture-key")
+        .await
+        .unwrap();
+    assert_eq!(initial.revision, 0);
+    assert!(initial.managed_secrets.is_empty());
+    let authorized: NotificationAuthorizationView =
+        serde_json::from_value(json!({"status":"authorized"})).unwrap();
+    assert_eq!(
+        store
+            .save_notification_authorization(save(0, authorized.clone()))
+            .await
+            .unwrap(),
+        Some(1)
+    );
+    // CAS rejects stale poll and any unrelated workspace write without replacing a new state.
+    assert!(store
+        .save_notification_authorization(save(0, view))
+        .await
+        .unwrap()
+        .is_none());
+    let mut foreign = save(1, authorized);
+    foreign.workspace_id = Uuid::now_v7();
+    assert!(store
+        .save_notification_authorization(foreign)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .resolve_notification_authorization(Uuid::now_v7(), id, "managed-fixture-key")
+        .await
+        .is_err());
+    assert!(store
+        .resolve_notification_authorization(workspace.id, id, "wrong-master-key")
+        .await
+        .is_err());
+    let restored = store
+        .resolve_notification_authorization(workspace.id, id, "managed-fixture-key")
+        .await
+        .unwrap();
+    assert_eq!(restored.revision, 1);
+    assert_eq!(
+        restored.managed_secrets["bot_token"],
+        "private-managed-bot-token"
+    );
+    let record = store
+        .get_notification_instance(workspace.id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.status, NotificationInstanceStatus::Disabled);
+    assert!(!serde_json::to_string(&record)
+        .unwrap()
+        .contains("private-managed-bot-token"));
+    let cipher: serde_json::Value = sqlx::query_scalar(
+        "SELECT encrypted_managed_secret_json FROM notification_instances WHERE id=$1",
+    )
+    .bind(id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(!cipher.to_string().contains("private-managed-bot-token"));
+    // Moving ciphertext between identity domains cannot recover credentials.
+    let other = Uuid::now_v7();
+    sqlx::query("INSERT INTO notification_instances(id,workspace_id,type_code,display_name,encrypted_managed_secret_json) VALUES($1,$2,'fixture','Other',$3)").bind(other).bind(workspace.id).bind(cipher).execute(store.pool()).await.unwrap();
+    assert!(store
+        .resolve_notification_authorization(workspace.id, other, "managed-fixture-key")
         .await
         .is_err());
 }

@@ -105,6 +105,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.instances.update"
                     | "notifications.instances.delete"
                     | "notifications.instances.send"
+                    | "notifications.instances.authorization"
                     | "ui_management.templates.delete"
                     | "applications.logs.delete"
                     | "departments.delete"

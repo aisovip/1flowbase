@@ -959,6 +959,7 @@ async fn app_and_runtime_host_from_config(
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
     extension_boot_snapshot.publish_complete_catalog(&state)?;
+    managed_composition.refresh_boot_snapshots().await?;
     extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)

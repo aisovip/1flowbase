@@ -31,6 +31,13 @@ pub use extension_contracts::{
     MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_MAX_FRAME_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES,
     STDIO_JSON_MULTIPLEX_V1,
 };
+pub use extension_contracts::{
+    NotificationAuthorizationAction, NotificationAuthorizationActionKind,
+    NotificationAuthorizationDescriptor, NotificationAuthorizationOperation,
+    NotificationAuthorizationStatus, NotificationAuthorizationUserAction,
+    NotificationAuthorizationView, NotificationFailureCode, NotificationOperation,
+    NotificationRuntimeInput, NotificationRuntimeResult, NotificationSendOutcome,
+};
 pub use managed_hook::{
     serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
 };
@@ -38,7 +45,10 @@ pub use multiplex::{
     serve, serve_duplex, serve_duplex_io, serve_io, MultiplexEmitter, MultiplexError,
     MultiplexInput, MultiplexResourceLease,
 };
-pub use notification::execute_notification;
+pub use notification::{
+    complete_authorizable_notification, execute_authorizable_notification, execute_notification,
+    prepare_authorizable_notification,
+};
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
 

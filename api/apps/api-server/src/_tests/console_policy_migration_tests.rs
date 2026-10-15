@@ -806,6 +806,7 @@ fn notification_operations_preserve_authenticated_access_without_legacy_manageme
         "notifications.instances.get",
         "notifications.instances.list",
         "notifications.instances.send",
+        "notifications.instances.authorization",
         "notifications.instances.update",
     ];
     for operation_id in management_operations {
