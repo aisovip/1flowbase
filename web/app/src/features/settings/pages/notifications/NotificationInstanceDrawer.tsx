@@ -69,8 +69,12 @@ export function NotificationInstanceDrawer({
       )
     };
   }, [savedInstance, type, t]);
-  const initialValues = useMemo(
-    () => ({ ...savedInstance?.config_json, ...draftConfig.current }),
+  const initialValues = useMemo<SchemaFormValues>(
+    () => ({
+      // Persisted configuration is JSON consumed by the plugin form schema.
+      ...(savedInstance?.config_json as SchemaFormValues | undefined),
+      ...draftConfig.current
+    }),
     [savedInstance, type, t]
   );
   const unavailable = !!savedInstance && !savedInstance.available;
