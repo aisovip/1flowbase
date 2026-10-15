@@ -359,12 +359,19 @@ where
         runtime_context.operation(),
         domain::AiNativeOperation::Compact(_)
     ) {
-        let attempt_runtimes =
-            llm_request_runtimes(node, runtime, runtime_context, invoker).await?;
+        eprintln!("PROBE-F1 compact-branch:before-runtime-selection-construction");
+        let selection = llm_request_runtimes(node, runtime, runtime_context, invoker);
+        eprintln!(
+            "PROBE-F1 compact-branch:runtime-selection-future-bytes={}",
+            std::mem::size_of_val(&selection)
+        );
+        let attempt_runtimes = selection.await?;
+        eprintln!("PROBE-F1 compact-branch:runtime-selected");
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
-        return execute_compact_consumer(
+        eprintln!("PROBE-F1 compact-branch:before-consumer-construction");
+        let execution = execute_compact_consumer(
             plan,
             node,
             selected_runtime,
@@ -373,8 +380,12 @@ where
             variable_pool,
             runtime_context,
             invoker,
-        )
-        .await;
+        );
+        eprintln!(
+            "PROBE-F1 compact-branch:consumer-future-bytes={}",
+            std::mem::size_of_val(&execution)
+        );
+        return execution.await;
     }
     let routing_probe = match build_provider_invocation(
         plan,
