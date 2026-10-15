@@ -125,7 +125,7 @@ pub(super) fn callback(proof: &Value, output: &Value) -> Value {
     json!({"provider_metadata":{"native_response":{"response_id":"fixture-response","history":proof}},"responses_round":round(proof,output),"tool_calls":[{"id":"call_fixture","name":"exec"}],"history":[{"role":"tool","content":{"history":proof,"user":"keep\0opaque"}}]})
 }
 
-async fn context(
+pub(super) async fn context(
     store: &PgControlPlaneStore,
     flow: &ResponsesHistoryFlowKey,
     content: Value,
@@ -434,6 +434,13 @@ pub(super) fn materialized(
 }
 
 pub(super) async fn durable_state(f: &Fixture) -> Value {
+    durable_flow_state(&f.store, &f.flow).await
+}
+
+pub(super) async fn durable_flow_state(
+    store: &PgControlPlaneStore,
+    flow: &ResponsesHistoryFlowKey,
+) -> Value {
     let mut result = serde_json::Map::new();
     for (table, predicate, order) in [
         ("flow_runs", "t.id=$1", "t.id"),
@@ -467,9 +474,18 @@ pub(super) async fn durable_state(f: &Fixture) -> Value {
         ("flow_run_tool_callback_inbox", "t.flow_run_id=$1", "t.id"),
         ("flow_run_resume_claims", "t.flow_run_id=$1", "t.id"),
         ("runtime_events", "t.flow_run_id=$1", "t.id"),
+        ("client_trajectory_captures", "t.flow_run_id=$1", "t.request_id"),
+        ("client_trajectory_steps", "t.flow_run_id=$1", "t.id"),
+        ("client_trajectory_sections", "t.flow_run_id=$1", "t.event_id"),
+        ("client_trajectory_archive_heads", "t.flow_run_id=$1", "t.request_id"),
+        (
+            "client_trajectory_archive_parts",
+            "t.request_id in (select request_id from client_trajectory_archive_heads where flow_run_id=$1)",
+            "t.part_id",
+        ),
     ] {
         let rows:Value=sqlx::query_scalar(&format!("select coalesce(jsonb_agg(to_jsonb(t) order by {order}),'[]'::jsonb) from {table} t where {predicate}"))
-            .bind(f.flow.flow_run_id).fetch_one(f.store.pool()).await.unwrap();
+            .bind(flow.flow_run_id).fetch_one(store.pool()).await.unwrap();
         result.insert(table.into(), rows);
     }
     Value::Object(result)
@@ -527,4 +543,101 @@ pub(super) async fn provider_observation(
         })
         .await
         .unwrap()
+}
+
+pub(super) async fn original_public_request(
+    store: &PgControlPlaneStore,
+    flow: &ResponsesHistoryFlowKey,
+    body: &Value,
+) -> ClientTrajectorySection {
+    let request_id = Uuid::now_v7();
+    let step_id = Uuid::now_v7();
+    let at = "2026-10-15T01:00:00Z";
+    store
+        .append_client_trajectory(&AppendClientTrajectoryInput {
+            flow_run_id: flow.flow_run_id,
+            node_run_id: None,
+            request_id,
+            observed_at: at.into(),
+            fact: ClientTrajectoryFact::Integrity {
+                status: "complete".into(),
+                dropped_count: 0,
+                persist_failed_count: 0,
+            },
+        })
+        .await
+        .unwrap();
+    store
+        .append_client_trajectory(&AppendClientTrajectoryInput {
+            flow_run_id: flow.flow_run_id,
+            node_run_id: None,
+            request_id,
+            observed_at: at.into(),
+            fact: ClientTrajectoryFact::Step {
+                step: Box::new(ClientTrajectoryStep {
+                    id: step_id,
+                    request_id,
+                    sequence: 1,
+                    created_at: at.into(),
+                    category: "request".into(),
+                    name: "Responses request".into(),
+                    namespace: None,
+                    preview: "submitted before flow failure".into(),
+                    parameters_preview: None,
+                    result_preview: None,
+                    status: "submitted".into(),
+                    origin: "client".into(),
+                    protocol: "responses".into(),
+                    transport: ClientTrajectoryTransport::Http,
+                    flow_run_id: Some(flow.flow_run_id),
+                    node_run_id: None,
+                    parent_id: None,
+                    call_id: None,
+                    item_id: None,
+                    response_id: None,
+                    turn_id: None,
+                    related_step_id: None,
+                    available_sections: vec!["raw".into()],
+                }),
+            },
+        })
+        .await
+        .unwrap();
+    let archived = store
+        .append_client_trajectory_archive(&AppendClientTrajectoryArchiveInput {
+            request_id,
+            part_id: Uuid::now_v7(),
+            transport: ClientTrajectoryTransport::Http,
+            frames: vec![ClientTrajectoryArchiveFrame {
+                sequence: 1,
+                kind: ClientTrajectoryFrameKind::Request,
+                observed_at: at.into(),
+                bytes: serde_json::to_vec(body).unwrap(),
+            }],
+        })
+        .await
+        .unwrap();
+    assert_eq!(archived.persisted_through, 1);
+    let page = store
+        .client_trajectory_page(flow.flow_run_id, None, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, step_id);
+    assert_eq!(page.items[0].request_id, request_id);
+    let raw = store
+        .client_trajectory_section(flow.flow_run_id, None, step_id, "raw", None, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(raw.request_id, request_id);
+    assert_eq!(raw.items.len(), 1);
+    assert_eq!(raw.items[0].sequence, 1);
+    assert_eq!(raw.items[0].value["frame_kind"], "request");
+    assert_eq!(raw.items[0].value["encoding"], "utf8");
+    assert_eq!(
+        serde_json::from_str::<Value>(raw.items[0].value["body"].as_str().unwrap()).unwrap(),
+        *body
+    );
+    raw
 }

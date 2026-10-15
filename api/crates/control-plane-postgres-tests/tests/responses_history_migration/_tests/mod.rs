@@ -812,3 +812,256 @@ async fn provider_only_context_is_opaque_to_host_document_migration() {
     assert_eq!(untouched.contexts, invalid.contexts);
     assert_eq!(untouched.checkpoints, invalid.checkpoints);
 }
+
+#[tokio::test]
+async fn failed_flow_original_public_request_migrates_only_input_slots_and_rolls_back() {
+    for version in [1, 2] {
+        let (store, flow) = seed().await;
+        let user = json!({"role":"user","content":"failed request\0original","extension":{"n":9007199254740993i64}});
+        let mut accumulator = migration::MigrationAccumulator::new(version).unwrap();
+        accumulator.append(&user).unwrap();
+        let old = accumulator.snapshot().old();
+        let input = json!({"sys":{"responses_input_history":old},"user":{"raw":"input\0keep","history":old}});
+        let pool = json!({"sys":{"responses_input_history":old},"user":{"checkpoint":"keep\0raw","history":old}});
+        store
+            .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+                flow_run_id: flow.flow_run_id,
+                input_payload: input.clone(),
+                output_payload: json!({"user":"no response was produced"}),
+                error_payload: Some(json!({"message":"provider admission failed"})),
+            })
+            .await
+            .unwrap();
+        let original = context(
+            &store,
+            &flow,
+            json!({"format":"runtime_snapshot_v1","variable_pool":pool}),
+            None,
+        )
+        .await;
+        store
+            .create_checkpoint(&CreateCheckpointInput {
+                flow_run_id: flow.flow_run_id,
+                node_run_id: None,
+                status: "paused".into(),
+                reason: "input persisted before provider failure".into(),
+                locator_payload: json!({"context_version_id":original.id,"opaque":"locator\0keep"}),
+                variable_snapshot: json!({"__runtime_recovery_context":{"context_version_id":original.id,"sequence":original.sequence}}),
+                external_ref_payload: None,
+            })
+            .await
+            .unwrap();
+        sqlx::query("update flow_runs set status='failed' where id=$1")
+            .bind(flow.flow_run_id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        // The only original is a durable client request. No provider observation,
+        // emitted response, completion round, or capsule is required for input.
+        let raw = original_public_request(
+            &store,
+            &flow,
+            &json!({"model":"unavailable-model","input":[user]}),
+        )
+        .await;
+        let before = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+        assert_eq!(before.status, domain::FlowRunStatus::Failed);
+        assert!(before.continuations.is_empty());
+        let inspection = migration::inspect_flow(&before).unwrap();
+        assert_eq!(inspection.request_input_histories, vec![old.clone()]);
+        assert!(inspection.full_source_required_proofs.is_empty());
+        assert!(inspection.public_rounds.is_empty());
+        let targets = [migration::ScopedHistoryTarget {
+            flow_run_id: flow.flow_run_id,
+            proof: old.clone(),
+        }];
+        let mut graph =
+            migration::HistorySourceGraph::with_request_input_targets(&[], &targets).unwrap();
+        graph
+            .push_public_request_input(
+                flow.flow_run_id,
+                raw.request_id,
+                raw.items[0].sequence,
+                &raw.items[0].value,
+            )
+            .unwrap();
+        let resolved = graph.resolve().unwrap();
+        assert!(resolved.unresolved_targets.is_empty() && resolved.unresolved_sources.is_empty());
+        assert_eq!(resolved.verified.len(), 1);
+        let receipt = &resolved.verified[0];
+        assert_eq!(receipt.coverage(), migration::SourceCoverage::RequestInput);
+        assert_eq!(receipt.source().flow_run_id, flow.flow_run_id);
+        assert_eq!(receipt.source().source_id, raw.request_id);
+        assert_eq!(receipt.source().sequence, Some(raw.items[0].sequence));
+        assert!(receipt.source().completion_source_id.is_none());
+        let current = receipt.replacement().current();
+
+        // Same digest does not turn input evidence into authority for an output.
+        store
+            .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+                flow_run_id: flow.flow_run_id,
+                input_payload: input.clone(),
+                output_payload: json!({"responses_round":{"response_id":"controlled-non-input-owner","history":old,"output":[]},"user":"controlled non-input owner"}),
+                error_payload: Some(json!({"message":"provider admission failed"})),
+            })
+            .await
+            .unwrap();
+        let mixed = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+        let mixed_inspection = migration::inspect_flow(&mixed).unwrap();
+        assert_eq!(mixed_inspection.request_input_histories, vec![old.clone()]);
+        assert_eq!(
+            mixed_inspection.full_source_required_proofs,
+            vec![old.clone()]
+        );
+        let mut mixed_graph =
+            migration::HistorySourceGraph::with_request_input_targets(&targets, &targets).unwrap();
+        mixed_graph
+            .push_public_request_input(
+                flow.flow_run_id,
+                raw.request_id,
+                raw.items[0].sequence,
+                &raw.items[0].value,
+            )
+            .unwrap();
+        let unresolved = mixed_graph.resolve().unwrap();
+        assert_eq!(unresolved.unresolved_targets.len(), 1);
+        assert_eq!(unresolved.unresolved_targets[0].proof, old);
+        assert_eq!(unresolved.verified.len(), 1);
+        assert_eq!(
+            unresolved.verified[0].coverage(),
+            migration::SourceCoverage::RequestInput
+        );
+        let unchanged = durable_flow_state(&store, &flow).await;
+        assert!(migration::build_plan(&mixed, &resolved.verified).is_err());
+        assert!(
+            migration::apply_verified_flow(&store, &mixed, &resolved.verified, KEY)
+                .await
+                .is_err()
+        );
+        assert_eq!(durable_flow_state(&store, &flow).await, unchanged);
+        let original_output = before
+            .documents
+            .iter()
+            .find(|d| d.owner == ResponsesHistoryDocumentOwner::FlowOutput)
+            .unwrap()
+            .value
+            .clone();
+        store
+            .update_flow_run_payloads(&UpdateFlowRunPayloadsInput {
+                flow_run_id: flow.flow_run_id,
+                input_payload: input.clone(),
+                output_payload: original_output,
+                error_payload: Some(json!({"message":"provider admission failed"})),
+            })
+            .await
+            .unwrap();
+        let before = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+        let plan = migration::build_plan(&before, &resolved.verified).unwrap();
+        assert_eq!(plan.documents.len(), 1);
+        assert_eq!(
+            plan.documents[0].owner,
+            ResponsesHistoryDocumentOwner::FlowInput
+        );
+        assert_eq!(plan.contexts.len(), 1);
+        assert_eq!(plan.checkpoints.len(), 1);
+        let before_state = durable_flow_state(&store, &flow).await;
+        let applied = migration::apply_verified_flow(&store, &before, &resolved.verified, KEY)
+            .await
+            .unwrap();
+        let after = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+        assert_eq!(after.status, domain::FlowRunStatus::Failed);
+        for document in before
+            .documents
+            .iter()
+            .filter(|d| d.owner != ResponsesHistoryDocumentOwner::FlowInput)
+        {
+            assert_eq!(
+                after
+                    .documents
+                    .iter()
+                    .find(|d| d.owner == document.owner)
+                    .unwrap(),
+                document
+            );
+        }
+        let after_state = durable_flow_state(&store, &flow).await;
+        for owner in [
+            "client_trajectory_captures",
+            "client_trajectory_steps",
+            "client_trajectory_sections",
+            "client_trajectory_archive_heads",
+            "client_trajectory_archive_parts",
+            "runtime_events",
+            "runtime_invocation_context_bindings",
+            "flow_run_recovery_history",
+            "provider_protocol_capsules",
+        ] {
+            assert_eq!(
+                after_state[owner], before_state[owner],
+                "input migration must preserve {owner}"
+            );
+        }
+        assert_eq!(
+            after_state["flow_runs"][0]["error_payload"],
+            before_state["flow_runs"][0]["error_payload"]
+        );
+        let mut expected_input = input.clone();
+        expected_input["sys"]["responses_input_history"] = current.clone();
+        assert_eq!(
+            after
+                .documents
+                .iter()
+                .find(|d| d.owner == ResponsesHistoryDocumentOwner::FlowInput)
+                .unwrap()
+                .value,
+            expected_input
+        );
+        let mut expected_pool = pool.clone();
+        expected_pool["sys"]["responses_input_history"] = current.clone();
+        assert_eq!(materialized(&after, &after.checkpoints[0]), expected_pool);
+        assert_eq!(
+            migration::inspect_flow(&after)
+                .unwrap()
+                .request_input_histories,
+            vec![current]
+        );
+        assert_eq!(
+            after
+                .contexts
+                .iter()
+                .find(|c| c.identity.context_version_id == original.id)
+                .unwrap()
+                .content,
+            before.contexts[0].content
+        );
+        store
+            .rollback_responses_history_migration(&applied, KEY)
+            .await
+            .unwrap();
+        let restored = store.load_responses_history_flow(&flow, KEY).await.unwrap();
+        assert_eq!(restored.status, before.status);
+        assert_eq!(restored.documents, before.documents);
+        assert_eq!(restored.checkpoints, before.checkpoints);
+        let restoration = restored.contexts.last().unwrap();
+        assert_eq!(restoration.content, before.contexts[0].content);
+        assert_eq!(
+            restoration.previous_projection_id,
+            before.contexts[0].previous_projection_id
+        );
+        let state = durable_flow_state(&store, &flow).await;
+        store
+            .rollback_responses_history_migration(&applied, KEY)
+            .await
+            .unwrap();
+        assert_eq!(durable_flow_state(&store, &flow).await, state);
+        let raw_after = store
+            .client_trajectory_section(flow.flow_run_id, None, raw.step_id, "raw", None, 1)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(raw_after).unwrap(),
+            serde_json::to_value(raw).unwrap()
+        );
+    }
+}

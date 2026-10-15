@@ -671,3 +671,6 @@ fn cross_flow_prefix_is_owned_only_after_an_original_explicit_cursor_request() {
     );
     assert_eq!(receipt.replacement().current(), current_a);
 }
+
+#[path = "request_input.rs"]
+mod request_input;

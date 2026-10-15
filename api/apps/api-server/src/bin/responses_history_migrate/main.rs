@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
         &json!({
             "database": database, "scope_id": options.scope, "application_id": options.application,
             "apply": options.apply, "process_id": std::process::id(),
+            "excluded_flows": options.excluded_flows,
         }),
     )?;
     let repository = PgControlPlaneStore::new(pool.clone());
@@ -63,17 +64,40 @@ async fn main() -> Result<()> {
             None => break,
         }
     }
+    options.validate_exclusions(flows.iter().map(|flow| flow.flow_run_id))?;
+    let all_flows = flows;
+    let flows: Vec<_> = all_flows
+        .iter()
+        .filter(|flow| !options.excluded_flows.contains(&flow.flow_run_id))
+        .copied()
+        .collect();
     let mut proofs = BTreeMap::<(uuid::Uuid, u64, u64, String), ScopedHistoryTarget>::new();
+    let mut full_targets = Vec::new();
+    let mut input_targets = Vec::new();
     let mut versions = BTreeMap::<u64, usize>::new();
     for flow in &flows {
         let snapshot = repository
             .load_responses_history_flow(flow, &key)
             .await
             .with_context(|| format!("inventory load flow {}", flow.flow_run_id))?;
-        for proof in inspect_flow(&snapshot)
-            .with_context(|| format!("inventory inspect flow {}", flow.flow_run_id))?
-            .proofs
-        {
+        let inspection = inspect_flow(&snapshot)
+            .with_context(|| format!("inventory inspect flow {}", flow.flow_run_id))?;
+        full_targets.extend(
+            inspection
+                .full_source_required_proofs
+                .into_iter()
+                .map(|proof| ScopedHistoryTarget {
+                    flow_run_id: flow.flow_run_id,
+                    proof,
+                }),
+        );
+        input_targets.extend(inspection.request_input_histories.into_iter().map(|proof| {
+            ScopedHistoryTarget {
+                flow_run_id: flow.flow_run_id,
+                proof,
+            }
+        }));
+        for proof in inspection.proofs {
             *versions
                 .entry(
                     proof["version"]
@@ -105,11 +129,14 @@ async fn main() -> Result<()> {
     private_files::write_json(
         &options.output.join("inventory.json"),
         &json!({
-            "flows": flows.len(), "versions": versions, "distinct_proofs": proofs.len(),
+            "flows": flows.len(), "enumerated_flows": all_flows.len(),
+            "excluded_flows": options.excluded_flows,
+            "versions": versions, "distinct_proofs": proofs.len(),
         }),
     )?;
-    let mut graph = HistorySourceGraph::new(&proofs.into_values().collect::<Vec<_>>())?;
-    for flow in flows
+    let mut graph = HistorySourceGraph::with_request_input_targets(&full_targets, &input_targets)?;
+    // Excluded records remain read-only source candidates for legitimate chains.
+    for flow in all_flows
         .iter()
         .filter(|_| versions.keys().any(|version| *version != 3))
     {
@@ -168,11 +195,13 @@ async fn main() -> Result<()> {
     if !options.apply {
         private_files::write_json(
             &options.output.join("complete.json"),
-            &json!({"mode":"dry-run", "migration_flows":planned.len()}),
+            &json!({"mode":"dry-run", "migration_flows":planned.len(), "excluded_flows":options.excluded_flows}),
         )?;
         return Ok(());
     }
-    private_files::backup_database(&options.output, &url)?;
+    if !planned.is_empty() {
+        private_files::backup_database(&options.output, &url)?;
+    }
     let mut receipts: Vec<ResponsesHistoryMigrationReceipt> = Vec::new();
     let applied: Result<()> = async {
         for flow in &planned {
@@ -218,7 +247,7 @@ async fn main() -> Result<()> {
         }
         private_files::write_json(
             &options.output.join("complete.json"),
-            &json!({"mode":"apply", "migration_flows":receipts.len()}),
+            &json!({"mode":"apply", "migration_flows":receipts.len(), "excluded_flows":options.excluded_flows}),
         )?;
         Ok(())
     }

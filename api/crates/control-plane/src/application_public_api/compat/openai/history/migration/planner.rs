@@ -9,10 +9,11 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{History, SourcedReplacement};
+use super::{History, SourceCoverage, SourcedReplacement};
 
+const REQUEST_INPUT_PROOF: &str = "/sys/responses_input_history";
 const SYS_PROOFS: &[&str] = &[
-    "/sys/responses_input_history",
+    REQUEST_INPUT_PROOF,
     "/sys/native_inference_recovery/history",
 ];
 const CALLBACK_PROOFS: &[&str] = &[
@@ -30,6 +31,11 @@ pub struct FlowInspection {
     /// All deduplicated valid owned proofs, including current format, for inventory.
     /// Null/absent leaves are not proofs and require no conversion.
     pub proofs: Vec<Value>,
+    /// Exact host-owned request-input slots in FlowInput and checkpoint sys copies.
+    pub request_input_histories: Vec<Value>,
+    /// Every proof with at least one owned occurrence outside the input contract.
+    /// A value may also occur in request_input_histories and still require full source.
+    pub full_source_required_proofs: Vec<Value>,
     /// Actual persisted round output, in its original order, from owned locations.
     pub public_rounds: Vec<ResponsesRoundEvidence>,
 }
@@ -65,18 +71,28 @@ fn document_paths(owner: ResponsesHistoryDocumentOwner) -> &'static [&'static st
 fn visit_paths(
     value: &Value,
     paths: &[&str],
-    visitor: &mut impl FnMut(&Value) -> Result<()>,
+    visitor: &mut impl FnMut(&Value, SourceCoverage) -> Result<()>,
 ) -> Result<()> {
     for path in paths {
         if let Some(proof) = value.pointer(path).filter(|proof| !proof.is_null()) {
             parse_proof(proof).with_context(|| format!("owned proof location {path}"))?;
-            visitor(proof)?;
+            visitor(
+                proof,
+                if *path == REQUEST_INPUT_PROOF {
+                    SourceCoverage::RequestInput
+                } else {
+                    SourceCoverage::FullHistory
+                },
+            )?;
         }
     }
     Ok(())
 }
 
-fn visit_pool(pool: &Value, visitor: &mut impl FnMut(&Value) -> Result<()>) -> Result<()> {
+fn visit_pool(
+    pool: &Value,
+    visitor: &mut impl FnMut(&Value, SourceCoverage) -> Result<()>,
+) -> Result<()> {
     let object = pool
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("responses_history_checkpoint_pool_invalid"))?;
@@ -241,7 +257,7 @@ fn validate_graph(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<BTreeSet<Uu
 
 fn visit_node(
     node: &Value,
-    visitor: &mut impl FnMut(&Value) -> Result<()>,
+    visitor: &mut impl FnMut(&Value, SourceCoverage) -> Result<()>,
     rounds: &mut Vec<ResponsesRoundEvidence>,
 ) -> Result<()> {
     // Only reserved callback state is recovery-owned. Direct node output fields
@@ -255,7 +271,7 @@ fn visit_node(
 
 fn visit_context(
     content: &Value,
-    visitor: &mut impl FnMut(&Value) -> Result<()>,
+    visitor: &mut impl FnMut(&Value, SourceCoverage) -> Result<()>,
     rounds: &mut Vec<ResponsesRoundEvidence>,
 ) -> Result<()> {
     match content.get("format").and_then(Value::as_str) {
@@ -312,10 +328,21 @@ fn context_appends(content: &Value) -> Result<&[Value]> {
 pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspection> {
     let checkpoint_contexts = validate_graph(snapshot)?;
     let mut proofs = BTreeMap::new();
+    let mut request_input_histories = BTreeMap::new();
+    let mut full_source_required_proofs = BTreeMap::new();
     let mut rounds = Vec::new();
-    let mut collect = |value: &Value| -> Result<()> {
+    let mut collect = |value: &Value, coverage: SourceCoverage| -> Result<()> {
         let proof = parse_proof(value)?;
-        proofs.insert(proof_key(&proof), value.clone());
+        let key = proof_key(&proof);
+        proofs.insert(key.clone(), value.clone());
+        match coverage {
+            SourceCoverage::RequestInput => {
+                request_input_histories.insert(key, value.clone());
+            }
+            SourceCoverage::FullHistory => {
+                full_source_required_proofs.insert(key, value.clone());
+            }
+        }
         Ok(())
     };
     for document in &snapshot.documents {
@@ -359,6 +386,8 @@ pub fn inspect_flow(snapshot: &ResponsesHistoryFlowSnapshot) -> Result<FlowInspe
     }
     Ok(FlowInspection {
         proofs: proofs.into_values().collect(),
+        request_input_histories: request_input_histories.into_values().collect(),
+        full_source_required_proofs: full_source_required_proofs.into_values().collect(),
         public_rounds: rounds,
     })
 }
@@ -375,11 +404,11 @@ pub fn public_rounds(
     Ok(inspect_flow(snapshot)?.public_rounds)
 }
 
-struct Replacements(BTreeMap<ProofKey, (Value, Value)>);
+struct Replacements(BTreeMap<ProofKey, (Value, Value, SourceCoverage)>);
 
 impl Replacements {
     fn new(flow_run_id: Uuid, verified: &[SourcedReplacement]) -> Result<Self> {
-        let mut replacements = BTreeMap::new();
+        let mut replacements = BTreeMap::<ProofKey, (Value, Value, SourceCoverage)>::new();
         for sourced in verified {
             if sourced.source.flow_run_id != flow_run_id {
                 continue;
@@ -397,13 +426,16 @@ impl Replacements {
                 "responses_history_replacement_current_invalid"
             );
             let key = proof_key(&parsed);
-            if let Some(existing) = replacements.get(&key) {
+            if let Some((existing_old, existing_current, coverage)) = replacements.get_mut(&key) {
                 ensure!(
-                    existing == &(old.clone(), current.clone()),
+                    &*existing_old == &old && &*existing_current == &current,
                     "responses_history_replacement_ambiguous"
                 );
+                if sourced.coverage() == SourceCoverage::FullHistory {
+                    *coverage = SourceCoverage::FullHistory;
+                }
             } else {
-                replacements.insert(key, (old, current));
+                replacements.insert(key, (old, current, sourced.coverage()));
             }
         }
         Ok(Self(replacements))
@@ -419,9 +451,13 @@ impl Replacements {
             if parsed.version == 3 {
                 continue;
             }
-            let (old, current) = self.0.get(&proof_key(&parsed)).ok_or_else(|| {
+            let (old, current, coverage) = self.0.get(&proof_key(&parsed)).ok_or_else(|| {
                 anyhow::anyhow!("responses_history_verified_replacement_missing:{path}")
             })?;
+            ensure!(
+                *coverage == SourceCoverage::FullHistory || *path == REQUEST_INPUT_PROOF,
+                "responses_history_full_source_required:{path}"
+            );
             ensure!(
                 &*proof == old,
                 "responses_history_verified_replacement_mismatch"

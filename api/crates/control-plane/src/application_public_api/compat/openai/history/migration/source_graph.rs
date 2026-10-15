@@ -43,15 +43,28 @@ pub struct ScopedHistoryTarget {
     pub proof: Value,
 }
 
+/// Request input attests only the host-owned sys.responses_input_history slot.
+/// Full history additionally requires the existing completed-source guards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceCoverage {
+    FullHistory,
+    RequestInput,
+}
+
 /// Source ownership is established only by the graph. External callers cannot
 /// construct or relabel this receipt from a naked verified hash pair.
 #[derive(Serialize)]
 pub struct SourcedReplacement {
     pub(super) replacement: VerifiedReplacement,
     pub(super) source: SourceLocator,
+    pub(super) coverage: SourceCoverage,
 }
 
 impl SourcedReplacement {
+    pub fn coverage(&self) -> SourceCoverage {
+        self.coverage
+    }
     pub fn replacement(&self) -> &VerifiedReplacement {
         &self.replacement
     }
@@ -91,6 +104,7 @@ type ResponseKey = (SourceNamespace, String);
 /// Only forward dependencies retain their raw source group until a later flush.
 pub struct HistorySourceGraph {
     targets: BTreeMap<ScopedProofKey, Value>,
+    request_input_targets: BTreeMap<ScopedProofKey, Value>,
     verified: BTreeMap<ScopedProofKey, SourcedReplacement>,
     active_native: BTreeMap<(Uuid, Uuid), NativeGroup>,
     native_sequence: BTreeMap<(Uuid, Uuid), i64>,
@@ -118,17 +132,64 @@ fn key(history: &History) -> ProofKey {
     (history.version, history.item_count, history.digest.clone())
 }
 
-impl HistorySourceGraph {
-    pub fn new(targets: &[ScopedHistoryTarget]) -> Result<Self> {
-        let mut legacy_targets = BTreeMap::new();
-        for target in targets {
-            let parsed = parse_proof(&target.proof)?;
-            if parsed.version != 3 {
-                legacy_targets.insert((target.flow_run_id, key(&parsed)), target.proof.clone());
+fn parse_targets(targets: &[ScopedHistoryTarget]) -> Result<BTreeMap<ScopedProofKey, Value>> {
+    let mut parsed_targets = BTreeMap::new();
+    for target in targets {
+        let parsed = parse_proof(&target.proof)?;
+        if parsed.version != 3 {
+            parsed_targets.insert((target.flow_run_id, key(&parsed)), target.proof.clone());
+        }
+    }
+    Ok(parsed_targets)
+}
+
+fn decode_public_request(original_frame: &Value) -> Result<Value> {
+    ensure!(
+        original_frame["frame_kind"] == "request",
+        "history_source_request_frame_required"
+    );
+    let encoded = original_frame["body"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("history_source_request_body_missing"))?;
+    let bytes = match original_frame["encoding"].as_str() {
+        Some("utf8") => encoded.as_bytes().to_vec(),
+        Some("base64") => STANDARD.decode(encoded)?,
+        _ => anyhow::bail!("history_source_request_encoding_invalid"),
+    };
+    let body: Value = serde_json::from_slice(&bytes)?;
+    ensure!(body.is_object(), "history_source_request_body_invalid");
+    Ok(body)
+}
+
+fn for_request_input(body: &Value, mut append: impl FnMut(&Value) -> Result<()>) -> Result<()> {
+    match body.get("input") {
+        Some(Value::Array(items)) => {
+            for item in items {
+                append(item)?;
             }
         }
+        Some(Value::String(text)) => append(
+            &serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":text}]}),
+        )?,
+        _ => anyhow::bail!("history_source_input_missing"),
+    }
+    Ok(())
+}
+
+impl HistorySourceGraph {
+    pub fn new(targets: &[ScopedHistoryTarget]) -> Result<Self> {
+        Self::with_request_input_targets(targets, &[])
+    }
+
+    /// Classify target occurrences by their actual durable owner. A proof present
+    /// in both sets still requires full source for its non-input occurrences.
+    pub fn with_request_input_targets(
+        full_targets: &[ScopedHistoryTarget],
+        request_input_targets: &[ScopedHistoryTarget],
+    ) -> Result<Self> {
         Ok(Self {
-            targets: legacy_targets,
+            targets: parse_targets(full_targets)?,
+            request_input_targets: parse_targets(request_input_targets)?,
             verified: BTreeMap::new(),
             active_native: BTreeMap::new(),
             native_sequence: BTreeMap::new(),
@@ -137,6 +198,115 @@ impl HistorySourceGraph {
             failed: Vec::new(),
             poisoned: false,
         })
+    }
+
+    /// Attest the entire original public request input only. No output, completion
+    /// or response alias is inferred. Invalid candidates leave compact rejection
+    /// evidence; they never mint a receipt or resolve a full-history obligation.
+    pub fn push_public_request_input(
+        &mut self,
+        flow_run_id: Uuid,
+        request_id: Uuid,
+        frame_sequence: i64,
+        original_frame: &Value,
+    ) -> Result<()> {
+        ensure!(!self.poisoned, "history_source_graph_poisoned");
+        let source = SourceLocator {
+            namespace: SourceNamespace::Public,
+            flow_run_id,
+            node_run_id: None,
+            source_id: request_id,
+            sequence: Some(frame_sequence),
+            completion_source_id: None,
+            invocation_id: None,
+            provider_attempt_index: None,
+            response_id: None,
+        };
+        let receipts = match self.prove_request_input(&source, original_frame) {
+            Ok(receipts) => receipts,
+            Err(error) => {
+                self.failed.push(UnresolvedSource {
+                    source,
+                    reason: error.to_string(),
+                });
+                return Ok(());
+            }
+        };
+        for (key, receipt) in receipts {
+            self.record_receipt(key, receipt)?;
+        }
+        Ok(())
+    }
+
+    fn prove_request_input(
+        &self,
+        source: &SourceLocator,
+        original_frame: &Value,
+    ) -> Result<Vec<(ScopedProofKey, SourcedReplacement)>> {
+        ensure!(
+            original_frame
+                .get("sequence")
+                .is_none_or(|sequence| sequence.as_i64() == source.sequence),
+            "history_source_request_sequence_mismatch"
+        );
+        let body = decode_public_request(original_frame)?;
+        ensure!(
+            !body
+                .get("previous_response_id")
+                .is_some_and(|id| !id.is_null()),
+            "history_source_request_input_cursor_unsupported"
+        );
+        let mut states = [MigrationAccumulator::new(1)?, MigrationAccumulator::new(2)?];
+        for_request_input(&body, |item| {
+            for state in &mut states {
+                state.append(item)?;
+            }
+            Ok(())
+        })?;
+        let mut receipts = Vec::new();
+        // Match only after the complete input. Intermediate prefixes and any
+        // output-like envelope fields are deliberately not evidence here.
+        for state in &states {
+            let key = (
+                source.flow_run_id,
+                (
+                    state.old.version,
+                    state.old.item_count,
+                    state.old.digest.clone(),
+                ),
+            );
+            if let Some(target) = self.request_input_targets.get(&key) {
+                receipts.push((
+                    key,
+                    SourcedReplacement {
+                        replacement: state.verify(target)?,
+                        source: source.clone(),
+                        coverage: SourceCoverage::RequestInput,
+                    },
+                ));
+            }
+        }
+        ensure!(
+            !receipts.is_empty(),
+            "history_source_request_input_target_mismatch"
+        );
+        Ok(receipts)
+    }
+
+    fn record_receipt(&mut self, key: ScopedProofKey, receipt: SourcedReplacement) -> Result<()> {
+        if let Some(previous) = self.verified.get(&key) {
+            if previous.replacement.current() != receipt.replacement.current() {
+                self.poisoned = true;
+                anyhow::bail!("history_source_replacement_ambiguous");
+            }
+            if previous.coverage == SourceCoverage::FullHistory
+                || receipt.coverage == SourceCoverage::RequestInput
+            {
+                return Ok(());
+            }
+        }
+        self.verified.insert(key, receipt);
+        Ok(())
     }
 
     /// Original runtime_event_original_payload, in increasing sequence per node.
@@ -196,20 +366,7 @@ impl HistorySourceGraph {
         round: &ResponsesRoundEvidence,
     ) -> Result<()> {
         ensure!(!self.poisoned, "history_source_graph_poisoned");
-        ensure!(
-            original_frame["frame_kind"] == "request",
-            "history_source_request_frame_required"
-        );
-        let encoded = original_frame["body"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("history_source_request_body_missing"))?;
-        let bytes = match original_frame["encoding"].as_str() {
-            Some("utf8") => encoded.as_bytes().to_vec(),
-            Some("base64") => STANDARD.decode(encoded)?,
-            _ => anyhow::bail!("history_source_request_encoding_invalid"),
-        };
-        let body: Value = serde_json::from_slice(&bytes)?;
-        ensure!(body.is_object(), "history_source_request_body_invalid");
+        let body = decode_public_request(original_frame)?;
         ensure!(
             !round.response_id.is_empty(),
             "history_source_response_id_missing"
@@ -259,14 +416,7 @@ impl HistorySourceGraph {
                             }
                         }
                         for (key, receipt) in receipts {
-                            if let Some(previous) = self.verified.get(&key) {
-                                if previous.replacement.current() != receipt.replacement.current() {
-                                    self.poisoned = true;
-                                    anyhow::bail!("history_source_replacement_ambiguous");
-                                }
-                            } else {
-                                self.verified.insert(key, receipt);
-                            }
+                            self.record_receipt(key, receipt)?;
                         }
                         // The complete raw group is dropped here. Only hashes and
                         // compact verified locators survive successful resolution.
@@ -309,10 +459,23 @@ impl HistorySourceGraph {
                 ),
             });
         }
-        let unresolved_targets = self
-            .targets
+        let mut unresolved = BTreeMap::new();
+        for (key, proof) in self.targets {
+            if !self
+                .verified
+                .get(&key)
+                .is_some_and(|receipt| receipt.coverage == SourceCoverage::FullHistory)
+            {
+                unresolved.insert(key, proof);
+            }
+        }
+        for (key, proof) in self.request_input_targets {
+            if !self.verified.contains_key(&key) {
+                unresolved.insert(key, proof);
+            }
+        }
+        let unresolved_targets = unresolved
             .into_iter()
-            .filter(|(key, _)| !self.verified.contains_key(key))
             .map(|((flow_run_id, _), proof)| ScopedHistoryTarget { flow_run_id, proof })
             .collect();
         Ok(SourceGraphResolution {
@@ -344,15 +507,9 @@ impl HistorySourceGraph {
         };
         let mut receipts = Vec::new();
         self.match_prefix(&states, &group.source, &mut receipts)?;
-        match group.body.get("input") {
-            Some(Value::Array(items)) => {
-                for item in items { self.append_source(&mut states, item, &group.source, &mut receipts)?; }
-            }
-            Some(Value::String(text)) => self.append_source(&mut states,
-                &serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":text}]}),
-                &group.source, &mut receipts)?,
-            _ => anyhow::bail!("history_source_input_missing"),
-        }
+        for_request_input(&group.body, |item| {
+            self.append_source(&mut states, item, &group.source, &mut receipts)
+        })?;
         for item in &group.output {
             self.append_source(&mut states, item, &group.source, &mut receipts)?;
         }
@@ -398,12 +555,17 @@ impl HistorySourceGraph {
                     state.old.digest.clone(),
                 ),
             );
-            if let Some(target) = self.targets.get(&key) {
+            if let Some(target) = self
+                .targets
+                .get(&key)
+                .or_else(|| self.request_input_targets.get(&key))
+            {
                 receipts.push((
                     key,
                     SourcedReplacement {
                         replacement: state.verify(target)?,
                         source: source.clone(),
+                        coverage: SourceCoverage::FullHistory,
                     },
                 ));
             }

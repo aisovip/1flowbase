@@ -53,3 +53,23 @@ fn protected_database_and_duplicate_options_are_rejected() {
     assert!(Options::parse(values).is_err());
     assert!(Options::parse(args(&["--database", "other"])).is_err());
 }
+
+#[test]
+fn exclusions_are_explicit_unique_and_scoped() {
+    let first = "00000000-0000-0000-0000-000000000003";
+    let second = "00000000-0000-0000-0000-000000000004";
+    let options =
+        Options::parse(args(&["--exclude-flow", first, "--exclude-flow", second])).unwrap();
+    assert_eq!(options.excluded_flows.len(), 2);
+    assert!(options
+        .validate_exclusions([first.parse().unwrap(), second.parse().unwrap()].into_iter())
+        .is_ok());
+    assert!(options
+        .validate_exclusions([first.parse().unwrap()].into_iter())
+        .is_err());
+    assert!(options.validate_exclusions(std::iter::empty()).is_err());
+    assert!(Options::parse(args(&[])).unwrap().excluded_flows.is_empty());
+    assert!(Options::parse(args(&["--exclude-flow", first, "--exclude-flow", first])).is_err());
+    assert!(Options::parse(args(&["--exclude-flow", "invalid"])).is_err());
+    assert!(Options::parse(args(&["--exclude-flow"])).is_err());
+}

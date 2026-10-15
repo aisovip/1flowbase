@@ -17,6 +17,7 @@ fn fixture() -> (Value, Value, Vec<SourcedReplacement>) {
     let current = state.snapshot().current();
     let sourced = SourcedReplacement {
         replacement: state.verify(&old).unwrap(),
+        coverage: super::super::SourceCoverage::FullHistory,
         source: SourceLocator {
             namespace: SourceNamespace::Native,
             flow_run_id: Uuid::from_u128(1),
@@ -867,3 +868,6 @@ fn opaque_contexts_still_require_valid_topology_and_latest_identity() {
     assert!(inspect_flow(&snapshot).is_err());
     assert!(build_plan(&snapshot, &[]).is_err());
 }
+
+#[path = "request_input.rs"]
+mod request_input;

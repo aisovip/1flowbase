@@ -171,8 +171,8 @@ mod tests;
 #[path = "migration/source_graph.rs"]
 mod source_graph;
 pub use source_graph::{
-    HistorySourceGraph, ScopedHistoryTarget, SourceGraphResolution, SourceLocator, SourceNamespace,
-    SourcedReplacement, UnresolvedSource,
+    HistorySourceGraph, ScopedHistoryTarget, SourceCoverage, SourceGraphResolution, SourceLocator,
+    SourceNamespace, SourcedReplacement, UnresolvedSource,
 };
 
 /// Reuse the runtime checkpoint materializer. The returned pool retains the

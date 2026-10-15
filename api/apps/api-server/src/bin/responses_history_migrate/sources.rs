@@ -47,7 +47,11 @@ pub async fn feed(
         }
     }
     graph.finish_native_flow(flow.flow_run_id)?;
-    if inspection.public_rounds.is_empty() {
+    let has_request_input_targets = inspection
+        .request_input_histories
+        .iter()
+        .any(|proof| proof["version"] != 3);
+    if inspection.public_rounds.is_empty() && !has_request_input_targets {
         return Ok(());
     }
     let mut cursor = None;
@@ -74,11 +78,23 @@ pub async fn feed(
                 let Some(section) = section else {
                     break;
                 };
+                ensure!(
+                    section.step_id == step.id && section.request_id == step.request_id,
+                    "original request section ownership mismatch"
+                );
                 for mut item in section.items {
                     if item.value["frame_kind"] != "request" {
                         continue;
                     }
                     item.value["sequence"] = serde_json::json!(item.sequence);
+                    if has_request_input_targets {
+                        graph.push_public_request_input(
+                            flow.flow_run_id,
+                            section.request_id,
+                            item.sequence,
+                            &item.value,
+                        )?;
+                    }
                     // Same-flow requests are candidates, never assumed associations.
                     // The graph publishes prefixes only after the complete persisted
                     // round proof matches. Failed candidates remain in its report.

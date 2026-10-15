@@ -1,5 +1,8 @@
 use anyhow::{bail, ensure, Context, Result};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 use uuid::Uuid;
 
 pub struct Options {
@@ -9,6 +12,7 @@ pub struct Options {
     pub output: PathBuf,
     pub page_size: u32,
     pub apply: bool,
+    pub excluded_flows: BTreeSet<Uuid>,
 }
 
 impl Options {
@@ -16,16 +20,21 @@ impl Options {
         let mut values = BTreeMap::new();
         let mut apply = false;
         let mut stopped = false;
+        let mut excluded_flows = BTreeSet::new();
         let mut args = args;
         while let Some(arg) = args.next() {
             match arg.as_str() {
+                "--exclude-flow" => {
+                    let flow = args.next().context("missing excluded flow UUID")?.parse()?;
+                    ensure!(excluded_flows.insert(flow), "duplicate excluded flow");
+                }
                 "--apply" => { ensure!(!apply, "duplicate --apply"); apply = true; }
                 "--writers-stopped" => { ensure!(!stopped, "duplicate writer fence"); stopped = true; }
                 "--database" | "--scope" | "--application" | "--output" | "--page-size" => {
                     let value = args.next().context("missing option value")?;
                     ensure!(values.insert(arg, value).is_none(), "duplicate option");
                 }
-                _ => bail!("unknown option; required: --database NAME --scope UUID --application UUID --output NEW_PRIVATE_DIRECTORY; optional --page-size N; default dry-run; writes require --apply --writers-stopped"),
+                _ => bail!("unknown option; required: --database NAME --scope UUID --application UUID --output NEW_PRIVATE_DIRECTORY; optional --page-size N, repeatable --exclude-flow UUID (preserves flow unchanged); default dry-run; writes require --apply --writers-stopped"),
             }
         }
         let database = values.remove("--database").context("--database required")?;
@@ -58,7 +67,18 @@ impl Options {
                 .into(),
             page_size,
             apply,
+            excluded_flows,
         })
+    }
+
+    /// Exclusions are explicit scope selections, never a fallback for missing proof.
+    pub fn validate_exclusions(&self, scoped_flows: impl Iterator<Item = Uuid>) -> Result<()> {
+        let scoped: BTreeSet<_> = scoped_flows.collect();
+        ensure!(
+            self.excluded_flows.is_subset(&scoped),
+            "excluded flow is outside enumerated scope/application"
+        );
+        Ok(())
     }
 }
 
