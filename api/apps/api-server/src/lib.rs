@@ -681,7 +681,7 @@ async fn app_and_runtime_host_from_config(
             runtime_artifact_resolver,
             Arc::new(control_plane::plugin_management::ManagedPluginDataService::new(Arc::new(store.clone()), Arc::new(store.clone()))),
             Arc::clone(&runtime_sample_source),
-        )?.with_file_import(file_import_port.clone()).with_file_read(file_import_port.clone()).with_plugin_credentials(Arc::new(
+        )?.with_file_import(file_import_port.clone()).with_file_read(file_import_port.clone()).with_application_logs(file_import_port.clone()).with_http_egress(file_import_port.clone()).with_plugin_credentials(Arc::new(
             control_plane::plugin_management::ManagedPluginCredentialService::new(
                 Arc::new(store.clone()),
                 Arc::new(storage_durable_postgres::PgPluginCredentialRepository::new(

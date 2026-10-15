@@ -65,7 +65,7 @@ pub struct ApplicationLogsApplication {
 #[serde(deny_unknown_fields)]
 pub struct ApplicationLogsRecord {
     pub record_id: String,
-    pub log_conversation_id: String,
+    pub log_conversation_id: Option<String>,
     pub title: String,
     pub started_at: String,
     pub source_kind: String,

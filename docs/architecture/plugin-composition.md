@@ -33,6 +33,10 @@
 - 插件出站凭据属于 Extension Center 配置备份；备份与恢复复用凭据存储的身份绑定 AAD，校验源密钥并按目标密钥重加密。归属或凭据 ID 被改写时拒绝恢复，不能把原密文直接搬到另一主密钥环境。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
 
+受管日志连接器使用共享 SDK 的 `ApplicationLogsClient` 与 `HttpEgressClient`，复用 multiplex callback 的关联、取消和 deadline。底座持有真实调用者、安装贡献授权、应用权限及接收状态校验；系统插件激活不授予调用者跨工作区访问。`application.logs.read` / `application.logs.import` 属于 `application-logs` v1，`network.http.request` 属于 `http-egress` v1，贡献授权作用域为 system，业务日志仍按调用者 workspace 读取。HTTP 经宿主 Network Egress 的 `managed_plugin` 消费者解析，插件只解释供应商状态及响应。
+
+日志来源适配层读取 Agent Flow 原生完整事实和 Agent Logs 采集事实；来源中立语义通过标准 OTLP/GenAI 输出。供应商 API、元数据转换和分页归官方插件仓库，Langfuse 页面为 `/settings/langfuse`；导入只生成 Agent Logs 历史事实。原生 ZIP 和标准 OTLP 仍由底座提供。旧内置 `/logs/langfuse/export`、`/logs/langfuse/import` 入口由已安装插件的 `/api/console/managed-services/langfuse/export`、`/import` 工作流替代，不存在前端静默回退。统一协议不表示原生执行状态与外部采集日志共用持久化执行表。
+
 实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。
 
 历史验收报告保留其当时事实，不作为当前插件选型规则；遇到旧整包限制，以本节治理边界判断，并单独记录实际代码缺口。

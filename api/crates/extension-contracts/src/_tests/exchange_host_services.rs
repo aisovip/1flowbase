@@ -73,3 +73,13 @@ fn exchange_host_services_http_wire_rejects_worker_identity() {
     let forged = serde_json::json!({"method":"GET","url":"https://example.com/","headers":{},"body_base64":null,"installation_id":"forged"});
     assert!(serde_json::from_value::<HttpEgressRequest>(forged).is_err());
 }
+
+#[test]
+fn exchange_host_services_preserve_absent_native_conversation_relation() {
+    let record: super::ApplicationLogsRecord = serde_json::from_value(serde_json::json!({
+        "record_id": "native-run", "log_conversation_id": null,
+        "title": "Native history", "started_at": "2026-10-15T00:00:00Z", "source_kind": "native"
+    })).unwrap();
+    assert_eq!(record.log_conversation_id, None);
+    assert!(serde_json::to_value(record).unwrap()["log_conversation_id"].is_null());
+}
