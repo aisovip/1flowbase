@@ -178,9 +178,11 @@ fn failure(error: ApiError) -> InterfaceTargetFailure<TargetError> {
     InterfaceTargetFailure::new("agent_logs_otlp", TargetError(error))
 }
 
+type SourceSpanCounts = BTreeMap<(String, String), usize>;
+
 fn validated_batches(
     request: &agent_logs_protocol::ExportTraceServiceRequest,
-) -> anyhow::Result<(Vec<AgentLogsBatch>, BTreeMap<(String, String), usize>)> {
+) -> anyhow::Result<(Vec<AgentLogsBatch>, SourceSpanCounts)> {
     let batches = agent_logs_protocol::traces_to_batches(request)?;
     let mut counts = BTreeMap::new();
     for resource in &request.resource_spans {

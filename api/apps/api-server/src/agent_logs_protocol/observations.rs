@@ -33,8 +33,7 @@ impl Observation {
         let mut output = Vec::new();
         if self.session_summary {
             output.push(self.event(
-                &snapshot,
-                "session-summary",
+                (&snapshot, "session-summary"),
                 AgentLogEventKind::Context,
                 None,
                 None,
@@ -51,8 +50,7 @@ impl Observation {
                 self.messages(&snapshot, &value, false, timestamp, &mut output)?;
             } else {
                 output.push(self.event(
-                    &snapshot,
-                    "input",
+                    (&snapshot, "input"),
                     AgentLogEventKind::Context,
                     content(&value),
                     None,
@@ -70,8 +68,7 @@ impl Observation {
                 self.messages(&snapshot, &value, true, end, &mut output)?;
             } else {
                 output.push(self.event(
-                    &snapshot,
-                    "output",
+                    (&snapshot, "output"),
                     AgentLogEventKind::Assistant,
                     content(&value),
                     None,
@@ -90,8 +87,7 @@ impl Observation {
             .or_else(|| self.attrs.get("tool.arguments"))
         {
             output.push(self.event(
-                &snapshot,
-                "tool-call",
+                (&snapshot, "tool-call"),
                 AgentLogEventKind::ToolCall,
                 content(arguments),
                 tool.clone(),
@@ -106,8 +102,7 @@ impl Observation {
             .or_else(|| self.attrs.get("tool.result"))
         {
             output.push(self.event(
-                &snapshot,
-                "tool-result",
+                (&snapshot, "tool-result"),
                 AgentLogEventKind::ToolResult,
                 content(result),
                 tool.clone(),
@@ -117,8 +112,7 @@ impl Observation {
         }
         if let Some(usage) = self.usage()? {
             let mut event = self.event(
-                &snapshot,
-                "usage",
+                (&snapshot, "usage"),
                 AgentLogEventKind::Usage,
                 None,
                 None,
@@ -130,8 +124,7 @@ impl Observation {
         }
         if output.is_empty() {
             output.push(self.event(
-                &snapshot,
-                "observation",
+                (&snapshot, "observation"),
                 AgentLogEventKind::Context,
                 None,
                 Some(self.name.clone()),
@@ -152,8 +145,7 @@ impl Observation {
 
     fn event(
         &self,
-        snapshot: &str,
-        slot: &str,
+        (snapshot, slot): (&str, &str),
         kind: AgentLogEventKind,
         content: Option<String>,
         name: Option<String>,
@@ -204,8 +196,7 @@ impl Observation {
             }
             None => {
                 events.push(self.event(
-                    snapshot,
-                    if output { "output" } else { "input" },
+                    (snapshot, if output { "output" } else { "input" }),
                     if output {
                         AgentLogEventKind::Assistant
                     } else {
@@ -260,10 +251,12 @@ impl Observation {
                         .unwrap_or(part);
                     events.push(
                         self.event(
-                            snapshot,
-                            &format!(
-                                "{}-{index:08}-part-{part_index:08}",
-                                if output { "output" } else { "input" }
+                            (
+                                snapshot,
+                                &format!(
+                                    "{}-{index:08}-part-{part_index:08}",
+                                    if output { "output" } else { "input" }
+                                ),
                             ),
                             part_kind,
                             content(body),
@@ -280,8 +273,10 @@ impl Observation {
                 let body = parts.unwrap_or(message);
                 events.push(
                     self.event(
-                        snapshot,
-                        &format!("{}-{index:08}", if output { "output" } else { "input" }),
+                        (
+                            snapshot,
+                            &format!("{}-{index:08}", if output { "output" } else { "input" }),
+                        ),
                         kind,
                         content(body),
                         message
@@ -302,8 +297,7 @@ impl Observation {
                     for (call_index, call) in calls.iter().enumerate() {
                         events.push(
                             self.event(
-                                snapshot,
-                                &format!("output-{index:08}-call-{call_index:08}"),
+                                (snapshot, &format!("output-{index:08}-call-{call_index:08}")),
                                 AgentLogEventKind::ToolCall,
                                 call.pointer("/function/arguments")
                                     .or_else(|| call.get("arguments"))

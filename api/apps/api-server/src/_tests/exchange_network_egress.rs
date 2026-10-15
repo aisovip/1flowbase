@@ -1,13 +1,21 @@
 use super::*;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[tokio::test]
 async fn exchange_host_services_network_preserves_redirect_status_and_body() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = [0u8; 4096];
-        socket.read(&mut request).await.unwrap();
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut socket = BufReader::new(socket);
+        let mut request = String::new();
+        while !request.ends_with("\r\n\r\n") {
+            assert_ne!(
+                socket.read_line(&mut request).await.unwrap(),
+                0,
+                "HTTP request ended before its complete headers"
+            );
+        }
+        assert!(request.starts_with("GET / HTTP/1.1\r\n"));
         socket.write_all(b"HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:1/should-not-follow\r\nContent-Length: 5\r\nConnection: close\r\n\r\nretry").await.unwrap();
     });
     let scope = NetworkEgressHttpClientResolver::direct_for_tests()

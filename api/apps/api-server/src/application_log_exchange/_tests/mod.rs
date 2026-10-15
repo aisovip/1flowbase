@@ -86,7 +86,7 @@ fn native_standard_exchange_preserves_full_units_tools_and_stable_identities_wit
         }
     };
     let batch = make_batch(events);
-    let first = protocol::batches_to_traces(&[batch.clone()]).unwrap();
+    let first = protocol::batches_to_traces(std::slice::from_ref(&batch)).unwrap();
     let second = protocol::batches_to_traces(&[make_batch(
         native::normalize(&run, "conversation", archive, messages, vec![]).unwrap(),
     )])

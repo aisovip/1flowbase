@@ -4,24 +4,21 @@ use super::*;
 fn exchange_managed_projection_excludes_credentials_destinations_and_facts() {
     let id = Uuid::now_v7();
     let secret = "PRIVATE_SOURCE_VALUE";
-    let inputs = [ExchangeInput::OtlpImport {
+    let input = ExchangeInput::OtlpImport {
         application_id: id,
         body: OtlpImportBody {
             otlp: json!({"raw":secret}),
         },
-    }];
-    for input in inputs {
-        let projection = input.project_for_managed_hook().unwrap();
-        assert_eq!(projection.as_object().unwrap().len(), 3);
-        assert!(!projection.to_string().contains(secret));
-    }
-    for output in [ExchangeOutput::Otlp(json!({"raw":secret}))] {
-        assert!(!output
-            .project_for_managed_hook()
-            .unwrap()
-            .to_string()
-            .contains(secret));
-    }
+    };
+    let projection = input.project_for_managed_hook().unwrap();
+    assert_eq!(projection.as_object().unwrap().len(), 3);
+    assert!(!projection.to_string().contains(secret));
+    let output = ExchangeOutput::Otlp(json!({"raw":secret}));
+    assert!(!output
+        .project_for_managed_hook()
+        .unwrap()
+        .to_string()
+        .contains(secret));
 }
 
 #[test]

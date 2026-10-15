@@ -33,21 +33,19 @@ test('each control-plane coverage command requires its own executed passing test
           runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
           preflightSpawnSyncImpl: () => ({ status: 0 }),
           writeStdout() {}, writeStderr(text) { diagnostics += text; },
+          spawnSyncImpl(_command, args) {
+            const selected = commands.find(command =>
+              JSON.stringify(command.args) === JSON.stringify(args));
+            return {
+              status: 0,
+              stdout: args[1] === 'clean'
+                ? ''
+                : selected?.label === label ? output : 'test result: ok. 3 passed; 0 failed;',
+              stderr: '',
+            };
+          },
           managedRunnerImpl(options) {
-            return options.runCommandSequenceImpl({
-              ...options,
-              spawnSyncImpl(_command, args) {
-                const selected = commands.find(command =>
-                  JSON.stringify(command.args) === JSON.stringify(args));
-                return {
-                  status: 0,
-                  stdout: args[1] === 'clean'
-                    ? ''
-                    : selected?.label === label ? output : 'test result: ok. 3 passed; 0 failed;',
-                  stderr: '',
-                };
-              },
-            });
+            return options.runCommandSequenceImpl(options);
           },
           readFileSyncImpl() {
             reportsRead += 1;

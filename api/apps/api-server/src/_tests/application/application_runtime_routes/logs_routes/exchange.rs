@@ -265,7 +265,7 @@ async fn console_multisource_partial_import_keeps_commits_and_idempotent_retry()
             "otlp/import",
             Some(&cookie),
             Some(&csrf),
-            import_body(&[original.clone()])
+            import_body(std::slice::from_ref(&original))
         )
         .await
         .status(),
