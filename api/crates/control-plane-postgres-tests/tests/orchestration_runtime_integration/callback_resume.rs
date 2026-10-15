@@ -4,6 +4,14 @@ const CALLBACK_COUNT: usize = 200;
 const SNAPSHOT_BYTES: i32 = 3 * 1024 * 1024;
 const MAX_RSS_GROWTH_BYTES: u64 = 192 * 1024 * 1024;
 
+// Current-format predecessor for the ownership/inbox fixtures below. This is the
+// frozen vector exercised by active_lease.rs: user "Read files", followed by
+// function_call(call-1-0, Bash, "{}"). It replaces the old all-zero synthetic
+// digest; callback identity/lease/replay assertions remain independent of it.
+fn current_callback_history_fixture() -> Value {
+    json!({"version":3,"item_count":2,"digest":"80fd1237d37a782b3cf5a940e1163e372c6875248002141fbb70c64facd3aaa6"})
+}
+
 async fn persist_callback_wait(
     store: &PgControlPlaneStore,
     seeded: &RuntimeSeedState,
@@ -876,7 +884,7 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         .await
         .unwrap();
     let mut callback_request = callback.request_payload.clone();
-    callback_request["responses_round"] = json!({"response_id":format!("resp_{}",run.id),"history":{"version":2,"item_count":2,"digest":"0".repeat(64)},"output":[]});
+    callback_request["responses_round"] = json!({"response_id":format!("resp_{}",run.id),"history":current_callback_history_fixture(),"output":[]});
     sqlx::query("update flow_run_callback_tasks set request_payload=$2 where id=$1")
         .bind(callback.id)
         .bind(callback_request)

@@ -69,7 +69,7 @@ async fn fixture(tool_count: usize) -> Fixture {
         .unwrap();
     let mut request_payload = callback.request_payload;
     request_payload["responses_round"] = json!({"response_id":format!("resp_{}",run.id),
-        "history":{"version":2,"item_count":2,"digest":"0".repeat(64)},"output":[]});
+        "history":current_callback_history_fixture(),"output":[]});
     sqlx::query("update flow_run_callback_tasks set request_payload=$2 where id=$1")
         .bind(callback.id)
         .bind(request_payload)

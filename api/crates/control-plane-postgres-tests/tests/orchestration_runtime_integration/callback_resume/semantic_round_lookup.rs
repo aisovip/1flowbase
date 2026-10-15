@@ -73,7 +73,7 @@ async fn semantic_two_round_lookup_preserves_completed_receipt_and_rejects_real_
     let round = |response_id: &str| {
         json!({
             "response_id":response_id,
-            "history":{"version":2,"item_count":2,"digest":"0".repeat(64)},
+            "history":current_callback_history_fixture(),
             "output":[]
         })
     };
