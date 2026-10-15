@@ -97,8 +97,9 @@ pub struct ResponsesHistoryCheckpoint {
     pub checkpoint_id: Uuid,
     pub locator_payload: Value,
     pub variable_snapshot: Value,
-    /// Actual locator lineage, oldest first. Empty for a legacy inline snapshot.
-    pub lineage: Vec<ResponsesHistoryContextLineageEntry>,
+    /// Actual locator head; content and ancestry occur once in snapshot.contexts.
+    /// None identifies a legacy inline checkpoint.
+    pub context: Option<ResponsesHistoryContextIdentity>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,8 +108,18 @@ pub struct ResponsesHistoryCheckpointChange {
     pub before_locator_payload: Value,
     pub before_variable_snapshot: Value,
     pub before_context: Option<ResponsesHistoryContextIdentity>,
-    /// Complete materialized variable pool, never a delta or marker-only snapshot.
-    pub replacement_variable_pool: Value,
+    /// Some only for an inline checkpoint with no before_context. Its complete
+    /// pool is inserted once as runtime_snapshot_v1; existing DAG heads use None.
+    pub legacy_inline_variable_pool: Option<Value>,
+}
+
+/// Copy one immutable context without expanding its snapshot/delta encoding.
+/// Source IDs identify old nodes. The adapter remaps parent IDs using earlier
+/// context changes and inserts each old ID at most once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResponsesHistoryContextChange {
+    pub before: ResponsesHistoryContextLineageEntry,
+    pub after_content: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -136,6 +147,10 @@ pub struct ResponsesHistoryFlowSnapshot {
     pub status: FlowRunStatus,
     pub latest_context_version_id: Option<Uuid>,
     pub documents: Vec<ResponsesHistoryDocument>,
+    /// Unique reachable DAG nodes in topological order. Includes ancestors of
+    /// every checkpoint head and latest_context_version_id, loaded once per ID.
+    pub contexts: Vec<ResponsesHistoryContextLineageEntry>,
+    /// Existing repository order: ascending (created_at, checkpoint_id).
     pub checkpoints: Vec<ResponsesHistoryCheckpoint>,
     /// Includes retained expired slots; loading never invokes runtime expiry cleanup.
     pub continuations: Vec<ResponsesHistoryContinuation>,
@@ -147,6 +162,16 @@ pub struct ResponsesHistoryMigrationPlan {
     pub expected_status: FlowRunStatus,
     pub expected_latest_context_version_id: Option<Uuid>,
     pub documents: Vec<ResponsesHistoryDocumentChange>,
+    /// Unique old IDs in topological order. Include unchanged-content children
+    /// whenever their parent is remapped. If any context will be inserted,
+    /// including a legacy inline context, copy the original latest head last
+    /// even if unchanged. Its source ID occurs at most once. The adapter inserts
+    /// other nodes and legacy inline contexts before this final head copy.
+    pub contexts: Vec<ResponsesHistoryContextChange>,
+    /// Preserve snapshot checkpoint order for legacy inline context creation.
+    /// If no original latest context exists and any inline context is created,
+    /// include the final snapshot checkpoint as an unchanged anchor when needed;
+    /// its new context is inserted last, following repository latest selection.
     pub checkpoints: Vec<ResponsesHistoryCheckpointChange>,
     pub continuations: Vec<ResponsesHistoryContinuationChange>,
 }
@@ -165,6 +190,16 @@ pub struct ResponsesHistoryDocumentReceipt {
     pub change: ResponsesHistoryDocumentChange,
     pub before_shadow: Option<ResponsesHistoryShadowBinding>,
     pub after_shadow: Option<ResponsesHistoryShadowBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponsesHistoryContextReceipt {
+    pub before: ResponsesHistoryContextIdentity,
+    pub before_previous_projection_id: Option<Uuid>,
+    pub before_sequence: i64,
+    pub after: ResponsesHistoryContextIdentity,
+    pub after_previous_projection_id: Option<Uuid>,
+    pub after_sequence: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -194,9 +229,10 @@ pub struct ResponsesHistoryMigrationReceipt {
     pub format_version: u32,
     pub flow: ResponsesHistoryFlowKey,
     pub expected_status: FlowRunStatus,
-    pub before_latest_context_version_id: Option<Uuid>,
-    pub after_latest_context_version_id: Option<Uuid>,
+    pub before_latest_context: Option<ResponsesHistoryContextIdentity>,
+    pub after_latest_context: Option<ResponsesHistoryContextIdentity>,
     pub documents: Vec<ResponsesHistoryDocumentReceipt>,
+    pub contexts: Vec<ResponsesHistoryContextReceipt>,
     pub checkpoints: Vec<ResponsesHistoryCheckpointReceipt>,
     pub continuations: Vec<ResponsesHistoryContinuationReceipt>,
 }
