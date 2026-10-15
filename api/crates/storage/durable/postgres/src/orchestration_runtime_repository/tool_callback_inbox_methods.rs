@@ -3,6 +3,25 @@ impl PgControlPlaneStore {
         &self,
         input: &CommitToolCallbackResultsInput,
     ) -> Result<CommitToolCallbackResultsOutput> {
+        self.commit_tool_callback_results_inner(input, None).await
+    }
+
+    async fn commit_tool_callback_results_with_admission(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<CommitToolCallbackResultsOutput> {
+        self.commit_tool_callback_results_inner(input, Some(admission))
+            .await
+    }
+}
+
+impl PgControlPlaneStore {
+    async fn commit_tool_callback_results_inner(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+        admission: Option<&CallbackResumeAdmissionFence>,
+    ) -> Result<CommitToolCallbackResultsOutput> {
         if input.results.is_empty() {
             return Err(ControlPlaneError::InvalidInput("tool_results").into());
         }
@@ -20,6 +39,15 @@ impl PgControlPlaneStore {
             .bind(input.callback_task_id.to_string())
             .execute(&mut *tx)
             .await?;
+        if let Some(admission) = admission {
+            validate_callback_resume_admission(
+                &mut tx,
+                admission,
+                input.flow_run_id,
+                input.callback_task_id,
+            )
+            .await?;
+        }
         let callback_row = sqlx::query(
             r#"
             select task.id, task.flow_run_id, task.node_run_id, task.callback_kind, task.status,

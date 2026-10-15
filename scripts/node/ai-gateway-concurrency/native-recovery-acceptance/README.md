@@ -24,3 +24,17 @@ node scripts/node/ai-gateway-concurrency/native-recovery-acceptance/http-recover
 ```
 
 This task-owned gateway uses inherited node transport and a WebSocket-default provider. The mock closes WebSocket requests with code 1008 before output and completes HTTP Responses through SSE. The provider must report a retryable physical interruption with no semantic commit. AI Native preserves its NativeOpaque replay fence and returns an honest failure; Codex owns the client retry. The client's full-input HTTP retry must complete once, both with an absent cursor and with `previous_response_id: null`. Assertions inspect the actual durable recovery receipt and compare actual upstream model, reasoning, tools, input and other native fields. The fixture preserves peer-reason redaction and cleans its own API, database, session and sockets. Existing `run.cjs` explicitly forces WebSocket so its HTTP-carried callback recovery remains a separate contract.
+
+## Active callback lease after client disconnect
+
+`active-lease.cjs` runs an isolated real gateway and PostgreSQL database with a controlled WebSocket upstream. It accepts one tool result, keeps that original inference active, ages only its admission receipt past five minutes, disconnects the client WebSocket, and resubmits the identical request over HTTP/SSE. The assertion requires HTTP 200 and one completion from the original execution, exactly two upstream calls (seed plus continuation), and one durable callback attempt/claim. It fails with the original `callback_resume_already_admitted` regression. Only the disposable fixture database is modified; the supplied application and 7600 are never used.
+
+```bash
+NRA_API_BINARY=/absolute/path/to/frozen/api-server \
+NRA_PLUGIN_PACKAGE=/absolute/path/to/openai.1flowbasepkg \
+NRA_WEB_REPO=/absolute/path/to/repository-with-installed-ws \
+NRA_ARTIFACT_DIR=/absolute/path/to/evidence \
+node scripts/node/ai-gateway-concurrency/native-recovery-acceptance/active-lease.cjs
+```
+
+Receipt age injection makes this a deterministic state regression, not elapsed-time evidence. Use the separate `responses-long-session-acceptance` runner with `RLS_MIN_SPAN_MS=3600000` and an explicitly selected gateway to verify a real hour of continuous tool-backed conversation.

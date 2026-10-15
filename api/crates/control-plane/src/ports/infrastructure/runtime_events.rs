@@ -243,6 +243,12 @@ pub trait RuntimeEventTerminalWriter: Send + Sync {
         Ok(())
     }
 
+    /// Close only the captured generation, without fabricating a terminal event.
+    /// Unsupported implementations must fail; never resolve a replacement by run ID.
+    async fn close_generation(&self, _reason: RuntimeEventCloseReason) -> anyhow::Result<()> {
+        anyhow::bail!("generation-scoped runtime event closure is unsupported")
+    }
+
     async fn append_terminal_if_missing_and_close(
         &self,
         event: RuntimeEventPayload,

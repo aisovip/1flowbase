@@ -606,6 +606,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AcquireResumeClaimInput,
     ) -> anyhow::Result<AcquireResumeClaimOutput>;
+    async fn acquire_resume_claim_with_admission(
+        &self,
+        input: &AcquireResumeClaimInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> anyhow::Result<AcquireResumeClaimOutput> {
+        let _ = (input, admission);
+        anyhow::bail!("fenced callback execution acquisition is unsupported")
+    }
     async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> anyhow::Result<bool>;
     async fn finish_resume_claim(
         &self,
@@ -617,6 +625,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<CommitToolCallbackResultsOutput> {
         let _ = input;
         anyhow::bail!("commit_tool_callback_results not implemented")
+    }
+    async fn commit_tool_callback_results_with_admission(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> anyhow::Result<CommitToolCallbackResultsOutput> {
+        let _ = (input, admission);
+        anyhow::bail!("fenced callback inbox commit is unsupported")
     }
     async fn append_usage_ledger(
         &self,

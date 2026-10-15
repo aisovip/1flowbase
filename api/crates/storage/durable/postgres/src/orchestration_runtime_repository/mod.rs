@@ -22,12 +22,12 @@ use control_plane_contracts::{
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
         ApplicationRunTraceRefreshJob, AttachCompiledPlanToFlowRunInput, BillingRepository,
-        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
-        ClaimRuntimeEventDeliveriesInput, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
-        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, CompleteFlowRunInput,
-        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        BindInvocationContextInput, CallbackResumeAdmissionFence, CallbackResumeContext,
+        CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
+        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
@@ -843,6 +843,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::acquire_resume_claim(self, input).await
     }
 
+    async fn acquire_resume_claim_with_admission(
+        &self,
+        input: &AcquireResumeClaimInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<AcquireResumeClaimOutput> {
+        PgControlPlaneStore::acquire_resume_claim_with_admission(self, input, admission).await
+    }
+
     async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
         PgControlPlaneStore::renew_resume_claim(self, input).await
     }
@@ -859,6 +867,15 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &CommitToolCallbackResultsInput,
     ) -> Result<CommitToolCallbackResultsOutput> {
         PgControlPlaneStore::commit_tool_callback_results(self, input).await
+    }
+
+    async fn commit_tool_callback_results_with_admission(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<CommitToolCallbackResultsOutput> {
+        PgControlPlaneStore::commit_tool_callback_results_with_admission(self, input, admission)
+            .await
     }
 
     async fn append_usage_ledger(
@@ -2206,6 +2223,19 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            "select exists (select 1 from flow_run_resume_claims where callback_task_id = $1 and status = 'processing' and lease_expires_at > now())",
+        )
+        .bind(callback_task_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
@@ -2225,7 +2255,7 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
             return Ok(None);
         }
         let row = sqlx::query(r#"
-            update flow_run_callback_resume_attempts a set status = 'processing', updated_at = now(), completed_at = null
+            update flow_run_callback_resume_attempts a set status = 'processing', updated_at = greatest(clock_timestamp(), a.updated_at + interval '1 microsecond'), completed_at = null
             where a.id = $1
               and a.source = 'openai_responses'
               and (a.response_payload ? 'responses_continuation' or exists (
@@ -2246,6 +2276,15 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         row.as_ref()
             .map(map_flow_run_callback_resume_attempt_record)
             .transpose()
+    }
+
+    async fn release_unstarted_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        expected_updated_at: OffsetDateTime,
+    ) -> Result<bool> {
+        self.release_unstarted_flow_run_callback_resume_attempt(attempt_id, expected_updated_at)
+            .await
     }
 
     async fn park_published_callback_resume_attempt(

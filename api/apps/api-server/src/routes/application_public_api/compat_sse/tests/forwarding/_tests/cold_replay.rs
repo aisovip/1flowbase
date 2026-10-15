@@ -227,15 +227,23 @@ async fn cold_native_sse_recovers_completed_answer_without_opening_a_producer() 
 
 #[tokio::test]
 async fn cold_callback_replay_ignores_late_foreign_terminal_and_latest_round_anchor() {
-    assert_cold_callback_replay_with_late_foreign_terminal(false).await;
+    assert_cold_callback_replay_with_late_foreign_terminal(false, false).await;
 }
 
 #[tokio::test]
 async fn cold_callback_follower_waits_for_identity_after_anchor_and_foreign_terminal() {
-    assert_cold_callback_replay_with_late_foreign_terminal(true).await;
+    assert_cold_callback_replay_with_late_foreign_terminal(true, false).await;
 }
 
-async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity: bool) {
+#[tokio::test]
+async fn legacy_callback_without_marker_replays_only_explicit_round_generation_output() {
+    assert_cold_callback_replay_with_late_foreign_terminal(false, true).await;
+}
+
+async fn assert_cold_callback_replay_with_late_foreign_terminal(
+    delayed_identity: bool,
+    missing_marker: bool,
+) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -261,14 +269,35 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
             "waiting_callback",
             json!({"callback_task_id": callback_task_id}),
         ),
-        (
-            "runtime_stream_opened",
-            json!({"stream_generation_id": requested_generation}),
-        ),
     ] {
         append_compat_sse_runtime_event(&state, run.id, event_type, payload).await;
     }
-    if !delayed_identity {
+    if !delayed_identity && !missing_marker {
+        // An earlier execution of this same callback had an explicit marker.
+        // A later acquired generation must supersede it for settled replay.
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "runtime_stream_opened",
+            json!({"stream_generation_id": old_generation}),
+        )
+        .await;
+        append_compat_sse_runtime_event(
+            &state,
+            run.id,
+            "flow_started",
+            json!({"response_round_id": callback_task_id, "stream_generation_id": old_generation}),
+        )
+        .await;
+    }
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "runtime_stream_opened",
+        json!({"stream_generation_id": requested_generation}),
+    )
+    .await;
+    if !delayed_identity && !missing_marker {
         append_compat_sse_runtime_event(
             &state,
             run.id,
@@ -289,6 +318,10 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
         }
     }
     for (event_type, payload) in [
+        (
+            "flow_started",
+            json!({"response_round_id": callback_task_id, "stream_generation_id": old_generation}),
+        ),
         (
             "provider_output_item_done",
             json!({"output_index": 0, "stream_generation_id": old_generation, "item": {"type": "message", "id": "late-old-output"}}),
@@ -376,6 +409,7 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
             run.clone(),
             command.clone(),
             actor.clone(),
+            None,
         )
         .await
         .unwrap();
@@ -412,10 +446,31 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
         committed_delivery_payload("call-callback-once"),
     )
     .await;
-    // These business-owner output and terminal rows are legitimately untagged.
+    // Most fixtures retain legitimately untagged business-owner output. The
+    // missing-marker fixture requires explicit host-owned round/generation IDs.
     // Seed subsequent rounds before sealing the run, as required by the real
     // append owner. Status sealing is independent from the recorded round end.
-    append_attached_callback_round_events(&state, run.id, &reasoning, &message).await;
+    if missing_marker {
+        assert!(
+            matches!(
+                durable_compatible_round_replay(&dependencies, &run, callback_task_id)
+                    .await
+                    .unwrap(),
+                DurableCompatibleRoundReplay::PendingIdentity
+            ),
+            "anchors and foreign terminals alone cannot establish this callback"
+        );
+        for (index, item) in [(1, &message), (0, &reasoning)] {
+            append_compat_sse_runtime_event(&state, run.id, "provider_output_item_done",
+                json!({"output_index": index, "item": item,
+                    "response_round_id": callback_task_id, "stream_generation_id": requested_generation})).await;
+        }
+        append_compat_sse_runtime_event(&state, run.id, "flow_finished",
+            json!({"type": "flow_finished", "status": "succeeded",
+                "response_round_id": callback_task_id, "stream_generation_id": requested_generation})).await;
+    } else {
+        append_attached_callback_round_events(&state, run.id, &reasoning, &message).await;
+    }
     for (event_type, payload) in [
         (
             "runtime_stream_opened",
@@ -448,6 +503,7 @@ async fn assert_cold_callback_replay_with_late_foreign_terminal(delayed_identity
                 run.clone(),
                 command.clone(),
                 actor.clone(),
+                None,
             )
             .await
             .unwrap()

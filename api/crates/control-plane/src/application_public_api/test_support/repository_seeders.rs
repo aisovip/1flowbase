@@ -261,6 +261,18 @@ impl ApplicationPublicApiTestRepository {
             .collect()
     }
 
+    pub fn set_callback_resume_claim_lease_for_test(
+        &self,
+        callback_task_id: Uuid,
+        lease_expires_at: OffsetDateTime,
+    ) {
+        self.inner
+            .lock()
+            .expect("test repo mutex poisoned")
+            .callback_resume_claim_leases
+            .insert(callback_task_id, lease_expires_at);
+    }
+
     pub fn expire_callback_resume_attempt_for_test(&self, callback_task_id: Uuid) {
         let mut inner = self
             .inner

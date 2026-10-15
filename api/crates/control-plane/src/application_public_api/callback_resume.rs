@@ -1,5 +1,9 @@
 mod inference_recovery;
+mod prepared;
+mod reservation;
 pub use inference_recovery::NativeInferenceRecoveryGrant;
+pub use prepared::{PreparedPublishedCallback, PreparedPublishedCallbackExecution};
+pub use reservation::{PublishedCallbackReservation, PublishedCallbackReservationReceipt};
 
 use std::{sync::Arc, time::Duration};
 
@@ -116,7 +120,7 @@ const RESPONSES_PREDECESSOR_WAIT: Duration = Duration::from_secs(240);
 const RESPONSES_PREDECESSOR_POLL_START: Duration = Duration::from_millis(100);
 const RESPONSES_PREDECESSOR_POLL_MAX: Duration = Duration::from_secs(1);
 
-fn is_expired_responses_predecessor(
+fn is_responses_reclaim_candidate(
     context: &PublishedCallbackResumeContext,
     attempt: &domain::FlowRunCallbackResumeAttemptRecord,
     command: &ResumePublishedCallbackCommand,
@@ -127,8 +131,9 @@ fn is_expired_responses_predecessor(
         && context.callback_task.callback_kind == "llm_tool_calls"
         && context.callback_task.status == domain::CallbackTaskStatus::Completed
         && context.flow_run.status == domain::FlowRunStatus::WaitingCallback
-        && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-        && attempt.updated_at + time::Duration::minutes(5) <= OffsetDateTime::now_utc()
+        && (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
+            || (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
+                && attempt.updated_at + time::Duration::minutes(5) <= OffsetDateTime::now_utc()))
 }
 
 pub struct ApplicationPublishedCallbackResumeService<R, C> {
@@ -185,13 +190,20 @@ where
             .repository
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?;
+        let expired_predecessor = match existing.as_ref() {
+            Some(attempt) => {
+                self.is_reclaimable_responses_predecessor(&context, attempt, command)
+                    .await?
+            }
+            None => false,
+        };
         if let Some(processing) = existing.as_ref().filter(|attempt| {
             command.source == PublishedCallbackResumeSource::OpenAiResponses
                 && command.responses_continuation.is_none()
                 && command.native_transport.is_some()
                 && context.callback_task.callback_kind == "llm_tool_calls"
                 && attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-                && !is_expired_responses_predecessor(&context, attempt, command)
+                && !expired_predecessor
         }) {
             if context.callback_task.status == domain::CallbackTaskStatus::Completed
                 && self
@@ -217,7 +229,10 @@ where
                 .await?;
         }
         if let Some(existing) = existing {
-            if is_expired_responses_predecessor(&context, &existing, command) {
+            if self
+                .is_reclaimable_responses_predecessor(&context, &existing, command)
+                .await?
+            {
                 if existing.response_payload != command.response_payload {
                     return Err(
                         ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
@@ -333,6 +348,24 @@ where
         })
     }
 
+    async fn is_reclaimable_responses_predecessor(
+        &self,
+        context: &PublishedCallbackResumeContext,
+        attempt: &domain::FlowRunCallbackResumeAttemptRecord,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<bool> {
+        if !is_responses_reclaim_candidate(context, attempt, command) {
+            return Ok(false);
+        }
+        // Received admissions were explicitly parked/released and need no age
+        // grace. Processing admissions keep their grace and respect the execution
+        // claim's renewable lease for a slow provider invocation.
+        Ok(!self
+            .repository
+            .has_active_published_callback_resume_claim(context.callback_task.id)
+            .await?)
+    }
+
     async fn is_identical_active_native_retry(
         &self,
         context: &PublishedCallbackResumeContext,
@@ -423,7 +456,16 @@ where
                     )
                     .into());
                 }
-                if current.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+                if current.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+                    || (current.updated_at + time::Duration::minutes(5)
+                        <= OffsetDateTime::now_utc()
+                        && !self
+                            .repository
+                            .has_active_published_callback_resume_claim(current.callback_task_id)
+                            .await?)
+                {
+                    // Status alone cannot prove ownership: a renewed execution lease
+                    // may expire while this follower waits. Reclassify fresh facts.
                     return Ok(());
                 }
                 poll_delay = poll_delay
@@ -435,117 +477,6 @@ where
         .map_err(|_| {
             ControlPlaneError::UpstreamUnavailable("callback_resume_predecessor_timeout")
         })?
-    }
-
-    /// Reserve before opening the shared runtime stream, so a losing delivery cannot close it.
-    pub async fn reserve_native_callback_for_actor(
-        &self,
-        actor: super::api_keys::ApplicationApiKeyActor,
-        command: &ResumePublishedCallbackCommand,
-    ) -> Result<Uuid> {
-        let context = self
-            .resolve_resume_context_for_actor(actor, command)
-            .await?;
-        if let Some(existing) = self
-            .repository
-            .get_published_callback_resume_attempt(context.callback_task.id)
-            .await?
-        {
-            if command.responses_continuation.is_some()
-                && matches!(
-                    existing.status,
-                    domain::FlowRunCallbackResumeAttemptStatus::Processing
-                        | domain::FlowRunCallbackResumeAttemptStatus::Received
-                )
-            {
-                if existing.response_payload != command.response_payload {
-                    return Err(
-                        ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
-                    );
-                }
-                return self
-                    .repository
-                    .reclaim_expired_callback_resume_attempt(
-                        existing.id,
-                        command.response_payload.clone(),
-                    )
-                    .await?
-                    .map(|attempt| attempt.id)
-                    .ok_or_else(|| {
-                        ControlPlaneError::Conflict("callback_resume_already_admitted").into()
-                    });
-            }
-            let is_tool_round = context.callback_task.callback_kind == "llm_tool_calls";
-            if !is_tool_round && existing.response_payload != command.response_payload {
-                return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
-            }
-            if existing.source != command.source.as_str() {
-                return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
-            }
-            if is_tool_round
-                && context.callback_task.status == domain::CallbackTaskStatus::Completed
-                && command.source == PublishedCallbackResumeSource::OpenAiResponses
-                && command.responses_continuation.is_none()
-                && command.native_transport.is_some()
-                && existing.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-            {
-                if existing.response_payload != command.response_payload {
-                    return Err(
-                        ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
-                    );
-                }
-                return self
-                    .repository
-                    .reclaim_expired_callback_resume_attempt(
-                        existing.id,
-                        command.response_payload.clone(),
-                    )
-                    .await?
-                    .map(|attempt| attempt.id)
-                    .ok_or_else(|| {
-                        ControlPlaneError::Conflict("callback_resume_already_admitted").into()
-                    });
-            }
-            if is_tool_round
-                && context.callback_task.status != domain::CallbackTaskStatus::Completed
-            {
-                // A tool round keeps one durable attempt across partial
-                // deliveries. Only a parked attempt can be re-acquired, and
-                // exactly one concurrent delivery wins that transition.
-                return self
-                    .claim_parked_tool_round_attempt(&existing, &command.response_payload)
-                    .await;
-            }
-            if matches!(
-                existing.status,
-                domain::FlowRunCallbackResumeAttemptStatus::Succeeded
-                    | domain::FlowRunCallbackResumeAttemptStatus::Failed
-                    | domain::FlowRunCallbackResumeAttemptStatus::Cancelled
-            ) && context.callback_task.status == domain::CallbackTaskStatus::Completed
-            {
-                return Ok(existing.id);
-            }
-            return Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into());
-        }
-        ensure_callback_is_consumable(
-            &context.flow_run,
-            &context.callback_task,
-            &command.response_payload,
-        )?;
-        let reserved = self
-            .repository
-            .record_published_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
-                flow_run_id: context.flow_run.id,
-                callback_task_id: context.callback_task.id,
-                source: command.source.as_str().to_string(),
-                response_payload: command.response_payload.clone(),
-                idempotency_key: format!("callback_task:{}", context.callback_task.id),
-            })
-            .await?;
-        if !reserved.inserted {
-            return Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into());
-        }
-        Ok(reserved.attempt.id)
     }
 
     pub async fn resume_callback(
@@ -700,6 +631,19 @@ where
             })
             .await;
 
+        self.finish_callback_resume_result(flow_run, callback_task, attempt, &command, result)
+            .await
+    }
+
+    async fn finish_callback_resume_result(
+        &self,
+        flow_run: domain::FlowRunRecord,
+        callback_task: domain::CallbackTaskRecord,
+        attempt: domain::FlowRunCallbackResumeAttemptRecord,
+        command: &ResumePublishedCallbackCommand,
+        result: Result<domain::FlowRunRecord>,
+    ) -> Result<ResumePublishedCallbackResult> {
+        let is_tool_round = callback_task.callback_kind == "llm_tool_calls";
         match result {
             Ok(flow_run) => {
                 if is_tool_round {

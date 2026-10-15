@@ -1,3 +1,29 @@
+async fn validate_callback_resume_admission(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    admission: &CallbackResumeAdmissionFence,
+    flow_run_id: Uuid,
+    callback_task_id: Uuid,
+) -> Result<()> {
+    // Caller holds the same callback advisory lock used by claim acquisition.
+    // The row lock bridges this check and the actual claim write in this transaction.
+    let owned: Option<Uuid> = sqlx::query_scalar(
+        "select id from flow_run_callback_resume_attempts
+         where id = $1 and updated_at = $2 and flow_run_id = $3 and callback_task_id = $4
+           and status = 'processing'
+         for update",
+    )
+    .bind(admission.attempt_id)
+    .bind(admission.expected_updated_at)
+    .bind(flow_run_id)
+    .bind(callback_task_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if owned.is_none() {
+        return Err(ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into());
+    }
+    Ok(())
+}
+
 fn parse_resume_claim_kind(value: &str) -> Result<ResumeClaimKind> {
     match value {
         "human" => Ok(ResumeClaimKind::Human),
@@ -143,6 +169,25 @@ impl PgControlPlaneStore {
         &self,
         input: &AcquireResumeClaimInput,
     ) -> Result<AcquireResumeClaimOutput> {
+        self.acquire_resume_claim_inner(input, None).await
+    }
+
+    async fn acquire_resume_claim_with_admission(
+        &self,
+        input: &AcquireResumeClaimInput,
+        admission: &CallbackResumeAdmissionFence,
+    ) -> Result<AcquireResumeClaimOutput> {
+        self.acquire_resume_claim_inner(input, Some(admission))
+            .await
+    }
+}
+
+impl PgControlPlaneStore {
+    async fn acquire_resume_claim_inner(
+        &self,
+        input: &AcquireResumeClaimInput,
+        admission: Option<&CallbackResumeAdmissionFence>,
+    ) -> Result<AcquireResumeClaimOutput> {
         if (input.kind == ResumeClaimKind::Callback) != input.callback_task_id.is_some() {
             return Err(anyhow!("resume claim kind does not match callback task"));
         }
@@ -152,6 +197,18 @@ impl PgControlPlaneStore {
             .bind(target_id.to_string())
             .execute(&mut *tx)
             .await?;
+        if let Some(admission) = admission {
+            let callback_task_id = input.callback_task_id.ok_or(ControlPlaneError::Conflict(
+                "callback_resume_reservation_mismatch",
+            ))?;
+            validate_callback_resume_admission(
+                &mut tx,
+                admission,
+                input.flow_run_id,
+                callback_task_id,
+            )
+            .await?;
+        }
         let existing = if let Some(callback_task_id) = input.callback_task_id {
             sqlx::query(&format!(
                 "select {RESUME_CLAIM_COLUMNS} from flow_run_resume_claims where callback_task_id = $1 for update"
@@ -255,7 +312,9 @@ impl PgControlPlaneStore {
             disposition: ResumeClaimDisposition::Acquired,
         })
     }
+}
 
+impl PgControlPlaneStore {
     async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
         let updated = sqlx::query(
             "update flow_run_resume_claims \

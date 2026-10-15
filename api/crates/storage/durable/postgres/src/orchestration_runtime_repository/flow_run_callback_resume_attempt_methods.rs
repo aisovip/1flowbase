@@ -150,7 +150,7 @@ impl PgControlPlaneStore {
             update flow_run_callback_resume_attempts
             set status = $3,
                 response_payload = coalesce(($4::jsonb -> 0), response_payload),
-                updated_at = now(),
+                updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond'),
                 raw_json_payloads = (flow_run_callback_resume_attempts.raw_json_payloads - 'response_payload') || jsonb_strip_nulls(jsonb_build_object('response_payload', coalesce(($4::jsonb -> 1), flow_run_callback_resume_attempts.raw_json_payloads -> 'response_payload')))
             where id = $1
               and status = $2
@@ -191,6 +191,39 @@ impl PgControlPlaneStore {
             Some(response_payload),
         )
         .await
+    }
+
+    pub async fn release_unstarted_flow_run_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        expected_updated_at: OffsetDateTime,
+    ) -> Result<bool> {
+        let mut tx = self.pool().begin().await?;
+        let callback_task_id: Option<Uuid> = sqlx::query_scalar(
+            "select callback_task_id from flow_run_callback_resume_attempts where id = $1",
+        )
+        .bind(attempt_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(callback_task_id) = callback_task_id else {
+            return Ok(false);
+        };
+        // Serialize with callback execution-claim acquisition, including the first
+        // claim insert. Locking only an existing claim row would miss that race.
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(callback_task_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let released = sqlx::query(
+            "update flow_run_callback_resume_attempts a
+             set status = 'received', updated_at = greatest(clock_timestamp(), a.updated_at + interval '1 microsecond')
+             where a.id = $1 and a.updated_at = $2 and a.status = 'processing'
+               and not exists (select 1 from flow_run_resume_claims c
+                   where c.callback_task_id = a.callback_task_id
+                     and c.status = 'processing' and c.lease_expires_at > now())",
+        ).bind(attempt_id).bind(expected_updated_at).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(released.rows_affected() == 1)
     }
 
     pub async fn park_flow_run_callback_resume_attempt(

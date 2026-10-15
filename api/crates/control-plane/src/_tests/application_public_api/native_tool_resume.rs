@@ -9,6 +9,8 @@ use control_plane_contracts::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[path = "native_tool_resume/reservation_lifecycle.rs"]
+mod reservation_lifecycle;
 #[path = "native_tool_resume/standalone_notifications.rs"]
 mod standalone_notifications;
 
@@ -906,6 +908,25 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
             .unwrap(),
         PreparedPublishedCallbackResume::Attach { .. }
     ));
+    // The attempt receipt is old, but the execution owner keeps its lease alive.
+    repository.expire_callback_resume_attempt_for_test(callback.id);
+    repository.set_callback_resume_claim_lease_for_test(
+        callback.id,
+        OffsetDateTime::now_utc() + time::Duration::minutes(5),
+    );
+    for retry in [&command, &full_retry] {
+        assert!(matches!(
+            service
+                .prepare_callback_resume_for_actor(actor.clone(), retry)
+                .await
+                .unwrap(),
+            PreparedPublishedCallbackResume::Attach { .. }
+        ));
+    }
+    assert!(service
+        .reserve_native_callback_for_actor(actor.clone(), &command)
+        .await
+        .is_err());
     assert!(consumer.calls.lock().unwrap().is_empty());
     let attempts = repository.callback_resume_attempts();
     assert_eq!(attempts.len(), 1);
@@ -1098,6 +1119,10 @@ async fn expired_processing_tool_receipt_reclaims_the_same_attempt() {
         .unwrap();
     repository.complete_callback_task_for_test(callback.id);
     repository.expire_callback_resume_attempt_for_test(callback.id);
+    repository.set_callback_resume_claim_lease_for_test(
+        callback.id,
+        OffsetDateTime::now_utc() - time::Duration::seconds(1),
+    );
 
     let mut tampered = command.clone();
     tampered.response_payload["tool_results"][0]["content"] = json!("changed");

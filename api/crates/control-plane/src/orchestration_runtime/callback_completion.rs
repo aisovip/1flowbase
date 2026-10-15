@@ -1,5 +1,38 @@
 use super::*;
 
+pub(crate) enum PreparedCallbackTask {
+    Execution(Box<PreparedCallbackExecution>),
+    NoExecution(domain::FlowRunRecord),
+}
+
+/// Frozen callback execution inputs. Claim acquisition is complete; execution never reclaims.
+pub(crate) struct PreparedCallbackExecution {
+    command: CompleteCallbackTaskCommand,
+    responses_round: Option<(Uuid, Value)>,
+    actor: domain::ActorContext,
+    application: domain::ApplicationRecord,
+    callback_task: domain::CallbackTaskRecord,
+    checkpoint: domain::CheckpointRecord,
+    flow_run: domain::FlowRunRecord,
+    waiting_node: CallbackResumeWaitingNode,
+    base_started_at: OffsetDateTime,
+    compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan,
+    claim: ResumeClaimRecord,
+}
+
+impl PreparedCallbackExecution {
+    pub(crate) fn claim(&self) -> &ResumeClaimRecord {
+        &self.claim
+    }
+    pub(crate) fn renew_input(&self) -> RenewResumeClaimInput {
+        RenewResumeClaimInput {
+            claim_id: self.claim.id,
+            claim_token: self.claim.claim_token,
+            expected_generation: self.claim.generation,
+        }
+    }
+}
+
 impl<R, H> OrchestrationRuntimeService<R, H>
 where
     R: ApplicationRepository
@@ -32,8 +65,30 @@ where
 
     pub(crate) async fn complete_callback_task_run(
         &self,
-        mut command: CompleteCallbackTaskCommand,
+        command: CompleteCallbackTaskCommand,
     ) -> Result<domain::FlowRunRecord>
+    where
+        R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
+    {
+        match self.prepare_callback_task_execution(command, None).await? {
+            PreparedCallbackTask::NoExecution(run) => Ok(run),
+            PreparedCallbackTask::Execution(prepared) => {
+                let renew = prepared.renew_input();
+                run_with_resume_claim_heartbeat(
+                    self.execute_prepared_callback_task(*prepared),
+                    || self.repository.renew_resume_claim(&renew),
+                    std::time::Duration::from_secs(60),
+                )
+                .await
+            }
+        }
+    }
+
+    pub(crate) async fn prepare_callback_task_execution(
+        &self,
+        mut command: CompleteCallbackTaskCommand,
+        admission: Option<&crate::ports::CallbackResumeAdmissionFence>,
+    ) -> Result<PreparedCallbackTask>
     where
         R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
@@ -98,6 +153,17 @@ where
         let flow_run = resume_context.flow_run;
         let waiting_node = resume_context.waiting_node;
         let base_started_at = resume_context.next_node_started_at;
+        let prepared_plan = if admission.is_some() {
+            Some(
+                self.prepare_callback_compiled_plan(&flow_run, &waiting_node)
+                    .await?,
+            )
+        } else {
+            None
+        };
+        if admission.is_some() && pending_callback_task.callback_kind != "llm_tool_calls" {
+            return Err(ControlPlaneError::InvalidInput("prepared_callback_kind").into());
+        }
         let committed_tool_round = if pending_callback_task.callback_kind == "llm_tool_calls" {
             let results = command
                 .response_payload
@@ -114,26 +180,29 @@ where
             if results.is_empty() {
                 return Err(ControlPlaneError::InvalidInput("tool_results").into());
             }
-            let committed = self
-                .repository
-                .commit_tool_callback_results(&CommitToolCallbackResultsInput {
-                    responses_continuation: command
-                        .responses_continuation
-                        .as_ref()
-                        .map(|grant| {
-                            serde_json::from_value(
-                                grant.payload()["responses_continuation"].clone(),
-                            )
-                        })
-                        .transpose()?,
-                    scope_id: application.workspace_id,
-                    application_id: command.application_id,
-                    flow_run_id: flow_run.id,
-                    checkpoint_id: checkpoint.id,
-                    callback_task_id: command.callback_task_id,
-                    results,
-                })
-                .await?;
+            let input = CommitToolCallbackResultsInput {
+                responses_continuation: command
+                    .responses_continuation
+                    .as_ref()
+                    .map(|grant| {
+                        serde_json::from_value(grant.payload()["responses_continuation"].clone())
+                    })
+                    .transpose()?,
+                scope_id: application.workspace_id,
+                application_id: command.application_id,
+                flow_run_id: flow_run.id,
+                checkpoint_id: checkpoint.id,
+                callback_task_id: command.callback_task_id,
+                results,
+            };
+            let committed = match admission {
+                Some(fence) => {
+                    self.repository
+                        .commit_tool_callback_results_with_admission(&input, fence)
+                        .await?
+                }
+                None => self.repository.commit_tool_callback_results(&input).await?,
+            };
             let committed = if committed.disposition == ToolCallbackRoundDisposition::Completed
                 && (command.responses_continuation.is_some() || command.native_transport.is_some())
             {
@@ -142,24 +211,31 @@ where
                     .response_payload
                     .clone()
                     .ok_or_else(|| anyhow!("tool callback receipt missing"))?;
-                let acquired = self
-                    .repository
-                    .acquire_resume_claim(&AcquireResumeClaimInput {
-                        scope_id: application.workspace_id,
-                        application_id: command.application_id,
-                        flow_run_id: flow_run.id,
-                        checkpoint_id: committed
-                            .claim
-                            .as_ref()
-                            .ok_or_else(|| anyhow!("tool callback claim missing"))?
-                            .checkpoint_id,
-                        callback_task_id: Some(command.callback_task_id),
-                        kind: ResumeClaimKind::Callback,
-                        request_payload: stored,
-                    })
-                    .await?;
+                let input = AcquireResumeClaimInput {
+                    scope_id: application.workspace_id,
+                    application_id: command.application_id,
+                    flow_run_id: flow_run.id,
+                    checkpoint_id: committed
+                        .claim
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("tool callback claim missing"))?
+                        .checkpoint_id,
+                    callback_task_id: Some(command.callback_task_id),
+                    kind: ResumeClaimKind::Callback,
+                    request_payload: stored,
+                };
+                let acquired = match admission {
+                    Some(fence) => {
+                        self.repository
+                            .acquire_resume_claim_with_admission(&input, fence)
+                            .await?
+                    }
+                    None => self.repository.acquire_resume_claim(&input).await?,
+                };
                 match acquired.disposition {
-                    ResumeClaimDisposition::Completed => return Ok(flow_run),
+                    ResumeClaimDisposition::Completed => {
+                        return Ok(PreparedCallbackTask::NoExecution(flow_run))
+                    }
                     ResumeClaimDisposition::InProgress => {
                         return Err(
                             ControlPlaneError::Conflict("callback_resume_already_admitted").into(),
@@ -175,7 +251,7 @@ where
                 committed
             };
             if committed.disposition != ToolCallbackRoundDisposition::Acquired {
-                return Ok(flow_run);
+                return Ok(PreparedCallbackTask::NoExecution(flow_run));
             }
             let claim = committed
                 .claim
@@ -189,6 +265,65 @@ where
         } else {
             None
         };
+        let compiled_plan = match prepared_plan {
+            Some(plan) => plan,
+            None => {
+                self.prepare_callback_compiled_plan(&flow_run, &waiting_node)
+                    .await?
+            }
+        };
+        let (callback_task, claim) =
+            if let Some((callback_task, claim, response_payload)) = committed_tool_round {
+                command.response_payload = response_payload;
+                (callback_task, claim)
+            } else {
+                let claim = self
+                    .repository
+                    .acquire_resume_claim(&AcquireResumeClaimInput {
+                        scope_id: application.workspace_id,
+                        application_id: command.application_id,
+                        flow_run_id: flow_run.id,
+                        checkpoint_id: checkpoint.id,
+                        callback_task_id: Some(command.callback_task_id),
+                        kind: ResumeClaimKind::Callback,
+                        request_payload: command.response_payload.clone(),
+                    })
+                    .await?;
+                if claim.disposition != ResumeClaimDisposition::Acquired {
+                    return Ok(PreparedCallbackTask::NoExecution(flow_run));
+                }
+                let callback_task = self
+                    .repository
+                    .complete_callback_task(&CompleteCallbackTaskInput {
+                        callback_task_id: command.callback_task_id,
+                        response_payload: command.response_payload.clone(),
+                        completed_at: OffsetDateTime::now_utc(),
+                    })
+                    .await?;
+                (callback_task, claim.claim)
+            };
+        Ok(PreparedCallbackTask::Execution(Box::new(
+            PreparedCallbackExecution {
+                command,
+                responses_round,
+                actor,
+                application,
+                callback_task,
+                checkpoint,
+                flow_run,
+                waiting_node,
+                base_started_at,
+                compiled_plan,
+                claim,
+            },
+        )))
+    }
+
+    async fn prepare_callback_compiled_plan(
+        &self,
+        flow_run: &domain::FlowRunRecord,
+        waiting_node: &CallbackResumeWaitingNode,
+    ) -> Result<orchestration_runtime::compiled_plan::CompiledPlan> {
         let compiled_plan_id = flow_run
             .compiled_plan_id
             .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
@@ -209,175 +344,154 @@ where
             domain::NodeRunStatus::WaitingCallback,
             "complete_callback_task",
         )?;
-        let (callback_task, claim) =
-            if let Some((callback_task, claim, response_payload)) = committed_tool_round {
-                command.response_payload = response_payload;
-                (callback_task, claim)
-            } else {
-                let claim = self
-                    .repository
-                    .acquire_resume_claim(&AcquireResumeClaimInput {
-                        scope_id: application.workspace_id,
-                        application_id: command.application_id,
-                        flow_run_id: flow_run.id,
-                        checkpoint_id: checkpoint.id,
-                        callback_task_id: Some(command.callback_task_id),
-                        kind: ResumeClaimKind::Callback,
-                        request_payload: command.response_payload.clone(),
-                    })
-                    .await?;
-                if claim.disposition != ResumeClaimDisposition::Acquired {
-                    return Ok(flow_run);
-                }
-                let callback_task = self
-                    .repository
-                    .complete_callback_task(&CompleteCallbackTaskInput {
-                        callback_task_id: command.callback_task_id,
-                        response_payload: command.response_payload.clone(),
-                        completed_at: OffsetDateTime::now_utc(),
-                    })
-                    .await?;
-                (callback_task, claim.claim)
-            };
-        let renew_input = RenewResumeClaimInput {
-            claim_id: claim.id,
-            claim_token: claim.claim_token,
-            expected_generation: claim.generation,
-        };
-        run_with_resume_claim_heartbeat(
-            async {
-                let result = if callback_task.callback_kind == "data_model_side_effect_confirmation"
-                {
-                    self.complete_data_model_side_effect_callback(
-                        command,
-                        &actor,
-                        &callback_task,
-                        &waiting_node,
-                        base_started_at,
-                        &application,
-                        &checkpoint,
-                        &flow_run,
-                        &compiled_plan,
-                        &claim,
-                    )
-                    .await
-                } else {
-                    async {
-                        let snapshot = checkpoint_snapshot_from_record_with_context(
-                            &self.repository,
-                            &checkpoint,
-                            flow_run.id,
-                        )
-                        .await?;
-                        let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-                        let execution = self
-                            .resume_execution_segment(ResumeExecutionSegmentInput {
-                                transport_connection_scope: command
-                                    .transport_connection_scope
-                                    .clone(),
-                                observation_context: command.observation_context.clone(),
-                                resumed_node_run: command
-                                    .native_transport
-                                    .as_ref()
-                                    .map(|_| waiting_node.clone()),
-                                native_transport: command.native_transport.clone(),
-                                response_round_id: Some(callback_task.id),
-                                resume_claim_id: claim.id,
-                                resume_claim_owner: Some(renew_input.clone()),
-                                actor: &actor,
-                                application: &application,
-                                flow_run: &flow_run,
-                                compiled_plan: &compiled_plan,
-                                snapshot: &snapshot,
-                                waiting_node_id: &waiting_node_id,
-                                waiting_node_run_id: Some(callback_task.node_run_id),
-                                resume_payload: &command.response_payload,
-                            })
-                            .await?;
-                        let waiting_node_output_payload =
-                            if callback_task.callback_kind == "llm_tool_calls" {
-                                waiting_node.output_payload.clone()
-                            } else {
-                                callback_task.response_payload.clone().ok_or_else(|| {
-                                    anyhow!("completed callback task is missing response payload")
-                                })?
-                            };
+        Ok(compiled_plan)
+    }
 
-                        self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
-                            responses_round: responses_round.clone(),
-                            scope_id: application.workspace_id,
-                            application_name: &application.name,
-                            task_queue: self.provider_request_log_queue.as_ref(),
-                            application_id: command.application_id,
-                            flow_run: &flow_run,
-                            compiled_plan: Some(&compiled_plan),
-                            outcome: &execution.outcome,
-                            prepared_node_runs: Some(&execution.prepared_node_runs),
-                            answer_presentation: execution.answer_presentation.as_ref(),
-                            trigger_event_type: "flow_run_resumed",
-                            trigger_event_payload: json!({
-                                "callback_task_id": callback_task.id,
-                                "response_payload": command.response_payload,
-                            }),
-                            base_started_at,
-                            waiting_node_resume: command.native_transport.is_none().then(|| {
-                                WaitingNodeResumeUpdate {
-                                    node_run_id: callback_task.node_run_id,
-                                    from_status: waiting_node.status,
-                                    output_payload: waiting_node_output_payload,
-                                    metrics_payload: json!({
-                                        "resumed": true,
-                                        "callback_kind": callback_task.callback_kind,
-                                    }),
-                                    debug_payload: json!({
-                                        "callback_task_id": callback_task.id,
-                                        "callback_kind": callback_task.callback_kind,
-                                    }),
-                                }
-                            }),
-                            resume_claim_id: Some(claim.id),
-                            resume_claim_token: Some(claim.claim_token),
-                            tool_delivery_events: execution.tool_delivery_events.clone(),
-                        })
-                        .await
-                    }
-                    .await
-                };
-                self.repository
-                    .finish_resume_claim(&FinishResumeClaimInput {
-                        claim_id: claim.id,
-                        claim_token: claim.claim_token,
-                        expected_generation: claim.generation,
-                        status: if result.is_ok() {
-                            ResumeClaimStatus::Succeeded
-                        } else {
-                            ResumeClaimStatus::Failed
-                        },
-                        error_payload: result
+    pub(crate) async fn execute_prepared_callback_task(
+        &self,
+        prepared: PreparedCallbackExecution,
+    ) -> Result<domain::FlowRunRecord>
+    where
+        R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
+    {
+        let renew_input = prepared.renew_input();
+        let PreparedCallbackExecution {
+            command,
+            responses_round,
+            actor,
+            application,
+            callback_task,
+            checkpoint,
+            flow_run,
+            waiting_node,
+            base_started_at,
+            compiled_plan,
+            claim,
+        } = prepared;
+        let result = if callback_task.callback_kind == "data_model_side_effect_confirmation" {
+            self.complete_data_model_side_effect_callback(
+                command,
+                &actor,
+                &callback_task,
+                &waiting_node,
+                base_started_at,
+                &application,
+                &checkpoint,
+                &flow_run,
+                &compiled_plan,
+                &claim,
+            )
+            .await
+        } else {
+            async {
+                let snapshot = checkpoint_snapshot_from_record_with_context(
+                    &self.repository,
+                    &checkpoint,
+                    flow_run.id,
+                )
+                .await?;
+                let waiting_node_id = checkpoint_node_id(&checkpoint)?;
+                let execution = self
+                    .resume_execution_segment(ResumeExecutionSegmentInput {
+                        transport_connection_scope: command.transport_connection_scope.clone(),
+                        observation_context: command.observation_context.clone(),
+                        resumed_node_run: command
+                            .native_transport
                             .as_ref()
-                            .err()
-                            .map(|error| json!({ "message": error.to_string() })),
-                        completed_at: OffsetDateTime::now_utc(),
+                            .map(|_| waiting_node.clone()),
+                        native_transport: command.native_transport.clone(),
+                        response_round_id: Some(callback_task.id),
+                        resume_claim_id: claim.id,
+                        resume_claim_owner: Some(renew_input.clone()),
+                        actor: &actor,
+                        application: &application,
+                        flow_run: &flow_run,
+                        compiled_plan: &compiled_plan,
+                        snapshot: &snapshot,
+                        waiting_node_id: &waiting_node_id,
+                        waiting_node_run_id: Some(callback_task.node_run_id),
+                        resume_payload: &command.response_payload,
                     })
                     .await?;
-                if result.is_ok() {
-                    if let Err(error) = self
-                        .provider_transport_store
-                        .delete_continuation(crate::ports::ProviderContinuationSlotId::for_resume_claim(
-                            flow_run.id,
-                            claim.id,
-                        ))
-                        .await
-                    {
-                        tracing::warn!(flow_run_id = %flow_run.id, error = %error, "resume claim continuation cleanup failed");
-                    }
-                }
-                result
-            },
-            || self.repository.renew_resume_claim(&renew_input),
-            std::time::Duration::from_secs(60),
-        )
-        .await
+                let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls"
+                {
+                    waiting_node.output_payload.clone()
+                } else {
+                    callback_task.response_payload.clone().ok_or_else(|| {
+                        anyhow!("completed callback task is missing response payload")
+                    })?
+                };
+
+                self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
+                    responses_round: responses_round.clone(),
+                    scope_id: application.workspace_id,
+                    application_name: &application.name,
+                    task_queue: self.provider_request_log_queue.as_ref(),
+                    application_id: command.application_id,
+                    flow_run: &flow_run,
+                    compiled_plan: Some(&compiled_plan),
+                    outcome: &execution.outcome,
+                    prepared_node_runs: Some(&execution.prepared_node_runs),
+                    answer_presentation: execution.answer_presentation.as_ref(),
+                    trigger_event_type: "flow_run_resumed",
+                    trigger_event_payload: json!({
+                        "callback_task_id": callback_task.id,
+                        "response_payload": command.response_payload,
+                    }),
+                    base_started_at,
+                    waiting_node_resume: command.native_transport.is_none().then(|| {
+                        WaitingNodeResumeUpdate {
+                            node_run_id: callback_task.node_run_id,
+                            from_status: waiting_node.status,
+                            output_payload: waiting_node_output_payload,
+                            metrics_payload: json!({
+                                "resumed": true,
+                                "callback_kind": callback_task.callback_kind,
+                            }),
+                            debug_payload: json!({
+                                "callback_task_id": callback_task.id,
+                                "callback_kind": callback_task.callback_kind,
+                            }),
+                        }
+                    }),
+                    resume_claim_id: Some(claim.id),
+                    resume_claim_token: Some(claim.claim_token),
+                    tool_delivery_events: execution.tool_delivery_events.clone(),
+                })
+                .await
+            }
+            .await
+        };
+        self.repository
+            .finish_resume_claim(&FinishResumeClaimInput {
+                claim_id: claim.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
+                status: if result.is_ok() {
+                    ResumeClaimStatus::Succeeded
+                } else {
+                    ResumeClaimStatus::Failed
+                },
+                error_payload: result
+                    .as_ref()
+                    .err()
+                    .map(|error| json!({ "message": error.to_string() })),
+                completed_at: OffsetDateTime::now_utc(),
+            })
+            .await?;
+        if result.is_ok() {
+            if let Err(error) = self
+                .provider_transport_store
+                .delete_continuation(crate::ports::ProviderContinuationSlotId::for_resume_claim(
+                    flow_run.id,
+                    claim.id,
+                ))
+                .await
+            {
+                tracing::warn!(flow_run_id = %flow_run.id, error = %error, "resume claim continuation cleanup failed");
+            }
+        }
+        result
     }
 
     #[allow(clippy::too_many_arguments)]

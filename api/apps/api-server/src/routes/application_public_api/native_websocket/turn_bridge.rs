@@ -233,6 +233,7 @@ impl NativeTurnBridge {
                 command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                     initial_run: plan.initial_run,
                     command: plan.command,
+                    reservation: plan.reservation,
                 },
             },
         )

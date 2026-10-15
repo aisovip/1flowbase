@@ -840,7 +840,8 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         attempt.status = input.status;
         attempt.error_payload = input.error_payload.clone();
         attempt.completed_at = Some(input.completed_at);
-        attempt.updated_at = OffsetDateTime::now_utc();
+        attempt.updated_at =
+            OffsetDateTime::now_utc().max(attempt.updated_at + time::Duration::microseconds(1));
         Ok(attempt.clone())
     }
 
@@ -857,12 +858,38 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         )
     }
 
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("test repo mutex poisoned")
+            .callback_resume_claim_leases
+            .get(&callback_task_id)
+            .is_some_and(|lease| *lease > OffsetDateTime::now_utc()))
+    }
+
     async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: serde_json::Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
         let mut inner = self.inner.lock().expect("test repo mutex poisoned");
+        let active = inner
+            .callback_resume_attempts
+            .values()
+            .find(|attempt| attempt.id == attempt_id)
+            .and_then(|attempt| {
+                inner
+                    .callback_resume_claim_leases
+                    .get(&attempt.callback_task_id)
+            })
+            .is_some_and(|lease| *lease > OffsetDateTime::now_utc());
+        if active {
+            return Ok(None);
+        }
         let Some(attempt) = inner
             .callback_resume_attempts
             .values_mut()
@@ -879,8 +906,46 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
             return Ok(None);
         }
         attempt.status = domain::FlowRunCallbackResumeAttemptStatus::Processing;
-        attempt.updated_at = OffsetDateTime::now_utc();
+        attempt.updated_at =
+            OffsetDateTime::now_utc().max(attempt.updated_at + time::Duration::microseconds(1));
         Ok(Some(attempt.clone()))
+    }
+
+    async fn release_unstarted_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        expected_updated_at: OffsetDateTime,
+    ) -> Result<bool> {
+        let mut inner = self.inner.lock().expect("test repo mutex poisoned");
+        let active = inner
+            .callback_resume_attempts
+            .values()
+            .find(|attempt| attempt.id == attempt_id)
+            .and_then(|attempt| {
+                inner
+                    .callback_resume_claim_leases
+                    .get(&attempt.callback_task_id)
+            })
+            .is_some_and(|lease| *lease > OffsetDateTime::now_utc());
+        if active {
+            return Ok(false);
+        }
+        let Some(attempt) = inner
+            .callback_resume_attempts
+            .values_mut()
+            .find(|attempt| attempt.id == attempt_id)
+        else {
+            return Ok(false);
+        };
+        if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+            || attempt.updated_at != expected_updated_at
+        {
+            return Ok(false);
+        }
+        attempt.status = domain::FlowRunCallbackResumeAttemptStatus::Received;
+        attempt.updated_at =
+            OffsetDateTime::now_utc().max(attempt.updated_at + time::Duration::microseconds(1));
+        Ok(true)
     }
 
     async fn park_published_callback_resume_attempt(
@@ -915,7 +980,8 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
             {
                 attempt.status = domain::FlowRunCallbackResumeAttemptStatus::Cancelled;
                 attempt.completed_at = Some(completed_at);
-                attempt.updated_at = OffsetDateTime::now_utc();
+                attempt.updated_at = OffsetDateTime::now_utc()
+                    .max(attempt.updated_at + time::Duration::microseconds(1));
                 cancelled.push(attempt.clone());
             }
         }
@@ -1032,7 +1098,8 @@ impl ApplicationPublicApiTestRepository {
         if let Some(response_payload) = response_payload {
             attempt.response_payload = response_payload;
         }
-        attempt.updated_at = OffsetDateTime::now_utc();
+        attempt.updated_at =
+            OffsetDateTime::now_utc().max(attempt.updated_at + time::Duration::microseconds(1));
         Ok(Some(attempt.clone()))
     }
 }

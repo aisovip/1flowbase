@@ -35,12 +35,29 @@ pub trait ApplicationPublishedCallbackAttemptRepository: Send + Sync {
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
 
+    /// Whether this callback has a processing execution claim whose lease is live.
+    /// Uses the same owner predicate as expired-attempt reclamation.
+    async fn has_active_published_callback_resume_claim(
+        &self,
+        callback_task_id: Uuid,
+    ) -> Result<bool>;
+
     /// Re-admit an identical delivery after its execution claim lease expires.
     async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
+
+    /// Release only this acquisition's processing row version before execution.
+    /// Refuse if the version changed, the attempt settled, or an execution claim is live.
+    /// Acquisition/re-acquisition must return a strictly increasing row version;
+    /// execution-claim acquisition and this check must serialize on the callback owner.
+    async fn release_unstarted_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        expected_updated_at: OffsetDateTime,
+    ) -> Result<bool>;
 
     /// `processing` → `received`: the delivery finished without completing the
     /// tool round, so the attempt is parked until further results arrive.

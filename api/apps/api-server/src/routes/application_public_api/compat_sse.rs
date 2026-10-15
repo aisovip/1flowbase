@@ -11,9 +11,9 @@ use axum::response::{
 };
 use control_plane::application_public_api::{
     callback_resume::{
-        ApplicationPublishedCallbackAttemptRepository, ApplicationPublishedCallbackResumeService,
-        PreparedPublishedCallbackResume, PublishedCallbackResumeSource,
-        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
     },
     native::NativeRunStatus,
 };
@@ -53,6 +53,16 @@ use crate::{
     },
 };
 
+mod callback_attachment;
+mod callback_execution;
+mod callback_reservation;
+use callback_attachment::{
+    attach_live_compatible_callback_round, callback_round_replay_established,
+    follow_missing_compatible_round_events,
+};
+pub(crate) use callback_execution::execute_compatible_resume_for_actor;
+use callback_execution::open_compatible_turn_with_invoker;
+pub(crate) use callback_reservation::CompatibleCallbackReservation;
 mod event_forwarding;
 mod protocol_mappers;
 #[cfg(test)]
@@ -90,6 +100,7 @@ impl ResponsesProjectionMode {
 pub(crate) struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
     pub(crate) command: ResumePublishedCallbackCommand,
+    pub(crate) reservation: Option<CompatibleCallbackReservation>,
 }
 
 pub(crate) enum CompatibleResumeAdmission {
@@ -112,6 +123,7 @@ enum CompatibleTurnAction {
     },
     ResumeForActor {
         command: ResumePublishedCallbackCommand,
+        reservation: Option<CompatibleCallbackReservation>,
         actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     },
 }
@@ -344,9 +356,10 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let service =
+    let service = Arc::new(
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store());
+            .with_last_used_cache(state.infrastructure.cache_store()),
+    );
     let mut retried_reservation_race = false;
     loop {
         let prepared = service
@@ -355,12 +368,24 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
             .map_err(service_error)?;
         return Ok(match prepared {
             PreparedPublishedCallbackResume::Resume { initial_run } => {
+                let mut reservation = None;
                 if command.native_transport.is_some() || command.responses_continuation.is_some() {
                     match service
-                        .reserve_native_callback_for_actor(actor.clone(), &command)
+                        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
                         .await
                     {
-                        Ok(attempt_id) => command.reserved_attempt_id = Some(attempt_id),
+                        Ok(acquired) => {
+                            command.reserved_attempt_id = Some(acquired.attempt_id());
+                            let mut owned =
+                                CompatibleCallbackReservation::new(acquired, Arc::clone(&service));
+                            owned
+                                .capture_previous_generation(
+                                    state.runtime_event_stream.as_ref(),
+                                    initial_run.id,
+                                )
+                                .await;
+                            reservation = Some(owned);
+                        }
                         Err(error)
                             if !retried_reservation_race
                                 && command.source
@@ -385,10 +410,10 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
                         Err(error) => return Err(service_error(error)),
                     }
                 }
-                compatible_resume_plan(initial_run, command, false)
+                compatible_resume_plan(initial_run, command, false, reservation)
             }
             PreparedPublishedCallbackResume::Attach { initial_run } => {
-                compatible_resume_plan(initial_run, command, true)
+                compatible_resume_plan(initial_run, command, true, None)
             }
             PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
                 CompatibleResumeAdmission::StartNewTurnFromHistory { recovery: None }
@@ -406,6 +431,7 @@ fn compatible_resume_plan(
     mut initial_run: Box<NativeRunResult>,
     command: ResumePublishedCallbackCommand,
     attach_active: bool,
+    reservation: Option<CompatibleCallbackReservation>,
 ) -> CompatibleResumeAdmission {
     if let Some(metadata) = initial_run.metadata.as_object_mut() {
         metadata.remove("responses_round");
@@ -420,39 +446,8 @@ fn compatible_resume_plan(
     CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
         initial_run: *initial_run,
         command,
+        reservation,
     }))
-}
-
-pub(crate) async fn execute_compatible_resume_for_actor(
-    dependencies: CompatibilityExecutionDependencies,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    command: ResumePublishedCallbackCommand,
-) -> Result<NativeRunResult, NativeApiError> {
-    let round_id = Some(callback_task_id_from_resume_command(&command));
-    let runtime_internal_tool_invoker = dependencies
-        .native
-        .runtime_invoker_factory
-        .for_actor(&actor)
-        .await?;
-    let runtime_service =
-        native::native_runtime_service(&dependencies.native, runtime_internal_tool_invoker)
-            .with_runtime_event_stream(dependencies.native.runtime_event_stream.clone());
-    ApplicationPublishedCallbackResumeService::new(
-        dependencies.native.store.clone(),
-        runtime_service,
-    )
-    .with_last_used_cache(dependencies.native.cache_store.clone())
-    .resume_callback_for_actor(actor, command)
-    .await
-    .map(|mut result| {
-        if let Some(round_id) = round_id {
-            if result.run.metadata["native_inference_recovery_replay"] != true {
-                result.run.metadata["response_round_id"] = json!(round_id);
-            }
-        }
-        result.run
-    })
-    .map_err(service_error)
 }
 
 #[cfg(test)]
@@ -627,22 +622,22 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    mut reservation: Option<CompatibleCallbackReservation>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    if initial_run.metadata["active_callback_attach"] == true {
+    if reservation.is_none() && initial_run.metadata["active_callback_attach"] == true {
         let round_id = callback_task_id_from_resume_command(&command);
         if let Some(start) =
             live_compatible_round_start(&dependencies, &initial_run, round_id).await
         {
-            return attach_compatible_typed_stream_with_replay(
-                native::native_run_terminal_dependencies(&dependencies.native),
-                dependencies.native.runtime_event_stream.clone(),
+            return attach_live_compatible_callback_round(
+                &dependencies,
                 initial_run,
-                Some(start),
-                Vec::new(),
+                round_id,
+                start,
             )
             .await;
         }
-        return follow_missing_compatible_round(dependencies, initial_run, command, actor).await;
+        return follow_missing_compatible_round(dependencies, initial_run, command, actor);
     }
     if initial_run.metadata["native_inference_recovery_replay"] == true {
         return attach_compatible_typed_stream(
@@ -653,13 +648,52 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
         )
         .await;
     }
-    let mcp_runtime_invoker =
-        native::runtime_internal_tool_invoker_for_run(&dependencies.native, &actor, &initial_run)
-            .await?;
+    if reservation
+        .as_ref()
+        .is_some_and(|reservation| !reservation.is_acquired())
+    {
+        return match durable_compatible_round_replay(
+            &dependencies,
+            &initial_run,
+            callback_task_id_from_resume_command(&command),
+        )
+        .await?
+        {
+            DurableCompatibleRoundReplay::Ready(replay)
+                if replay.last().is_some_and(|event| {
+                    event_forwarding::is_public_terminal_runtime_event(&event.event_type)
+                }) =>
+            {
+                attach_terminal_compatible_round(&dependencies, initial_run, replay).await
+            }
+            _ => Err(service_error(anyhow::anyhow!(
+                "settled callback has no attributable durable round terminal"
+            ))),
+        };
+    }
+    let mcp_runtime_invoker = match native::runtime_internal_tool_invoker_for_run(
+        &dependencies.native,
+        &actor,
+        &initial_run,
+    )
+    .await
+    {
+        Ok(invoker) => invoker,
+        Err(error) => {
+            if let Some(reservation) = reservation.as_mut() {
+                reservation.release().await;
+            }
+            return Err(error);
+        }
+    };
     let opened = open_compatible_turn_with_invoker(
         dependencies.clone(),
         initial_run,
-        CompatibleTurnAction::ResumeForActor { command, actor },
+        CompatibleTurnAction::ResumeForActor {
+            command,
+            actor,
+            reservation,
+        },
         None,
         mcp_runtime_invoker,
     )
@@ -672,6 +706,19 @@ async fn attach_terminal_compatible_round(
     initial_run: NativeRunResult,
     durable_round_replay: Vec<RuntimeEventEnvelope>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let subscription = terminal_compatible_round_subscription(&durable_round_replay);
+    Ok(attach_compatible_typed_stream_from_subscription(
+        native::native_run_terminal_dependencies(&dependencies.native),
+        initial_run,
+        Some(i64::MAX),
+        durable_round_replay,
+        subscription,
+    ))
+}
+
+fn terminal_compatible_round_subscription(
+    durable_round_replay: &[RuntimeEventEnvelope],
+) -> control_plane::ports::RuntimeEventSubscription {
     let terminal = durable_round_replay
         .last()
         .expect("terminal replay is nonempty");
@@ -686,19 +733,12 @@ async fn attach_terminal_compatible_round(
             reason: close_reason,
             final_sequence: i64::MAX,
         }));
-    let subscription = control_plane::ports::RuntimeEventSubscription {
+    control_plane::ports::RuntimeEventSubscription {
         terminal_writer: Arc::new(ReplayOnlyTerminalWriter),
         replay: Vec::new(),
         live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live_events),
         closure,
-    };
-    Ok(attach_compatible_typed_stream_from_subscription(
-        native::native_run_terminal_dependencies(&dependencies.native),
-        initial_run,
-        Some(i64::MAX),
-        durable_round_replay,
-        subscription,
-    ))
+    }
 }
 
 struct ReplayOnlyTerminalWriter;
@@ -713,7 +753,9 @@ impl control_plane::ports::RuntimeEventTerminalWriter for ReplayOnlyTerminalWrit
     }
 }
 
-async fn follow_missing_compatible_round(
+// Subscription creation is synchronous; the spawned worker owns all awaits.
+// Keeping this boundary concrete breaks the resume/follower opaque-future cycle.
+fn follow_missing_compatible_round(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
@@ -738,193 +780,6 @@ async fn follow_missing_compatible_round(
         }
     });
     Ok(result)
-}
-
-async fn follow_missing_compatible_round_events(
-    dependencies: CompatibilityExecutionDependencies,
-    initial_run: NativeRunResult,
-    mut command: ResumePublishedCallbackCommand,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    sender: mpsc::Sender<CompatibleProjectionInput>,
-) -> Result<(), NativeApiError> {
-    let round_id = callback_task_id_from_resume_command(&command);
-    let mut cursor = dependencies
-        .native
-        .store
-        .get_runtime_event_sequence_for_callback_task(initial_run.id, round_id)
-        .await
-        .map_err(service_error)?
-        .ok_or_else(|| service_error(anyhow::anyhow!("callback round boundary missing")))?;
-    loop {
-        if sender.is_closed() {
-            return Ok(());
-        }
-        let attached = if let Some(start) =
-            live_compatible_round_start(&dependencies, &initial_run, round_id).await
-        {
-            Some(
-                attach_compatible_typed_stream_with_replay(
-                    native::native_run_terminal_dependencies(&dependencies.native),
-                    dependencies.native.runtime_event_stream.clone(),
-                    initial_run.clone(),
-                    Some(start),
-                    Vec::new(),
-                )
-                .await?,
-            )
-        } else {
-            None
-        };
-        if let Some(mut attached) = attached {
-            while let Some(event) = attached.events.recv().await {
-                if sender.send(event).await.is_err() {
-                    return Ok(());
-                }
-            }
-            return Ok(());
-        }
-        // The cursor detects durable completion without retaining the round's
-        // history in memory. Replay is loaded once only when the round settles.
-        let records = dependencies
-            .native
-            .store
-            .list_runtime_event_durable_page(initial_run.id, cursor, None, 64)
-            .await
-            .map_err(service_error)?;
-        if let Some(last) = records.last() {
-            if last.sequence <= cursor {
-                return Err(service_error(anyhow::anyhow!(
-                    "durable callback follower cursor did not advance"
-                )));
-            }
-            cursor = last.sequence;
-        }
-        if records
-            .iter()
-            .any(|record| event_forwarding::is_public_terminal_runtime_event(&record.event_type))
-        {
-            let durable_round_replay =
-                durable_compatible_round_replay(&dependencies, &initial_run, round_id).await?;
-            if let DurableCompatibleRoundReplay::Ready(durable_round_replay) = durable_round_replay
-            {
-                if durable_round_replay.last().is_some_and(|event| {
-                    event_forwarding::is_public_terminal_runtime_event(&event.event_type)
-                }) {
-                    let mut attached = attach_terminal_compatible_round(
-                        &dependencies,
-                        initial_run.clone(),
-                        durable_round_replay,
-                    )
-                    .await?;
-                    while let Some(event) = attached.events.recv().await {
-                        if sender.send(event).await.is_err() {
-                            return Ok(());
-                        }
-                    }
-                    return Ok(());
-                }
-            }
-        }
-        // A full page may precede the requested terminal. Drain it without
-        // retaining previous pages or delaying once per page.
-        if records.len() == 64 {
-            continue;
-        }
-        let attempt = dependencies
-            .native
-            .store
-            .get_published_callback_resume_attempt(round_id)
-            .await
-            .map_err(service_error)?;
-        if let Some(attempt) = &attempt {
-            if attempt.response_payload != command.response_payload
-                || attempt.source != command.source.as_str()
-            {
-                return Err(service_error(anyhow::anyhow!(
-                    "callback resume attempt changed while following"
-                )));
-            }
-        }
-        if let Some(attempt) = attempt.filter(|attempt| {
-            attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-                && attempt.updated_at + time::Duration::minutes(5)
-                    <= time::OffsetDateTime::now_utc()
-        }) {
-            let invoker = native::runtime_internal_tool_invoker_for_run(
-                &dependencies.native,
-                &actor,
-                &initial_run,
-            )
-            .await?;
-            let runtime_service =
-                native::native_runtime_service(&dependencies.native, invoker.clone())
-                    .with_runtime_event_stream(dependencies.native.runtime_event_stream.clone());
-            let service = ApplicationPublishedCallbackResumeService::new(
-                dependencies.native.store.clone(),
-                runtime_service,
-            )
-            .with_last_used_cache(dependencies.native.cache_store.clone());
-            match service
-                .reserve_native_callback_for_actor(actor.clone(), &command)
-                .await
-            {
-                Ok(reclaimed_id) if reclaimed_id == attempt.id => {
-                    let current = dependencies
-                        .native
-                        .store
-                        .get_published_callback_resume_attempt(round_id)
-                        .await
-                        .map_err(service_error)?;
-                    if !current.is_some_and(|current| {
-                        current.id == reclaimed_id
-                            && current.status
-                                == domain::FlowRunCallbackResumeAttemptStatus::Processing
-                    }) {
-                        continue;
-                    }
-                    command.reserved_attempt_id = Some(reclaimed_id);
-                    let mut recovered_run = initial_run.clone();
-                    recovered_run.metadata["active_callback_attach"] = json!(false);
-                    let opened = open_compatible_turn_with_invoker(
-                        dependencies.clone(),
-                        recovered_run,
-                        CompatibleTurnAction::ResumeForActor { command, actor },
-                        None,
-                        invoker,
-                    )
-                    .await?;
-                    let mut recovered = opened_compatible_typed_stream(dependencies, opened)?;
-                    while let Some(event) = recovered.events.recv().await {
-                        if sender.send(event).await.is_err() {
-                            return Ok(());
-                        }
-                    }
-                    return Ok(());
-                }
-                Ok(_) => {
-                    return Err(service_error(anyhow::anyhow!(
-                        "callback resume attempt changed while reclaiming"
-                    )));
-                }
-                Err(error)
-                    if error
-                        .downcast_ref::<control_plane::errors::ControlPlaneError>()
-                        .is_some_and(|error| {
-                            matches!(
-                                error,
-                                control_plane::errors::ControlPlaneError::Conflict(
-                                    "callback_resume_already_admitted"
-                                )
-                            )
-                        }) => {}
-                Err(error) => return Err(service_error(error)),
-            }
-        }
-        tokio::select! {
-            _ = sender.closed() => return Ok(()),
-            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
-        }
-    }
 }
 
 fn opened_compatible_typed_stream(
@@ -1081,7 +936,7 @@ enum DurableCompatibleRoundReplay {
 
 enum DurableCompatibleRoundIdentity {
     Legacy,
-    Generation(String),
+    Generation { id: String, after_sequence: i64 },
     Pending,
 }
 
@@ -1106,7 +961,7 @@ async fn durable_compatible_round_replay(
     let through = window.map(|window| window.through_sequence);
     // The latest window may belong to a later callback. Resolve this round's
     // anchor with bounded pages, retaining only its scalar generation identity.
-    let generation = match durable_compatible_round_generation(
+    let (generation, replay_boundary) = match durable_compatible_round_generation(
         dependencies,
         initial_run.id,
         round_id,
@@ -1115,13 +970,15 @@ async fn durable_compatible_round_replay(
     )
     .await?
     {
-        DurableCompatibleRoundIdentity::Legacy => None,
-        DurableCompatibleRoundIdentity::Generation(generation) => Some(generation),
+        DurableCompatibleRoundIdentity::Legacy => (None, boundary),
+        DurableCompatibleRoundIdentity::Generation { id, after_sequence } => {
+            (Some(id), after_sequence)
+        }
         DurableCompatibleRoundIdentity::Pending => {
             return Ok(DurableCompatibleRoundReplay::PendingIdentity);
         }
     };
-    let mut cursor = boundary;
+    let mut cursor = replay_boundary;
     let mut records = Vec::new();
     loop {
         let page = dependencies
@@ -1193,6 +1050,12 @@ async fn durable_compatible_round_generation(
     let mut cursor = boundary;
     let mut anchor_generation = None;
     let mut saw_anchor = false;
+    let mut current_anchor = None;
+    let mut current_anchor_sequence = boundary;
+    let mut output_generation = None;
+    let mut ambiguous_output_generation = false;
+    let mut marker_identity = None;
+    let mut legacy_terminal = false;
     loop {
         let page = dependencies
             .native
@@ -1215,6 +1078,8 @@ async fn durable_compatible_round_generation(
                 anchor_generation = record.payload["stream_generation_id"]
                     .as_str()
                     .map(str::to_owned);
+                current_anchor = anchor_generation.clone();
+                current_anchor_sequence = record.sequence;
                 continue;
             }
             if record.event_type == "flow_started"
@@ -1223,16 +1088,46 @@ async fn durable_compatible_round_generation(
                 let generation = record.payload["stream_generation_id"]
                     .as_str()
                     .map(str::to_owned)
-                    .or(anchor_generation);
+                    .or_else(|| anchor_generation.take());
                 if generation.is_none() && saw_anchor {
                     return Err(service_error(anyhow::anyhow!(
                         "anchored callback round generation missing"
                     )));
                 }
-                return Ok(match generation {
-                    Some(generation) => DurableCompatibleRoundIdentity::Generation(generation),
+                if saw_anchor && generation.as_deref() != current_anchor.as_deref() {
+                    continue; // A late older producer cannot replace a newer anchored marker.
+                }
+                // A reclaimed execution establishes a later generation for
+                // the same callback. Retain its latest explicit marker.
+                marker_identity = Some(match generation {
+                    Some(generation) => DurableCompatibleRoundIdentity::Generation {
+                        id: generation,
+                        after_sequence: current_anchor_sequence,
+                    },
                     None => DurableCompatibleRoundIdentity::Legacy,
                 });
+                anchor_generation = None;
+                continue;
+            }
+            // Old producers could omit flow_started while committing exact
+            // host-owned output with both identities. Only those facts can
+            // recover the association; an anchor or terminal alone cannot.
+            if record.event_type == "provider_output_item_done"
+                && record.trust_level == domain::RuntimeTrustLevel::HostFact
+                && record.payload["response_round_id"] == json!(round_id)
+            {
+                if let Some(generation) = record.payload["stream_generation_id"]
+                    .as_str()
+                    .filter(|generation| current_anchor.as_deref() == Some(*generation))
+                {
+                    if output_generation
+                        .as_ref()
+                        .is_some_and(|(prior, _)| prior != generation)
+                    {
+                        ambiguous_output_generation = true;
+                    }
+                    output_generation = Some((generation.to_owned(), current_anchor_sequence));
+                }
             }
             // Historical unanchored rounds have no identity marker. Keep their
             // existing recovery path, without assigning a later round's anchor.
@@ -1241,7 +1136,7 @@ async fn durable_compatible_round_generation(
                 && record.payload["response_round_id"].is_null()
                 && event_forwarding::is_public_terminal_runtime_event(&record.event_type)
             {
-                return Ok(DurableCompatibleRoundIdentity::Legacy);
+                legacy_terminal = true;
             }
             // An untagged marker can borrow only an adjacent anchor, never an
             // unrelated earlier generation encountered during the scan.
@@ -1249,6 +1144,38 @@ async fn durable_compatible_round_generation(
         }
         if through.is_some_and(|through| cursor >= through) {
             break;
+        }
+    }
+    if let Some(identity) = marker_identity {
+        if let (
+            DurableCompatibleRoundIdentity::Generation {
+                after_sequence: marker_boundary,
+                ..
+            },
+            Some((id, output_boundary)),
+        ) = (&identity, &output_generation)
+        {
+            if output_boundary > marker_boundary {
+                // A newer explicit same-round output must not replay an older
+                // execution merely because that producer wrote its marker.
+                return Ok(if ambiguous_output_generation {
+                    DurableCompatibleRoundIdentity::Pending
+                } else {
+                    DurableCompatibleRoundIdentity::Generation {
+                        id: id.clone(),
+                        after_sequence: *output_boundary,
+                    }
+                });
+            }
+        }
+        return Ok(identity);
+    }
+    if legacy_terminal {
+        return Ok(DurableCompatibleRoundIdentity::Legacy);
+    }
+    if !ambiguous_output_generation {
+        if let Some((id, after_sequence)) = output_generation {
+            return Ok(DurableCompatibleRoundIdentity::Generation { id, after_sequence });
         }
     }
     Ok(if saw_anchor {
@@ -1289,180 +1216,6 @@ async fn live_compatible_round_start(
             return round_start;
         }
     }
-}
-
-async fn open_compatible_turn_with_invoker(
-    dependencies: CompatibilityExecutionDependencies,
-    initial_run: NativeRunResult,
-    action: CompatibleTurnAction,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-    mcp_runtime_invoker: Arc<
-        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
-    >,
-) -> Result<OpenedCompatibleTurn, NativeApiError> {
-    let turn_action = action.name();
-    let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
-    let (live_round_start, durable_round_replay) =
-        if let Some(round_id) = ignored_waiting_callback_task_id {
-            compatible_round_replay(&dependencies, &initial_run, round_id).await?
-        } else {
-            (None, Vec::new())
-        };
-    if let Err(error) = dependencies
-        .native
-        .runtime_event_stream
-        .open_run(
-            initial_run.id,
-            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
-        )
-        .await
-    {
-        warn!(
-            flow_run_id = %initial_run.id,
-            application_id = %initial_run.application_id,
-            error = %error,
-            "failed to open compatible public API runtime event stream"
-        );
-        return Err(service_error(error));
-    }
-
-    let from_sequence = if let Some(sequence) = live_round_start {
-        Some(sequence)
-    } else if let Some(round_id) = ignored_waiting_callback_task_id {
-        if durable_round_replay.is_empty() {
-            let mut started = debug_stream_events::flow_started(initial_run.id);
-            started.payload["response_round_id"] = json!(round_id);
-            let started = dependencies
-                .native
-                .runtime_event_stream
-                .append(initial_run.id, started)
-                .await
-                .map_err(service_error)?;
-            Some(started.sequence.saturating_sub(1))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-    let subscription = dependencies
-        .native
-        .runtime_event_stream
-        .subscribe(initial_run.id, from_sequence)
-        .await
-        .map_err(|error| {
-            warn!(
-                flow_run_id = %initial_run.id,
-                application_id = %initial_run.application_id,
-                turn_action,
-                error = %error,
-                "failed to subscribe compatible public API runtime event stream"
-            );
-            service_error(error)
-        })?;
-
-    let persister = start_runtime_debug_event_persister(
-        dependencies.native.store.clone(),
-        dependencies.native.runtime_event_stream.clone(),
-        initial_run.id,
-    )
-    .await;
-    let terminal_writer = subscription.terminal_writer.clone();
-    let background_dependencies = dependencies.clone();
-    let background_run = initial_run.clone();
-    let execution = tokio::spawn(async move {
-        let runtime_service =
-            native::native_runtime_service(&background_dependencies.native, mcp_runtime_invoker)
-                .with_runtime_event_stream(
-                    background_dependencies.native.runtime_event_stream.clone(),
-                );
-        match action {
-            CompatibleTurnAction::Start {
-                transport_connection_scope,
-                observation_context,
-            } => {
-                if let Err(runtime_error) = runtime_service
-                    .start_published_flow_run(StartPublishedFlowRunCommand {
-                        application_id: background_run.application_id,
-                        flow_run_id: background_run.id,
-                        provider_transport_slot,
-                        transport_connection_scope,
-                        observation_context,
-                    })
-                    .await
-                {
-                    warn!(
-                        flow_run_id = %background_run.id,
-                        application_id = %background_run.application_id,
-                        error = %runtime_error,
-                        "compatible public API streamed run failed"
-                    );
-                    if let Err(recovery_error) =
-                        recover_missing_stream_terminal_winner_with_dependencies(
-                            &native::native_run_terminal_dependencies(
-                                &background_dependencies.native,
-                            ),
-                            &background_run,
-                        )
-                        .await
-                    {
-                        warn!(
-                            flow_run_id = %background_run.id,
-                            application_id = %background_run.application_id,
-                            error = %recovery_error,
-                            "failed to recover the durable winner after compatible streaming execution ended"
-                        );
-                    }
-                }
-            }
-            CompatibleTurnAction::ResumeForActor { command, actor } => {
-                match ApplicationPublishedCallbackResumeService::new(
-                    background_dependencies.native.store.clone(),
-                    runtime_service,
-                )
-                .with_last_used_cache(background_dependencies.native.cache_store.clone())
-                .resume_callback_for_actor(actor, command)
-                .await
-                {
-                    Ok(result) => {
-                        append_compatible_resume_terminal_event(
-                            terminal_writer.as_ref(),
-                            &result.run,
-                        )
-                        .await
-                    }
-                    Err(error) => {
-                        warn!(
-                            flow_run_id = %background_run.id,
-                            error = %error,
-                            "compatible callback resume failed"
-                        );
-                        let _ = terminal_writer
-                            .append_terminal_if_missing_and_close(debug_stream_events::flow_failed(
-                                background_run.id,
-                                json!({ "message": error.to_string() }),
-                            ))
-                            .await;
-                    }
-                }
-            }
-        }
-        wait_for_runtime_debug_event_persister(
-            persister,
-            background_run.application_id,
-            background_run.id,
-        )
-        .await;
-    });
-
-    Ok(OpenedCompatibleTurn {
-        initial_run,
-        from_sequence,
-        durable_round_replay,
-        ignored_waiting_callback_task_id,
-        subscription,
-        execution,
-    })
 }
 
 fn callback_task_id_from_resume_command(command: &ResumePublishedCallbackCommand) -> uuid::Uuid {
