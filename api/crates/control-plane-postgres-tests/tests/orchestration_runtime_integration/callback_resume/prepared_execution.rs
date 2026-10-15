@@ -265,6 +265,23 @@ async fn stale_prepared_receipt_cannot_commit_inbox_or_acquire_execution() {
     else {
         panic!("must acquire replacement");
     };
+    // Persisting a callback wait pre-creates its pending inbox rows. Compare the
+    // complete rows (including payload, fingerprint, timestamps and raw JSON) so
+    // rejection proves no mutation rather than assuming the inbox starts empty.
+    let inbox_snapshot_query = "select coalesce(jsonb_agg(to_jsonb(inbox) order by inbox.tool_ordinal, inbox.id), '[]'::jsonb) from flow_run_tool_callback_inbox inbox where callback_task_id=$1";
+    let inbox_before: Value = sqlx::query_scalar(inbox_snapshot_query)
+        .bind(callback_id)
+        .fetch_one(fixture.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(inbox_before.as_array().unwrap().len(), 1);
+    assert_eq!(inbox_before[0]["status"], "pending");
+    for field in ["result_payload", "result_fingerprint", "received_at"] {
+        assert!(
+            inbox_before[0][field].is_null(),
+            "pending fixture has no {field}"
+        );
+    }
     assert!(fixture
         .service
         .prepare_reserved_native_callback_for_actor(
@@ -274,20 +291,25 @@ async fn stale_prepared_receipt_cannot_commit_inbox_or_acquire_execution() {
         )
         .await
         .is_err());
-    let inbox: i64 = sqlx::query_scalar(
-        "select count(*) from flow_run_tool_callback_inbox where callback_task_id=$1",
-    )
-    .bind(callback_id)
-    .fetch_one(fixture.store.pool())
-    .await
-    .unwrap();
+    let inbox_after: Value = sqlx::query_scalar(inbox_snapshot_query)
+        .bind(callback_id)
+        .fetch_one(fixture.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        inbox_after, inbox_before,
+        "a stale receipt must not mutate any inbox row"
+    );
     let claims: i64 =
         sqlx::query_scalar("select count(*) from flow_run_resume_claims where callback_task_id=$1")
             .bind(callback_id)
             .fetch_one(fixture.store.pool())
             .await
             .unwrap();
-    assert_eq!((inbox, claims), (0, 0));
+    assert_eq!(
+        claims, 0,
+        "a stale receipt must not acquire an execution claim"
+    );
     let PreparedPublishedCallback::Execution(owner) = fixture
         .service
         .prepare_reserved_native_callback_for_actor(
