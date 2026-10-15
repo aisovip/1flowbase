@@ -48,19 +48,15 @@ fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authentication() 
 #[test]
 fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
     run_compat_route_test(|| async {
-        eprintln!("PROBE-F1 fixture:start");
         let (app, state) = test_app_with_state().await;
-        eprintln!("PROBE-F1 fixture:state-ready");
         let token = setup_compact_published_app(
             &app,
             "OpenAI Legacy Compact Exact Items App",
             CompactFixtureMode::Success,
         )
         .await;
-        eprintln!("PROBE-F1 fixture:publication-ready");
         let before = flow_run_count(state.as_ref()).await;
 
-        eprintln!("PROBE-F1 fixture:before-request");
         let response = post_openai_responses(
             &app,
             "/v1/responses/compact",
@@ -70,7 +66,6 @@ fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
         )
         .await;
 
-        eprintln!("PROBE-F1 fixture:request-returned");
         let status = response.status();
         let payload = response_json(response).await;
         assert_eq!(status, StatusCode::OK, "{payload}");
@@ -598,19 +593,15 @@ fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_header() 
 #[test]
 fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
     run_compat_route_test(|| async {
-        eprintln!("PROBE-F1 fixture:start");
         let (app, state) = test_app_with_state().await;
-        eprintln!("PROBE-F1 fixture:state-ready");
         let token = setup_compact_published_app(
             &app,
             "OpenAI Compact Provider Failure App",
             CompactFixtureMode::ProviderFailure,
         )
         .await;
-        eprintln!("PROBE-F1 fixture:publication-ready");
         let before = flow_run_count(state.as_ref()).await;
 
-        eprintln!("PROBE-F1 fixture:before-request");
         let response = post_openai_responses(
             &app,
             "/v1/responses",
@@ -620,7 +611,6 @@ fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
         )
         .await;
 
-        eprintln!("PROBE-F1 fixture:request-returned");
         let status = response.status();
         let payload = response_json(response).await;
         assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");

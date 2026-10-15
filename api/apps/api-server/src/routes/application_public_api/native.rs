@@ -951,7 +951,6 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
     transport_connection_scope: Option<String>,
     observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Result<NativeRunResult, NativeApiError> {
-    eprintln!("PROBE-F1 native-blocking:entered");
     let _execution_activity = dependencies.runtime_activity.start(
         run.application_id,
         ApplicationActivityKind::ApplicationExecution,

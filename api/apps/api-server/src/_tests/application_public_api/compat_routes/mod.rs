@@ -48,10 +48,6 @@ where
         .name("application-public-compat-route".to_owned())
         .stack_size(COMPAT_ROUTE_TEST_STACK_BYTES)
         .spawn(move || {
-            eprintln!(
-                "PROBE-F1 worker:entered test-future-bytes={}",
-                std::mem::size_of::<Fut>()
-            );
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()

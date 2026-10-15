@@ -637,8 +637,7 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
 
-    eprintln!("PROBE-F1 flow-execution:before-construction");
-    let execution = execute_from(
+    Box::pin(execute_from(
         plan,
         0,
         variable_pool,
@@ -646,12 +645,8 @@ where
         &runtime_context,
         invoker,
         lifecycle,
-    );
-    eprintln!(
-        "PROBE-F1 flow-execution:future-bytes={}",
-        std::mem::size_of_val(&execution)
-    );
-    Box::pin(execution).await
+    ))
+    .await
 }
 
 pub async fn resume_flow_debug_run<I>(
@@ -840,7 +835,6 @@ async fn execute_from<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    eprintln!("PROBE-F1 execute-from:entered");
     normalize_plan_variable_pool(plan, &mut variable_pool);
     synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
     let mut runtime_context = runtime_context.clone();
@@ -928,15 +922,7 @@ where
         } else {
             Value::Object(resolved_inputs.clone())
         };
-        eprintln!(
-            "PROBE-F1 execute-from:before-node-lifecycle type={}",
-            node.node_type
-        );
         lifecycle.begin_node(node, &node_input_payload).await?;
-        eprintln!(
-            "PROBE-F1 execute-from:after-node-lifecycle type={}",
-            node.node_type
-        );
         let mut selected_source_handle: Option<String> = None;
 
         match node.node_type.as_str() {
@@ -988,7 +974,10 @@ where
             "llm" => {
                 let input_payload = llm_input_payload
                     .expect("LLM nodes must materialize their effective input before execution");
-                let execution = execute_llm_node(
+                // Keep the nested LLM operation state out of the workflow future so
+                // its provider/tool execution fits a normal worker stack. Await it
+                // in place to retain this workflow's cancellation and lifecycle owner.
+                let execution = Box::pin(execute_llm_node(
                     plan,
                     node,
                     &resolved_inputs,
@@ -997,7 +986,7 @@ where
                     &runtime_context,
                     invoker,
                     lifecycle,
-                )
+                ))
                 .await?;
                 let trace = NodeExecutionTrace {
                     node_id: node.node_id.clone(),

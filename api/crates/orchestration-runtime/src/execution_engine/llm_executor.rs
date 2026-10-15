@@ -107,7 +107,6 @@ pub async fn execute_llm_node<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    eprintln!("PROBE-F1 llm-node:entered");
     let registrations = runtime_context.runtime_internal_tool_registrations(node);
     if registrations.is_empty() {
         return execute_llm_node_with_visible_internal_tools(
@@ -330,7 +329,6 @@ pub(crate) async fn execute_llm_node_provider_round<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
-    eprintln!("PROBE-F1 provider-round:entered");
     let runtime = node.llm_runtime.as_ref().ok_or_else(|| {
         anyhow!(
             "compiled llm node is missing runtime metadata: {}",
@@ -359,19 +357,12 @@ where
         runtime_context.operation(),
         domain::AiNativeOperation::Compact(_)
     ) {
-        eprintln!("PROBE-F1 compact-branch:before-runtime-selection-construction");
-        let selection = llm_request_runtimes(node, runtime, runtime_context, invoker);
-        eprintln!(
-            "PROBE-F1 compact-branch:runtime-selection-future-bytes={}",
-            std::mem::size_of_val(&selection)
-        );
-        let attempt_runtimes = selection.await?;
-        eprintln!("PROBE-F1 compact-branch:runtime-selected");
+        let attempt_runtimes =
+            llm_request_runtimes(node, runtime, runtime_context, invoker).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;
-        eprintln!("PROBE-F1 compact-branch:before-consumer-construction");
-        let execution = execute_compact_consumer(
+        return execute_compact_consumer(
             plan,
             node,
             selected_runtime,
@@ -380,12 +371,8 @@ where
             variable_pool,
             runtime_context,
             invoker,
-        );
-        eprintln!(
-            "PROBE-F1 compact-branch:consumer-future-bytes={}",
-            std::mem::size_of_val(&execution)
-        );
-        return execution.await;
+        )
+        .await;
     }
     let routing_probe = match build_provider_invocation(
         plan,

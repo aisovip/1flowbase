@@ -952,20 +952,17 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         mut input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
-        eprintln!("PROBE-F1 compact-runtime:entered");
         transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         self.ensure_provider_loaded(&binding).await?;
-        eprintln!("PROBE-F1 compact-runtime:provider-loaded");
         let result = self
             .services
             .runtime_backend
             .provider_compact(&binding.plugin_id, input)
             .await
             .map_err(map_runtime_backend_error);
-        eprintln!("PROBE-F1 compact-runtime:backend-returned");
         finish_runtime_activity(activity, &result);
         result
     }
