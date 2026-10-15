@@ -1127,14 +1127,19 @@ where
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
     {
-        Box::pin(self.start_published_flow_run_inner(
+        eprintln!("PROBE-F1 published-run:before-inner-construction");
+        let execution = self.start_published_flow_run_inner(
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
             command.transport_connection_scope,
             command.observation_context,
-        ))
-        .await
+        );
+        eprintln!(
+            "PROBE-F1 published-run:future-bytes={}",
+            std::mem::size_of_val(&execution)
+        );
+        Box::pin(execution).await
     }
 
     async fn start_published_flow_run_inner(

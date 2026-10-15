@@ -574,7 +574,7 @@ async fn create_response_for_endpoint(
         recorder.mark_incomplete();
     }
     let capture = CaptureGuard::new(recorder.clone());
-    let result = dispatch_response_for_endpoint(
+    let dispatch = dispatch_response_for_endpoint(
         state,
         headers,
         OpenAiResponseDispatchRequest {
@@ -587,8 +587,12 @@ async fn create_response_for_endpoint(
             recorder: Some(recorder),
         },
         None,
-    )
-    .await;
+    );
+    eprintln!(
+        "PROBE-F1 dispatch:future-bytes={}",
+        std::mem::size_of_val(&dispatch)
+    );
+    let result = dispatch.await;
     let response = match result {
         Err(error) => error.into_response(),
         Ok(OpenAiResponseDispatch::Http(response)) => response,
@@ -661,6 +665,7 @@ async fn dispatch_response_for_endpoint(
     request: OpenAiResponseDispatchRequest,
     preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
 ) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
+    eprintln!("PROBE-F1 dispatch:entered");
     let OpenAiResponseDispatchRequest {
         route_path,
         raw_query,

@@ -294,6 +294,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         let dependencies = self.0.clone();
         let actor = application_actor(principal);
         Box::pin(async move {
+            eprintln!("PROBE-F1 compatibility-execution:entered");
             let (mut request, protocol, provider_transport) = match input.command {
                 CompatibilityInvocationCommand::Start {
                     request,

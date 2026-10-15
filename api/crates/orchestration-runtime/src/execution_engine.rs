@@ -637,7 +637,8 @@ where
         .cloned()
         .ok_or_else(|| anyhow!("input payload must be an object"))?;
 
-    Box::pin(execute_from(
+    eprintln!("PROBE-F1 flow-execution:before-construction");
+    let execution = execute_from(
         plan,
         0,
         variable_pool,
@@ -645,8 +646,12 @@ where
         &runtime_context,
         invoker,
         lifecycle,
-    ))
-    .await
+    );
+    eprintln!(
+        "PROBE-F1 flow-execution:future-bytes={}",
+        std::mem::size_of_val(&execution)
+    );
+    Box::pin(execution).await
 }
 
 pub async fn resume_flow_debug_run<I>(
@@ -835,6 +840,7 @@ async fn execute_from<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
+    eprintln!("PROBE-F1 execute-from:entered");
     normalize_plan_variable_pool(plan, &mut variable_pool);
     synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
     let mut runtime_context = runtime_context.clone();
