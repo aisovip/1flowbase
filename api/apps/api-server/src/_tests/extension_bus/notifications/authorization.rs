@@ -341,6 +341,9 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{invalid}");
+    let (status, invalid) = api(&app, &cookie, &csrf, "POST", &auth_path,
+        json!({"type":"maintain","delivery_window":{"status":"active","last_received_at_ms":1,"expires_at_ms":u64::MAX}})).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{invalid}");
     let mut foreign = actor.clone();
     foreign.current_workspace_id = Uuid::now_v7();
     assert!(service
@@ -455,6 +458,21 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
             "failure",
             "recipient_not_ready",
         ),
+        (
+            "fixture-subscription-required",
+            "failure",
+            "subscription_required",
+        ),
+        (
+            "fixture-subscription-expired",
+            "failure",
+            "subscription_expired",
+        ),
+        (
+            "fixture-subscription-unavailable",
+            "failure",
+            "subscription_unavailable",
+        ),
         ("fixture-rejected", "failure", "provider_rejected"),
         ("fixture-unknown", "unknown", "provider_result_unknown"),
         (
@@ -496,6 +514,124 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
             .unwrap();
         assert_eq!(logs.items[0].status, status);
         assert_eq!(logs.items[0].failure_code.as_deref(), Some(code));
+        assert!(logs.items[0].completed_at.is_some());
+        if code.starts_with("subscription_") {
+            assert_eq!(error["code"], code);
+            assert!(error["message"].as_str().unwrap().contains("retry"));
+            let persisted = state
+                .store
+                .resolve_notification_authorization(
+                    actor.current_workspace_id,
+                    id,
+                    &state.provider_secret_master_key,
+                )
+                .await
+                .unwrap();
+            assert_eq!(persisted.managed_secrets["bot_token"], "fixture-bot-token");
+            assert!(!persisted.managed_secrets.contains_key("delivery_window"));
+            let (http, detail) = api(&app, &cookie, &csrf, "GET", &path, Value::Null).await;
+            assert_eq!(http, StatusCode::OK);
+            assert_eq!(detail["data"]["authorization"]["status"], "authorized");
+            let expected = match code {
+                "subscription_required" => "waiting_for_message",
+                "subscription_expired" => "expired",
+                _ => "unknown",
+            };
+            assert_eq!(
+                detail["data"]["authorization"]["delivery_window"]["status"],
+                expected
+            );
+            let listed = service.list_instances(&actor).await.unwrap();
+            let listed = listed
+                .iter()
+                .find(|instance| instance.record.id == id)
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&listed.authorization).unwrap()["delivery_window"]["status"],
+                expected
+            );
+            let polled = service
+                .authorize_instance(&actor, id, Operation::Poll)
+                .await
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(polled).unwrap()["delivery_window"]["status"],
+                expected
+            );
+            if code == "subscription_expired" {
+                // Expiry projection does not mutate the persisted provider evidence.
+                assert_eq!(
+                    persisted
+                        .authorization
+                        .unwrap()
+                        .delivery_window
+                        .unwrap()
+                        .status,
+                    extension_contracts::NotificationDeliveryWindowStatus::Active
+                );
+            }
+            let (_, maintained) = api(
+                &app,
+                &cookie,
+                &csrf,
+                "POST",
+                &auth_path,
+                json!({"type":"maintain"}),
+            )
+            .await;
+            assert_eq!(maintained["data"]["delivery_window"]["status"], expected);
+            assert!(!detail.to_string().contains("fixture-bot-token"));
+            if code == "subscription_required" {
+                let cancelled = service
+                    .authorize_instance(&actor, id, Operation::Cancel)
+                    .await
+                    .unwrap();
+                assert!(cancelled.delivery_window.is_none());
+                let persisted = state
+                    .store
+                    .resolve_notification_authorization(
+                        actor.current_workspace_id,
+                        id,
+                        &state.provider_secret_master_key,
+                    )
+                    .await
+                    .unwrap();
+                assert!(persisted.managed_secrets.is_empty());
+                assert!(persisted.authorization.unwrap().delivery_window.is_none());
+                service
+                    .authorize_instance(
+                        &actor,
+                        id,
+                        Operation::Begin {
+                            action: "qr".into(),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                service
+                    .authorize_instance(&actor, id, Operation::Poll)
+                    .await
+                    .unwrap();
+            }
+            if code == "subscription_unavailable" {
+                let pending = service
+                    .authorize_instance(
+                        &actor,
+                        id,
+                        Operation::Begin {
+                            action: "qr".into(),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                assert!(pending.delivery_window.is_none());
+                let restored = service
+                    .authorize_instance(&actor, id, Operation::Poll)
+                    .await
+                    .unwrap();
+                assert!(restored.delivery_window.is_none());
+            }
+        }
         if text == "fixture-recipient-not-ready" {
             let failed_state = state
                 .store
@@ -570,6 +706,7 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         );
         let public = serde_json::to_value(service.get_instance(&actor, id).await.unwrap()).unwrap();
         assert_eq!(public["authorization"]["status"], expected);
+        assert!(public["authorization"].get("delivery_window").is_none());
     }
     service
         .authorize_instance(&actor, id, Operation::Cancel)
@@ -653,6 +790,13 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         .unwrap();
     runtime.host.stop().await.unwrap();
     let reconstructed = RuntimeFixture::new(&state);
+    // RuntimeFixture creates an empty composition; production boot restores persisted
+    // installations before serving requests. Reuse the same activation owner here.
+    reconstructed
+        .composition
+        .rebuild_installation(installation_id)
+        .await
+        .unwrap();
     let restored = NotificationService::new(
         reconstructed.store.clone(),
         state.provider_secret_master_key.clone(),

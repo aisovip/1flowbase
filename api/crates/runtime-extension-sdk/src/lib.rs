@@ -44,7 +44,8 @@ pub use extension_contracts::{
     NotificationAuthorizationAction, NotificationAuthorizationActionKind,
     NotificationAuthorizationDescriptor, NotificationAuthorizationOperation,
     NotificationAuthorizationStatus, NotificationAuthorizationUserAction,
-    NotificationAuthorizationView, NotificationFailureCode, NotificationOperation,
+    NotificationAuthorizationView, NotificationDeliveryWindowStatus,
+    NotificationDeliveryWindowView, NotificationFailureCode, NotificationOperation,
     NotificationRuntimeInput, NotificationRuntimeResult, NotificationSendOutcome,
 };
 pub use managed_hook::{

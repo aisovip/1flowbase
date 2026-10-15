@@ -7,6 +7,7 @@ import type {
   NotificationAuthorizationView
 } from '@1flowbase/api-client';
 import { authorizeNotificationInstance } from '../../../notifications/api/queries';
+import { NotificationDeliveryWindow } from './NotificationDeliveryWindow';
 import { useAuthStore } from '../../../../state/auth-store';
 
 export function NotificationAuthorization({
@@ -99,6 +100,9 @@ export function NotificationAuthorization({
       <Typography.Text strong>
         {t('authorization_status')}: {statusLabel}
       </Typography.Text>
+      {view.delivery_window && (
+        <NotificationDeliveryWindow delivery_window={view.delivery_window} />
+      )}
       {failed && (
         <Alert type="error" showIcon title={t('authorization_failed')} />
       )}
@@ -129,11 +133,24 @@ export function NotificationAuthorization({
           type="info"
           showIcon
           title={t('authorization_ready')}
-          description={t('authorization_session_hint')}
+          description={
+            view.delivery_window
+              ? t('delivery_window_message_hint')
+              : t('authorization_session_hint')
+          }
         />
       )}
       {view.status !== 'pending' && (
         <Space wrap>
+          {view.status === 'authorized' && (
+            <Button
+              disabled={!!busy}
+              loading={busy === 'maintain'}
+              onClick={() => void command({ type: 'maintain' })}
+            >
+              {t('delivery_window_refresh')}
+            </Button>
+          )}
           {descriptor.actions
             .filter((action) => action.kind === 'qr_code')
             .map((action) => (

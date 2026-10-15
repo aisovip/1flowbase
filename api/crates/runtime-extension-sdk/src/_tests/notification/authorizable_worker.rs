@@ -45,11 +45,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     json!({"type":"authorization","authorization":{"status":"authorized"},"managed_secret_patch":{"qr_credential":null,"qr_code_url":null,"bot_token":"fixture-bot-token","bound_user_id":"fixture-scanned-peer"}})
                 }
                 NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Cancel } => json!({"type":"authorization","authorization":{"status":"unauthorized"},"managed_secret_patch":{"qr_credential":null}}),
-                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Maintain } => json!({"type":"authorization","authorization":{"status":if input.managed_secrets.contains_key("bot_token") {"authorized"} else {"unauthorized"}}}),
+                NotificationOperation::Authorize { operation: NotificationAuthorizationOperation::Maintain } => {
+                    let mut view = json!({"status":if input.managed_secrets.contains_key("bot_token") {"authorized"} else {"unauthorized"}});
+                    if let Some(window) = input.delivery_window { view["delivery_window"] = serde_json::to_value(window).unwrap(); }
+                    json!({"type":"authorization","authorization":view})
+                },
                 NotificationOperation::Send { input_payload } => {
+                    if input_payload["text"] == "fixture-subscription-unavailable" {
+                        if input.delivery_window.as_ref().map(|window| window.status) != Some(runtime_extension_sdk::NotificationDeliveryWindowStatus::Expired) {
+                            return Err("fixture requires Host-projected expired evidence");
+                        }
+                        if input.managed_secrets.contains_key("delivery_window") { return Err("window must not be secret"); }
+                    }
                     let (code, status) = match input_payload["text"].as_str() {
                         Some("fixture-invalid") => ("authorization_invalid", Some("invalid")),
                         Some("fixture-recipient-not-ready") => ("recipient_not_ready", Some("authorized")),
+                        Some("fixture-subscription-required") => ("subscription_required", Some("authorized")),
+                        Some("fixture-subscription-expired") => ("subscription_expired", Some("authorized")),
+                        Some("fixture-subscription-unavailable") => ("subscription_unavailable", Some("authorized")),
                         Some("fixture-rejected") => ("provider_rejected", None),
                         Some("fixture-unknown") => return Err("fixture ambiguous provider response"),
                         _ if !input.managed_secrets.contains_key("bot_token") => ("authorization_required", Some("unauthorized")),
@@ -60,6 +73,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         let mut result = json!({"type":"send","outcome":{"status":"failed","failure_code":code},"managed_secret_patch":{"cursor":"failure-next"}});
                         if let Some(status) = status { result["authorization"] = json!({"status":status}); }
+                        let window = match code {
+                            "subscription_required" => Some(json!({"status":"waiting_for_message"})),
+                            "subscription_expired" => Some(json!({"status":"active","last_received_at_ms":1,"expires_at_ms":2})),
+                            "subscription_unavailable" => Some(json!({"status":"unknown","last_received_at_ms":1,"expires_at_ms":2})),
+                            _ => None,
+                        };
+                        if let Some(window) = window { result["authorization"]["delivery_window"] = window; }
                         result
                     }
                 }

@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   createNotificationInstance,
+  authorizeNotificationInstance,
+  type NotificationAuthorizationView,
   listNotificationMessages,
   markNotificationRead,
   subscribeNotificationChanges,
@@ -139,4 +141,31 @@ test('authorization posts canonical commands and reads only the public view', as
       })
     );
   }
+});
+
+test('Maintain preserves backend delivery window field names and timestamps', async () => {
+  const authorization: NotificationAuthorizationView = {
+    status: 'authorized',
+    delivery_window: {
+      status: 'active',
+      last_received_at_ms: 1_760_000_000_000,
+      expires_at_ms: 1_760_086_400_000
+    }
+  };
+  const fetch = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ data: authorization, meta: null }))
+  );
+  vi.stubGlobal('fetch', fetch);
+  expect(
+    await authorizeNotificationInstance(
+      'instance-1',
+      { type: 'maintain' },
+      'csrf'
+    )
+  ).toEqual(authorization);
+  expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/instances/instance-1/authorization'),
+    expect.objectContaining({ method: 'POST', body: '{"type":"maintain"}' })
+  );
 });

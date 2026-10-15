@@ -74,6 +74,12 @@ export function NotificationLogs() {
           return t('failure_authorization_required');
         case 'authorization_invalid':
           return t('failure_authorization_invalid');
+        case 'subscription_required':
+          return t('failure_subscription_required');
+        case 'subscription_expired':
+          return t('failure_subscription_expired');
+        case 'subscription_unavailable':
+          return t('failure_subscription_unavailable');
         case 'recipient_not_ready':
           return t('failure_recipient_not_ready');
         case 'provider_rejected':

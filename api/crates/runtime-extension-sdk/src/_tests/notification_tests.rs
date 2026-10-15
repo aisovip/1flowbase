@@ -179,3 +179,30 @@ async fn authorizable_sdk_rejects_invalid_requests_before_provider_io_and_retain
         assert_eq!(response.result["managed_secret_patch"]["cursor"], "next");
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn delivery_window_is_public_typed_input_and_survives_sdk_round_trip() {
+    let descriptor = managed_descriptor();
+    for (code, status) in [
+        ("subscription_required", "waiting_for_message"),
+        ("subscription_expired", "expired"),
+        ("subscription_unavailable", "unknown"),
+    ] {
+        let window = if status == "waiting_for_message" {
+            json!({"status":status})
+        } else {
+            json!({"status":status,"last_received_at_ms":1,"expires_at_ms":2})
+        };
+        let mut request = managed_request(json!({"type":"send","input_payload":{"text":"hello"}}));
+        request.input["input_payload"]["delivery_window"] = window.clone();
+        let expected = window.clone();
+        let response = crate::execute_authorizable_notification(request, &descriptor, |_, input| async move {
+            assert_eq!(serde_json::to_value(input.delivery_window).unwrap(), expected);
+            assert!(!input.managed_secrets.contains_key("delivery_window"));
+            Ok::<_, String>(serde_json::from_value::<crate::NotificationRuntimeResult>(json!({"type":"send","outcome":{"status":"failed","failure_code":code},"authorization":{"status":"authorized","delivery_window":expected}})).unwrap())
+        }).await;
+        assert!(response.ok);
+        assert_eq!(response.result["authorization"]["delivery_window"], window);
+        assert_eq!(response.result["outcome"]["failure_code"], code);
+    }
+}
