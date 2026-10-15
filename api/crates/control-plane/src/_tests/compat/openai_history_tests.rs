@@ -54,22 +54,18 @@ fn standalone_notifications_remain_ordered_history_evidence() {
 }
 
 #[test]
-fn completed_history_v2_digest_matches_frozen_nested_wire_vector() {
-    let body = json!({"input": [{"role": "user", "content": "line\n\"雪\""}]});
-    let output = [json!({"type": "future_item", "opaque": {"z": 1, "a": "x"}})];
-    let mut proof = History::empty(2);
-    proof.append(&body["input"][0]).unwrap();
-    proof.append(&output[0]).unwrap();
-    let proof = serde_json::to_value(proof).unwrap();
-    assert_eq!(proof["item_count"], 2);
+fn current_proof_keeps_existing_serialized_contract_and_domain_bytes() {
+    let body = json!({"input":[{"role":"user","content":"line\n\"雪\""}]});
+    let output = [json!({"type":"future_item","opaque":{"z":1,"a":"x"}})];
     assert_eq!(
-        proof["digest"],
-        "a233467c7b28f741f92a18af8cf1e9608b9b2562e436a7a10f4fe521a50924f7"
+        completed_history(&body, None, &output).unwrap().unwrap(),
+        json!({"version":3,"item_count":2,
+            "digest":"81f5baee5a4e624aa5ad888a91d28a1680a6b5346d3582abb372698b26e74134"})
     );
 }
 
 #[test]
-fn v2_item_kind_rejects_non_text_type_and_keeps_future_extensions() {
+fn current_item_kind_rejects_non_text_type_and_keeps_future_extensions() {
     assert_eq!(
         normalize_item(&json!({"type": 42, "opaque": "value"}))
             .unwrap_err()
@@ -198,7 +194,7 @@ fn evidence_absence_corruption_and_content_changes_are_distinct() {
 }
 
 #[test]
-fn v2_tracking_contract_is_typed_and_preserves_tool_result_metadata() {
+fn current_tracking_contract_is_typed_and_preserves_tool_result_metadata() {
     for kind in [
         "function_call",
         "custom_tool_call",
@@ -250,7 +246,7 @@ fn v2_tracking_contract_is_typed_and_preserves_tool_result_metadata() {
 }
 
 #[test]
-fn v2_semantic_fields_and_opaque_extensions_cannot_be_erased() {
+fn current_semantic_fields_and_opaque_extensions_cannot_be_erased() {
     let examples = [
         json!({"type":"function_call","call_id":"c","name":"f","namespace":"ns","arguments":"{\"x\":1}","encrypted_function_args":["cipher"]}),
         json!({"type":"custom_tool_call","call_id":"c","name":"f","namespace":"ns","input":"body","status":"completed"}),
@@ -289,42 +285,32 @@ fn v2_semantic_fields_and_opaque_extensions_cannot_be_erased() {
 }
 
 #[test]
-fn proof_versions_are_domain_separated_and_legacy_is_not_upgraded() {
+fn runtime_rejects_legacy_and_unknown_proof_contracts() {
     let input = json!({"type":"message","role":"user","content":"old"});
-    let mut legacy = History::empty(1);
-    legacy.append(&input).unwrap();
-    let legacy = serde_json::to_value(legacy).unwrap();
     let current = completed_history(&json!({"input":[input]}), None, &[])
         .unwrap()
         .unwrap();
     assert_eq!(current["version"], 3);
-    assert_ne!(current["digest"], legacy["digest"]);
-    let continued = completed_history(
-        &json!({"previous_response_id":"resp_old","input":[]}),
-        Some(&legacy),
-        &[],
-    )
-    .unwrap()
-    .unwrap();
-    assert_eq!(continued, legacy);
-    assert_eq!(
-        validate_full_retry_input(
-            &json!([input,{"type":"function_call_output","call_id":"c","output":"ok"}]),
-            &legacy,
-            &["c".into()]
-        )
-        .unwrap_err()
-        .to_string(),
-        "native_history_version_unsupported"
-    );
-    let mut future = current.clone();
-    future["version"] = json!(999);
-    assert_eq!(
-        validate_full_retry_input(&json!([]), &future, &[])
-            .unwrap_err()
-            .to_string(),
-        "native_history_version_unsupported"
-    );
+    for version in [1, 2, 999] {
+        let mut unsupported = current.clone();
+        unsupported["version"] = json!(version);
+        for result in [
+            completed_history(
+                &json!({"previous_response_id":"resp_old","input":[]}),
+                Some(&unsupported),
+                &[],
+            )
+            .map(|_| ()),
+            append_items(&unsupported, &[]).map(|_| ()),
+            validate_full_retry_input(&json!([]), &unsupported, &[]),
+            prove_full_context_input(&json!([]), &unsupported, &[]).map(|_| ()),
+        ] {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "native_history_version_unsupported"
+            );
+        }
+    }
     assert_eq!(
         validate_full_retry_input(&json!([]), &current, &["c".into()])
             .unwrap_err()
@@ -552,51 +538,4 @@ fn v3_function_call_delivery_id_is_optional_but_semantic_history_is_bound() {
         let item = json!({"type":kind,"id":"opaque_native","opaque":"keep"});
         assert_eq!(normalize_item(&item).unwrap(), item);
     }
-}
-
-#[test]
-fn frozen_v2_proofs_validate_and_continue_without_v3_reinterpretation() {
-    let input = json!({"role":"user","content":"old work"});
-    let call = json!({"type":"function_call","id":"fc_old","call_id":"call_old","name":"exec","arguments":"{}"});
-    let mut history = History::empty(2);
-    history.append(&input).unwrap();
-    history.append(&call).unwrap();
-    let history = serde_json::to_value(history).unwrap();
-    let output = json!({"type":"function_call_output","call_id":"call_old","output":"result"});
-    validate_full_retry_input(
-        &json!([input, call, output]),
-        &history,
-        &["call_old".into()],
-    )
-    .unwrap();
-    let mut without_id = call.clone();
-    without_id.as_object_mut().unwrap().remove("id");
-    assert!(validate_full_retry_input(
-        &json!([input, without_id, output]),
-        &history,
-        &["call_old".into()]
-    )
-    .is_err());
-    let continued = completed_history(
-        &json!({"previous_response_id":"resp_old","input":[output]}),
-        Some(&history),
-        &[],
-    )
-    .unwrap()
-    .unwrap();
-    assert_eq!(continued["version"], 2);
-    let appended = append_items(&history, std::slice::from_ref(&output)).unwrap();
-    assert_eq!(continued, appended);
-    let current = completed_history(&json!({"input":[input]}), None, &[call])
-        .unwrap()
-        .unwrap();
-    assert_ne!(current["digest"], history["digest"]);
-    let mut relabeled = history.clone();
-    relabeled["version"] = json!(3);
-    assert!(validate_full_retry_input(
-        &json!([input, without_id, output]),
-        &relabeled,
-        &["call_old".into()]
-    )
-    .is_err());
 }

@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Offline proof conversion only. Production hosts must not enable this feature.
+responses-history-migration = []
+
 [dependencies]
 flate2.workspace = true
 tar.workspace = true

@@ -1,4 +1,4 @@
-//! Versioned, ordered proof of the complete Responses history. Only hashes are persisted.
+//! Ordered proof of the complete Responses history. Only current-format hashes are persisted.
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -10,18 +10,18 @@ use std::{
 
 #[path = "history/canonical.rs"]
 mod canonical;
-#[path = "history/legacy.rs"]
-mod legacy;
-#[path = "history/legacy_v2.rs"]
-mod legacy_v2;
+#[cfg(feature = "responses-history-migration")]
+#[path = "history/migration.rs"]
+pub mod migration;
 
+// Storage contract identity, not an algorithm selector. Keep the existing domain bytes.
 const CURRENT_VERSION: u32 = 3;
 
 fn normalize_item(item: &Value) -> Result<Value> {
     canonical::normalize_item(item)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct History {
     version: u32,
@@ -30,14 +30,11 @@ struct History {
 }
 
 impl History {
-    fn empty(version: u32) -> Self {
+    fn empty() -> Self {
         Self {
-            version,
+            version: CURRENT_VERSION,
             item_count: 0,
-            digest: format!(
-                "{:x}",
-                Sha256::digest(format!("1flowbase.responses.history.v{version}"))
-            ),
+            digest: format!("{:x}", Sha256::digest(b"1flowbase.responses.history.v3")),
         }
     }
 
@@ -50,31 +47,24 @@ impl History {
             "native_history_evidence_invalid"
         );
         ensure!(
-            matches!(history.version, 1 | 2 | CURRENT_VERSION),
+            history.version == CURRENT_VERSION,
             "native_history_version_unsupported"
         );
         Ok(history)
     }
 
     fn append(&mut self, item: &Value) -> Result<()> {
-        let item = match self.version {
-            1 => legacy::normalize_item(item)?,
-            2 => legacy_v2::normalize_item(item)?,
-            CURRENT_VERSION => normalize_item(item)?,
-            _ => anyhow::bail!("native_history_version_unsupported"),
-        };
-        let mut byte_count = ByteCounter(0);
-        write_canonical_json(&item, &mut byte_count)?;
-        let mut hash = Sha256::new();
-        hash.update(format!(
-            "1flowbase.responses.history.item.v{}\0",
-            self.version
-        ));
-        hash.update(self.digest.as_bytes());
-        hash.update((byte_count.0 as u64).to_be_bytes());
-        write_canonical_json(&item, &mut DigestWriter(&mut hash))?;
-        self.digest = format!("{:x}", hash.finalize());
-        self.item_count += 1;
+        let item = normalize_item(item)?;
+        let next_count = self
+            .item_count
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("native_history_item_count_overflow"))?;
+        self.digest = append_digest(
+            &self.digest,
+            b"1flowbase.responses.history.item.v3\0",
+            &item,
+        )?;
+        self.item_count = next_count;
         Ok(())
     }
 }
@@ -96,7 +86,7 @@ pub(crate) fn completed_history(
         };
         History::parse(predecessor)?
     } else {
-        History::empty(CURRENT_VERSION)
+        History::empty()
     };
     match body.get("input") {
         Some(Value::Array(items)) => {
@@ -155,12 +145,6 @@ pub(crate) fn prove_full_context_input<'a>(
     owned_call_ids: &[String],
 ) -> Result<FullContextInput<'a>> {
     let expected = History::parse(trusted_history)?;
-    // V1 cannot attest full-context recovery. V2 remains valid under its frozen
-    // contract; a stored hash is never upgraded to the v3 equivalence contract.
-    ensure!(
-        matches!(expected.version, 2 | CURRENT_VERSION),
-        "native_history_version_unsupported"
-    );
     let items = input
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
@@ -169,7 +153,7 @@ pub(crate) fn prove_full_context_input<'a>(
         .checked_add(owned_call_ids.len())
         .filter(|end| expected.item_count > 0 && *end <= items.len())
         .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
-    let mut actual = History::empty(expected.version);
+    let mut actual = History::empty();
     for item in &items[..expected.item_count] {
         actual.append(item)?;
     }
@@ -208,6 +192,18 @@ pub(crate) fn prove_full_context_input<'a>(
     }
     ensure!(remaining.is_empty(), "native_history_tool_outputs_invalid");
     Ok(proof)
+}
+
+// Shared encoding only: callers supply already normalized semantic evidence.
+fn append_digest(previous: &str, domain: &[u8], item: &Value) -> Result<String> {
+    let mut byte_count = ByteCounter(0);
+    write_canonical_json(item, &mut byte_count)?;
+    let mut hash = Sha256::new();
+    hash.update(domain);
+    hash.update(previous.as_bytes());
+    hash.update((byte_count.0 as u64).to_be_bytes());
+    write_canonical_json(item, &mut DigestWriter(&mut hash))?;
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 struct ByteCounter(usize);
