@@ -2205,7 +2205,7 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
             return Ok(None);
         }
         let row = sqlx::query(r#"
-            update flow_run_callback_resume_attempts a set status = 'processing', updated_at = now(), completed_at = null
+            update flow_run_callback_resume_attempts a set status = 'processing', updated_at = greatest(clock_timestamp(), a.updated_at + interval '1 microsecond'), completed_at = null
             where a.id = $1
               and a.source = 'openai_responses'
               and (a.response_payload ? 'responses_continuation' or exists (
@@ -2226,6 +2226,15 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         row.as_ref()
             .map(map_flow_run_callback_resume_attempt_record)
             .transpose()
+    }
+
+    async fn release_unstarted_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        expected_updated_at: OffsetDateTime,
+    ) -> Result<bool> {
+        self.release_unstarted_flow_run_callback_resume_attempt(attempt_id, expected_updated_at)
+            .await
     }
 
     async fn park_published_callback_resume_attempt(

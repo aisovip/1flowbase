@@ -3,7 +3,7 @@ use control_plane::application_public_api::{
     api_keys::ApplicationApiKeyActor,
     callback_resume::{
         ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
-        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        PublishedCallbackReservation, PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
         ResumePublishedCallbackCommand,
     },
     native_tool_resume::correlate_native_responses_callback,
@@ -101,10 +101,35 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
         response_payload: payload.clone(),
         response_mode: Some("streaming".into()),
     };
-    let attempt_id = service
-        .reserve_native_callback_for_actor(actor.clone(), &command)
+    let PublishedCallbackReservation::Acquired(first) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
         .await
-        .unwrap();
+        .unwrap()
+    else {
+        panic!("new admission must be acquired");
+    };
+    assert!(service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    assert!(!service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    let PublishedCallbackReservation::Acquired(second) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("released admission must be acquired");
+    };
+    assert_eq!(first.attempt_id(), second.attempt_id());
+    assert_ne!(first, second);
+    assert!(!service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    let attempt_id = second.attempt_id();
     let committed = store
         .commit_tool_callback_results(&CommitToolCallbackResultsInput {
             responses_continuation: None,
@@ -118,6 +143,11 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
         .await
         .unwrap();
     let claim = committed.claim.unwrap();
+    assert!(!service
+        .release_unstarted_native_callback(&second)
+        .await
+        .unwrap());
+
     sqlx::query("update flow_run_callback_resume_attempts set updated_at=now()-interval '6 minutes' where id=$1")
         .bind(attempt_id).execute(store.pool()).await.unwrap();
     // Reproduce a slow owner that renews its execution lease without rewriting
@@ -183,13 +213,32 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
     );
     assert!(provider.inputs.lock().unwrap().is_empty());
 
-    sqlx::query(
-        "update flow_run_resume_claims set lease_expires_at=now()-interval '1 second' where id=$1",
-    )
-    .bind(claim.id)
-    .execute(store.pool())
-    .await
-    .unwrap();
+    let mut successor = full_retry.clone();
+    let mut body = successor
+        .native_transport
+        .as_ref()
+        .unwrap()
+        .wire_body()
+        .clone();
+    body["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role":"user","content":"Continue with new context"}));
+    successor.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+    let (reclassified, ()) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        tokio::join!(
+            service.prepare_callback_resume_for_actor(actor.clone(), &successor),
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                sqlx::query("update flow_run_resume_claims set lease_expires_at=now()-interval '1 second' where id=$1")
+                    .bind(claim.id).execute(store.pool()).await.unwrap();
+            },
+        )
+    }).await.expect("expired owner must release the predecessor waiter");
+    assert!(matches!(
+        reclassified.unwrap(),
+        PreparedPublishedCallbackResume::Resume { .. }
+    ));
     assert!(!store
         .has_active_published_callback_resume_claim(callback.id)
         .await
@@ -206,11 +255,58 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
         .await
         .is_err());
     let (left, right) = tokio::join!(
-        service.reserve_native_callback_for_actor(actor.clone(), &command),
-        service.reserve_native_callback_for_actor(actor, &command),
+        service.reserve_native_callback_reservation_for_actor(actor.clone(), &command),
+        service.reserve_native_callback_reservation_for_actor(actor.clone(), &command),
     );
     assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
-    assert_eq!(left.or(right).unwrap(), attempt_id);
+    let PublishedCallbackReservation::Acquired(reclaimed) = left.or(right).unwrap() else {
+        panic!("expired admission must be acquired");
+    };
+    assert_eq!(reclaimed.attempt_id(), attempt_id);
+    assert!(!service
+        .release_unstarted_native_callback(&second)
+        .await
+        .unwrap());
+    assert!(service
+        .release_unstarted_native_callback(&reclaimed)
+        .await
+        .unwrap());
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+        PreparedPublishedCallbackResume::Resume { .. }
+    ));
+    let PublishedCallbackReservation::Acquired(retry) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("completed released receipt must re-acquire without an age delay");
+    };
+    assert_ne!(retry, reclaimed);
+    assert!(!service
+        .release_unstarted_native_callback(&reclaimed)
+        .await
+        .unwrap());
+    store
+        .finish_published_callback_resume_attempt(&FinishFlowRunCallbackResumeAttemptInput {
+            attempt_id,
+            status: domain::FlowRunCallbackResumeAttemptStatus::Succeeded,
+            error_payload: None,
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    assert!(!service
+        .release_unstarted_native_callback(&retry)
+        .await
+        .unwrap());
+    assert!(
+        matches!(service.reserve_native_callback_reservation_for_actor(actor, &command).await.unwrap(),
+        PublishedCallbackReservation::SettledReplay { attempt_id: settled } if settled == attempt_id)
+    );
     assert_eq!(
         store
             .get_published_callback_resume_attempt(callback.id)
