@@ -3,6 +3,7 @@
   "display_name": "Channel name",
   "type": "Notification type",
   "status": "Status",
+  "enable_status": "Enabled status",
   "actions": "Actions",
   "create_instance": "Add notification channel",
   "edit_instance": "Edit notification channel",
