@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn opted_in_legacy_account_projects_unknown_without_changing_other_channels() {
+    let view: NotificationAuthorizationView =
+        serde_json::from_value(json!({"status":"authorized"})).unwrap();
+    let mut descriptor = system_notification_descriptor();
+    descriptor.authorization = Some(
+        serde_json::from_value(json!({
+            "actions":[{"code":"qr","label":"Scan","kind":"qr_code"}],
+            "managed_secret_keys":["token"], "supports_delivery_window":true
+        }))
+        .unwrap(),
+    );
+    let projected = project_for_descriptor(view.clone(), &descriptor);
+    assert_eq!(projected.status, Status::Authorized);
+    assert_eq!(
+        projected.delivery_window.unwrap().status,
+        extension_contracts::NotificationDeliveryWindowStatus::Unknown
+    );
+    descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .supports_delivery_window = false;
+    assert_eq!(
+        project_for_descriptor(view, &descriptor).delivery_window,
+        None
+    );
+    descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .supports_delivery_window = true;
+    assert_eq!(
+        project_for_descriptor(unauthorized(), &descriptor).delivery_window,
+        None
+    );
+}
+
+#[test]
 fn host_secret_projection_rejects_existing_and_new_credentials_and_patch_deletion_is_exact() {
     let mut descriptor = system_notification_descriptor();
     descriptor.config_form=serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"token","label":"Token","type":"string","control":"password"}]})).unwrap();

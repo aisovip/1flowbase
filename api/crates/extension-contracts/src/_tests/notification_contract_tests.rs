@@ -278,6 +278,20 @@ fn delivery_window_contract_preserves_legacy_and_checks_evidence_pairs() {
         assert!(serde_json::from_value::<NotificationAuthorizationView>(json!({"status":"authorized","delivery_window":{"status":"active","last_received_at_ms":value,"expires_at_ms":2}})).is_err());
     }
     assert!(serde_json::from_value::<crate::NotificationAuthorizationOperation>(json!({"type":"maintain","delivery_window":{"status":"active","last_received_at_ms":1,"expires_at_ms":2}})).is_err());
+    for operation in ["poll", "cancel", "maintain"] {
+        let valid = json!({"type":operation});
+        let parsed: crate::NotificationAuthorizationOperation =
+            serde_json::from_value(valid.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), valid);
+        for field in ["delivery_window", "managed_secrets", "unexpected"] {
+            let mut injected = valid.clone();
+            injected[field] = json!({"injected":true});
+            assert!(
+                serde_json::from_value::<crate::NotificationAuthorizationOperation>(injected)
+                    .is_err()
+            );
+        }
+    }
 }
 
 #[test]

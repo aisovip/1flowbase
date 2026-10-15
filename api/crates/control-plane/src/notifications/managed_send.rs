@@ -46,7 +46,7 @@ where
             delivery_window: state
                 .authorization
                 .clone()
-                .map(super::authorization::project_authorization)
+                .map(|view| super::authorization::project_for_descriptor(view, descriptor))
                 .and_then(|view| view.delivery_window),
             operation: NotificationOperation::Send { input_payload },
             managed_secrets: state.managed_secrets.clone(),

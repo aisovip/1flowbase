@@ -2,6 +2,7 @@ import type { ConsolePluginFormSchema } from '../../console-model-providers';
 import { apiFetch, apiFetchVoid, getDefaultApiBaseUrl } from '../../transport';
 
 export interface NotificationAuthorizationDescriptor {
+  supports_delivery_window?: boolean;
   actions: Array<{ code: string; label: string; kind: 'qr_code' }>;
   managed_secret_keys: string[];
 }

@@ -37,6 +37,26 @@ pub(super) fn project_authorization(
     project_authorization_at(view, now_ms)
 }
 
+pub(super) fn project_for_descriptor(
+    mut view: NotificationAuthorizationView,
+    descriptor: &NotificationTypeDescriptor,
+) -> NotificationAuthorizationView {
+    if view.status == Status::Authorized
+        && view.delivery_window.is_none()
+        && descriptor
+            .authorization
+            .as_ref()
+            .is_some_and(|authorization| authorization.supports_delivery_window)
+    {
+        view.delivery_window = Some(extension_contracts::NotificationDeliveryWindowView {
+            status: extension_contracts::NotificationDeliveryWindowStatus::Unknown,
+            last_received_at_ms: None,
+            expires_at_ms: None,
+        });
+    }
+    project_authorization(view)
+}
+
 impl<R> NotificationService<R>
 where
     R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
@@ -65,8 +85,10 @@ where
                 &self.master_key,
             )
             .await?;
-        let current =
-            project_authorization(state.authorization.clone().unwrap_or_else(unauthorized));
+        let current = project_for_descriptor(
+            state.authorization.clone().unwrap_or_else(unauthorized),
+            &entry.descriptor,
+        );
         let original_secrets = state.managed_secrets.clone();
         let mut input = NotificationRuntimeInput {
             delivery_window: current.delivery_window.clone(),
@@ -188,7 +210,7 @@ where
         )
         .await?
         .ok_or(Error::Conflict("notification_authorization_stale"))?;
-        Ok(project_authorization(authorization))
+        Ok(project_for_descriptor(authorization, &entry.descriptor))
     }
 
     pub(super) async fn notification_config(

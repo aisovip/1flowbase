@@ -12,6 +12,9 @@ use super::{identity, invalid, ContractResult, NotificationTypeDescriptor};
 pub struct NotificationAuthorizationDescriptor {
     pub actions: Vec<NotificationAuthorizationAction>,
     pub managed_secret_keys: Vec<String>,
+    /// Declares that an authorized account also has an independent delivery window.
+    #[serde(default)]
+    pub supports_delivery_window: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,13 +31,34 @@ pub enum NotificationAuthorizationActionKind {
     QrCode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationAuthorizationOperation {
     Begin { action: String },
     Poll,
     Cancel,
     Maintain,
+}
+
+impl<'de> Deserialize<'de> for NotificationAuthorizationOperation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Serde unit variants ignore extra fields even with deny_unknown_fields.
+        // Empty struct wire variants retain the public enum while rejecting injection.
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+        enum WireOperation {
+            Begin { action: String },
+            Poll {},
+            Cancel {},
+            Maintain {},
+        }
+        Ok(match WireOperation::deserialize(deserializer)? {
+            WireOperation::Begin { action } => Self::Begin { action },
+            WireOperation::Poll {} => Self::Poll,
+            WireOperation::Cancel {} => Self::Cancel,
+            WireOperation::Maintain {} => Self::Maintain,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
