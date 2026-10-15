@@ -5,6 +5,11 @@ const assert = require('node:assert/strict');
 const { createRequire } = require('node:module');
 const { openTemporaryConsoleSession, rebaseStorageStateCookies } = require('../page-debug/auth');
 const route = '/api/console/managed-services/langfuse/';
+function connectionUrl(value) {
+  const url = new URL(value);
+  if (!url.pathname.endsWith('/')) url.pathname += '/';
+  return url.href;
+}
 async function capture({ args, credentials, langfuse, sources, target, receipt, waitRemote, verifyTarget }) {
   const playwright = createRequire(path.join(args.credentialsRoot,'web/package.json'))('playwright');
   const storage = path.join(args.outDir,'private/console-storage.json');
@@ -41,9 +46,10 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         await config.getByLabel('Secret key',{exact:true}).fill(langfuse.secret_key);
         const saved = await action('config',config.getByRole('button',{name:'Save',exact:true}),'PUT');
         assert.equal(saved.credential_configured,true);
+        assert.equal(saved.base_url,connectionUrl(langfuse.base_url));
         assert.ok(!Object.hasOwn(saved,'public_key') && !Object.hasOwn(saved,'secret_key'));
         await action('applications',config.getByRole('button',{name:'Reload',exact:true}),'GET');
-        assert.equal(await config.getByLabel('Service URL',{exact:true}).inputValue(),langfuse.base_url);
+        assert.equal(await config.getByLabel('Service URL',{exact:true}).inputValue(),saved.base_url);
         assert.equal(await config.getByLabel('Secret key',{exact:true}).inputValue(),'');
         const connected = await action('test',config.getByRole('button',{name:'Test connection',exact:true}));
         assert.equal(connected.connected,true);
@@ -77,8 +83,8 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         receipt.checks.push({name:`${name} browser complete import and dedup`,status:'pass',...repeat.receipt});
         // Full browser reload proves persisted connection, rather than component state alone.
         await page.reload({waitUntil:'domcontentloaded'});
-        await config.getByLabel('Service URL',{exact:true}).waitFor();
-        await page.waitForFunction(url => document.querySelector('input[placeholder="https://cloud.langfuse.com/"]')?.value === url,langfuse.base_url);
+        await config.locator('input[placeholder="https://cloud.langfuse.com/"]').waitFor();
+        await page.waitForFunction(url => document.querySelector('input[placeholder="https://cloud.langfuse.com/"]')?.value === url,saved.base_url);
         const importedRecordId = await verifyTarget(imported.receipt.record_ids);
         await page.goto(`${args.webBaseUrl}/applications/${target.application_id}/logs?language=en&run_id=${encodeURIComponent(importedRecordId)}`,{waitUntil:'domcontentloaded'});
         await page.getByTestId('application-logs-floating-run-detail').getByText('Synthetic answer 2.',{exact:true}).waitFor();
