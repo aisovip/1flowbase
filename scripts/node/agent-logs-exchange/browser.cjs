@@ -142,6 +142,20 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
         finally { await browser.close(); browser = null; }
       }
     }
+    await captureLangfuse({ args, langfuse, receipt, playwright });
+  } finally {
+    try { if (browser) await browser.close(); }
+    finally {
+      try { if (owner) await owner.dispose(); }
+      finally { await fs.rm(storageStatePath, { force: true }); }
+    }
+  }
+}
+// Separate external-page capture lets final QA reuse completed exchange evidence.
+async function captureLangfuse({ args, langfuse, receipt, playwright }) {
+  const viewports = [['desktop', { width: 1440, height: 1000 }], ['mobile', { width: 390, height: 844 }]];
+  let browser;
+  try {
     for (const [name, viewport] of viewports) {
       // Release renderer/navigation caches between viewport evidence batches.
       browser = await playwright.chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true });
@@ -149,7 +163,6 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
       try {
         const page = await context.newPage();
         await page.goto(`${langfuse.base_url}/project/${encodeURIComponent(langfuse.project_id)}/traces`, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('main').waitFor({ state: 'visible', timeout: 30000 });
         await page.locator('tbody tr').first().waitFor({ state: 'visible', timeout: 30000 });
         const output = path.join(args.outDir, name === 'desktop' ? '03-langfuse-traces.png' : `${name}-03-langfuse-traces.png`);
         await page.screenshot({ path: output, fullPage: true, animations: 'disabled' });
@@ -160,11 +173,7 @@ async function capture({ args, credentials, applicationId, recordIds, targetAppl
       }
     }
   } finally {
-    try { if (browser) await browser.close(); }
-    finally {
-      try { if (owner) await owner.dispose(); }
-      finally { await fs.rm(storageStatePath, { force: true }); }
-    }
+    if (browser) await browser.close();
   }
 }
-module.exports = { capture };
+module.exports = { capture, captureLangfuse };
