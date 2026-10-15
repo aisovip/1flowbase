@@ -96,8 +96,6 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
     ['application.logs.otlp.traces.ingest', 'http.application.logs.otlp.traces.ingest.v1'],
     ['applications.logs.otlp.export', 'http.console.applications.logs.otlp.export.v1'],
     ['applications.logs.otlp.import', 'http.console.applications.logs.otlp.import.v1'],
-    ['applications.logs.langfuse.export', 'http.console.applications.logs.langfuse.export.v1'],
-    ['applications.logs.langfuse.import', 'http.console.applications.logs.langfuse.import.v1'],
     ['notifications.logs.list', 'http.console.notifications.logs.list.v1'],
     ['notifications.logs.get', 'http.console.notifications.logs.get.v1'],
     ['notifications.channels.list', 'http.console.notifications.channels.list.v1'],
@@ -110,6 +108,20 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
     assert.ok(inventory.approvedAddedDefinitions.includes(definition));
     assert.ok(inventory.approvedAddedBindings.includes(binding));
   }
+  // f88bd597c removes candidate-only host vendor routes in favor of managed
+  // langfuse.export/import. Never rewrite E00 or pretend these were in baseline.
+  for (const direction of ['export', 'import']) {
+    const definition = `applications.logs.langfuse.${direction}`;
+    const binding = `http.console.${definition}.v1`;
+    for (const key of ['definitions', 'approvedAddedDefinitions', 'approvedRemovedDefinitions']) {
+      assert.equal(inventory[key].includes(definition), false, `${key}: retired host vendor definition`);
+    }
+    for (const key of ['bindings', 'approvedAddedBindings', 'approvedRemovedBindings']) {
+      assert.equal(inventory[key].includes(binding), false, `${key}: retired host vendor binding`);
+    }
+  }
+  assert.equal(inventory.source_sha, 'ce355a56a4a3ec91acc627b5691daf06814c1225');
+  assert.equal(inventory.harness_sha, 'cb85b32a28e404c41e42ec081bba02ede2b1ece4');
   assert.deepEqual(inventory.approvedRemovedDefinitions, ['ui_management.templates.archive']);
   assert.deepEqual(inventory.approvedRemovedBindings, ['http.console.ui-management.templates.archive.put.v1']);
   assert.equal(new Set(inventory.approvedAddedDefinitions).size, inventory.approvedAddedDefinitions.length);
