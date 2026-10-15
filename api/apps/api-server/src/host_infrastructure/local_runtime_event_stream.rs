@@ -140,6 +140,14 @@ impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
         Ok(())
     }
 
+    async fn close_generation(&self, reason: RuntimeEventCloseReason) -> Result<()> {
+        // The Arc is captured when the writer is issued. Reopening the same run
+        // replaces the map entry, but never redirects this authority.
+        self.run.close(reason);
+        self.schedule_updates.send_replace(());
+        Ok(())
+    }
+
     async fn append_terminal_if_missing_and_close(
         &self,
         event: RuntimeEventPayload,
@@ -490,6 +498,22 @@ impl LocalRuntimeEventStream {
 }
 
 impl LocalRunEventStream {
+    fn close(&self, reason: RuntimeEventCloseReason) {
+        let _ring = self.ring.lock().expect("runtime event ring lock poisoned");
+        if !self.is_closed() {
+            let final_sequence = self.next_sequence.load(Ordering::SeqCst) - 1;
+            *self
+                .closed_at
+                .lock()
+                .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
+            self.closed_sender.send_replace(Some(RuntimeEventClosure {
+                reason,
+                final_sequence,
+            }));
+            self.release_live_broadcast();
+        }
+    }
+
     fn append_terminal_if_missing_and_close(
         &self,
         run_id: Uuid,
@@ -1192,19 +1216,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
 
     async fn close_run(&self, run_id: Uuid, reason: RuntimeEventCloseReason) -> Result<()> {
         let run = self.run(run_id)?;
-        let _ring = run.ring.lock().expect("runtime event ring lock poisoned");
-        if !run.is_closed() {
-            let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
-            *run.closed_at
-                .lock()
-                .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
-            run.closed_sender.send_replace(Some(RuntimeEventClosure {
-                reason,
-                final_sequence,
-            }));
-            run.release_live_broadcast();
-            self.schedule_updates.send_replace(());
-        }
+        run.close(reason);
+        self.schedule_updates.send_replace(());
         Ok(())
     }
 

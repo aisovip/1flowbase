@@ -275,3 +275,56 @@ async fn reopening_retires_pinned_old_generation_and_preserves_pending_delivery(
     }
     assert!(old.live_events.recv().await.is_none());
 }
+
+#[tokio::test]
+async fn captured_generation_close_cannot_close_reopened_run_or_create_terminal() {
+    let stream = LocalRuntimeEventStream::new();
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let old = stream.terminal_writer(run_id).await.unwrap();
+    let old_generation = old.generation_id();
+    old.close_generation(RuntimeEventCloseReason::Failed)
+        .await
+        .unwrap();
+    assert_eq!(
+        old.closure().unwrap().reason,
+        RuntimeEventCloseReason::Failed
+    );
+    assert_eq!(old.closure().unwrap().final_sequence, 0);
+    assert!(
+        stream.replay(run_id, None, 10).await.unwrap().is_empty(),
+        "close-only cleanup must not fabricate a terminal event"
+    );
+
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let new = stream.terminal_writer(run_id).await.unwrap();
+    assert_ne!(old_generation, new.generation_id());
+    stream.append(run_id, heartbeat()).await.unwrap();
+    old.close_generation(RuntimeEventCloseReason::Cancelled)
+        .await
+        .unwrap();
+    assert!(
+        new.closure().is_none(),
+        "old authority must never resolve a new generation by run ID"
+    );
+    assert_eq!(
+        old.closure().unwrap().reason,
+        RuntimeEventCloseReason::Failed
+    );
+    stream.append(run_id, heartbeat()).await.unwrap();
+    assert_eq!(stream.replay(run_id, None, 10).await.unwrap().len(), 2);
+    new.close_generation(RuntimeEventCloseReason::Cancelled)
+        .await
+        .unwrap();
+    assert_eq!(
+        new.closure().unwrap().reason,
+        RuntimeEventCloseReason::Cancelled
+    );
+    assert_eq!(new.closure().unwrap().final_sequence, 2);
+}
