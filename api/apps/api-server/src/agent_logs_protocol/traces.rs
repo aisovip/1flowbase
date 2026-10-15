@@ -1,6 +1,6 @@
 use super::{
-    attributes::{attributes, langfuse_usage, text, Attributes},
-    facts::{hex, source_fact, Batches},
+    attributes::{attributes, text, Attributes},
+    facts::{hex, source_fact, Batches, SELF_NAMESPACE, SOURCE_FACT_ATTRIBUTE},
     observations::Observation,
     ExportTraceServiceRequest,
 };
@@ -39,14 +39,27 @@ pub fn traces_to_batches(request: &ExportTraceServiceRequest) -> Result<Vec<Agen
                     "agent_logs.otlp_parent_identity"
                 );
                 let span_attrs = attributes(&span.attributes)?;
-                if let Some(fact) = source_fact(span_attrs.get("langfuse.observation.metadata"))? {
+                ensure!(
+                    span_attrs
+                        .get(SOURCE_FACT_ATTRIBUTE)
+                        .is_none_or(|value| value.is_string()),
+                    "agent_logs.source_fact_encoding"
+                );
+                let neutral = span_attrs
+                    .get(SOURCE_FACT_ATTRIBUTE)
+                    .map(|value| json!({SELF_NAMESPACE: value}));
+                let legacy = span_attrs.get("langfuse.observation.metadata");
+                ensure!(
+                    neutral.is_none() || legacy.is_none(),
+                    "agent_logs.source_fact_ambiguous"
+                );
+                if let Some(fact) = source_fact(neutral.as_ref().or(legacy))? {
                     batches.push(fact.source_id, fact.source_client, fact.event)?;
                     continue;
                 }
                 let mut attrs: Attributes = resource_attrs.clone();
                 attrs.extend(scope_attrs.clone());
                 attrs.extend(span_attrs);
-                langfuse_usage(&mut attrs)?;
                 let trace = hex(&span.trace_id);
                 let task = format!("{trace}/{}", hex(&span.span_id));
                 let session = text(
@@ -55,7 +68,6 @@ pub fn traces_to_batches(request: &ExportTraceServiceRequest) -> Result<Vec<Agen
                         "gen_ai.conversation.id",
                         "coding_agent.session.id",
                         "session.id",
-                        "langfuse.session.id",
                     ],
                 )
                 .unwrap_or_else(|| trace.clone());

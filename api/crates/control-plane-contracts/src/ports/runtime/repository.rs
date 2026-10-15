@@ -110,6 +110,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<AgentLogsExportFacts> {
         anyhow::bail!("read_imported_agent_logs_selection not implemented")
     }
+    /// Complete persisted native message units, restored from original JSON.
+    /// Does not use business-turn summaries or regenerate projections on read.
+    async fn read_native_agent_log_messages(
+        &self,
+        _scope_id: Uuid,
+        _application_id: Uuid,
+        _run_id: Uuid,
+    ) -> anyhow::Result<Vec<serde_json::Value>> {
+        anyhow::bail!("read_native_agent_log_messages not implemented")
+    }
     async fn query_application_log_records(
         &self,
         _scope_id: Uuid,

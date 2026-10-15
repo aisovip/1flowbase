@@ -32,7 +32,6 @@ where
         if !matches!(
             operation,
             ApplicationNonCrudConsoleOperation::LogsOtlpImport
-                | ApplicationNonCrudConsoleOperation::LogsLangfuseImport
         ) {
             return Err(ControlPlaneError::InvalidInput("agent_logs_import_operation").into());
         }

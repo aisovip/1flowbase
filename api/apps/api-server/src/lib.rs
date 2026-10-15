@@ -8,6 +8,7 @@ mod resource_import;
 
 pub mod agent_logs_protocol;
 pub mod app_state;
+pub(crate) mod application_log_exchange;
 pub mod application_public_docs;
 pub mod config;
 pub(crate) mod console_operation_compilation;

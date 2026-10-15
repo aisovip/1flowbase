@@ -1020,14 +1020,6 @@ async fn agent_log_exchange_operations_are_independent_and_do_not_inherit_archiv
             ApplicationNonCrudConsoleOperation::LogsOtlpImport,
             access_control::APPLICATIONS_LOGS_OTLP_IMPORT_OPERATION_ID,
         ),
-        (
-            ApplicationNonCrudConsoleOperation::LogsLangfuseExport,
-            access_control::APPLICATIONS_LOGS_LANGFUSE_EXPORT_OPERATION_ID,
-        ),
-        (
-            ApplicationNonCrudConsoleOperation::LogsLangfuseImport,
-            access_control::APPLICATIONS_LOGS_LANGFUSE_IMPORT_OPERATION_ID,
-        ),
     ];
     let actor = Uuid::now_v7();
     for (selected, selected_id) in operations {

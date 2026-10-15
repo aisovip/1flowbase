@@ -79,8 +79,6 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::list_application_runs,
         crate::routes::application_runtime::log_exchange::otlp_export,
         crate::routes::application_runtime::log_exchange::otlp_import,
-        crate::routes::application_runtime::log_exchange::langfuse_export,
-        crate::routes::application_runtime::log_exchange::langfuse_import,
         crate::routes::application_runtime::logs_delete::delete_logs,
         crate::routes::application_runtime::logs_delete::jobs::preview,
         crate::routes::application_runtime::logs_delete::jobs::create,

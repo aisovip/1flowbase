@@ -576,8 +576,6 @@ fn agent_logs_exchange_does_not_expand_legacy_application_settings_authority() {
     for operation in [
         "applications.logs.otlp.export",
         "applications.logs.otlp.import",
-        "applications.logs.langfuse.export",
-        "applications.logs.langfuse.import",
     ] {
         let disposition = migration.disposition(operation).unwrap();
         assert!(disposition.is_default_disabled_new_operation());

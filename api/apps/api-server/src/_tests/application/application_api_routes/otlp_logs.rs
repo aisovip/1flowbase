@@ -420,11 +420,11 @@ async fn otlp_route_validates_all_source_facts_before_any_batch_commit() {
     let attribute = request.resource_spans[1].scope_spans[0].spans[0]
         .attributes
         .iter_mut()
-        .find(|attribute| attribute.key == "langfuse.observation.metadata")
+        .find(|attribute| attribute.key == "1flowbase.agent_log.source_fact")
         .unwrap();
     attribute.value = Some(AnyValue {
         value: Some(any_value::Value::StringValue(
-            "{\"1flowbase_agent_log\":null}".into(),
+            "malformed-source-fact".into(),
         )),
     });
     error(

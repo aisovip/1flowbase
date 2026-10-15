@@ -1186,8 +1186,10 @@ export function ApplicationLogsWorkspace({
               </Tooltip>
             </>
           ) : null}
-          {applicationType === 'agent_logs' && (
+          {(applicationType === 'agent_logs' ||
+            applicationType === 'agent_flow') && (
             <AgentLogsExchange
+              allowImport={applicationType === 'agent_logs'}
               applicationId={applicationId}
               applications={applications}
               selectedRecords={runs.filter((run) =>

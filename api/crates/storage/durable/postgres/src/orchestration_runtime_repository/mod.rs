@@ -216,6 +216,21 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::AgentLogsExportFacts> {
         agent_logs::reader::read_selection(self, application_id, scope_id, selector).await
     }
+    async fn read_native_agent_log_messages(
+        &self,
+        scope_id: Uuid,
+        application_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<Vec<Value>> {
+        Ok(sqlx::query_scalar::<_, Value>(r#"
+            select jsonb_build_object('id',m.id,'source_item_key',m.source_item_key,
+                'source_kind',m.source_kind,'role',m.role,'started_at',m.started_at,
+                'native_message',runtime_original_json(m.native_message,m.raw_json_payloads,'native_message'))
+            from application_run_conversation_message_items m
+            where m.scope_id=$1 and m.application_id=$2 and m.flow_run_id=$3
+            order by m.display_sequence,m.id
+        "#).bind(scope_id).bind(application_id).bind(run_id).fetch_all(self.pool()).await?)
+    }
     async fn query_application_log_records(
         &self,
         scope_id: Uuid,

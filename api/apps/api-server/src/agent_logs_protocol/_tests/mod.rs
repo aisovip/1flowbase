@@ -11,7 +11,6 @@ use serde_json::{json, Value};
 
 mod codec;
 mod generic;
-mod langfuse;
 mod roundtrip;
 
 fn traces_fixture() -> ExportTraceServiceRequest {
