@@ -1,3 +1,4 @@
+mod native_order;
 use super::*;
 use control_plane_contracts::ports::{
     AgentLogEventKind as Kind, AgentLogsBatch, AGENT_LOGS_SCHEMA_VERSION,
@@ -43,11 +44,11 @@ fn native_standard_exchange_preserves_full_units_tools_and_stable_identities_wit
     let full = "long original body\0\n".repeat(5000);
     let archive = json!({"flow_run_fact":run,"canonical_contents":[{"content":{"original":full}}],"export_warnings":[]});
     let messages = vec![
-        json!({"id":"system","native_message":{"role":"system","content":"real system"}}),
-        json!({"id":"user","native_message":{"role":"user","content":"user text"}}),
-        json!({"id":"call","native_message":{"role":"assistant","content":"short summary","_source_item":{"type":"function_call","call_id":"call-1","name":"tool","arguments":full}}}),
-        json!({"id":"result","native_message":{"role":"tool","_source_item":{"type":"function_call_output","call_id":"call-1","output":"full tool result"}}}),
-        json!({"id":"answer","native_message":{"role":"assistant","_source_item":{"type":"message","phase":"final_answer","content":[{"type":"output_text","text":"full answer"}]}}}),
+        json!({"id":"system","display_sequence":-1000000000,"native_message":{"role":"system","content":"real system"}}),
+        json!({"id":"user","display_sequence":0,"native_message":{"role":"user","content":"user text"}}),
+        json!({"id":"call","display_sequence":1,"native_message":{"role":"assistant","content":"short summary","_source_item":{"type":"function_call","call_id":"call-1","name":"tool","arguments":full}}}),
+        json!({"id":"result","display_sequence":2,"native_message":{"role":"tool","_source_item":{"type":"function_call_output","call_id":"call-1","output":"full tool result"}}}),
+        json!({"id":"answer","display_sequence":3,"native_message":{"role":"assistant","_source_item":{"type":"message","phase":"final_answer","content":[{"type":"output_text","text":"full answer"}]}}}),
     ];
     let events = native::normalize(
         &run,
@@ -110,7 +111,7 @@ fn native_standard_exchange_preserves_full_units_tools_and_stable_identities_wit
 fn native_conflicting_and_missing_facts_are_explicit_without_success_or_final_answer_inference() {
     let mut run = run();
     run.status = domain::FlowRunStatus::Failed;
-    let events = native::normalize(&run,"session",json!({}),vec![json!({"id":"conflict","native_message":{"role":"assistant","_log_conflicting":true,"_source_item":{"phase":"final_answer","content":"disputed"}}})],vec![]).unwrap();
+    let events = native::normalize(&run,"session",json!({}),vec![json!({"id":"conflict","display_sequence":0,"native_message":{"role":"assistant","_log_conflicting":true,"_source_item":{"phase":"final_answer","content":"disputed"}}})],vec![]).unwrap();
     assert_eq!(events[1].kind, Kind::Context);
     assert_eq!(events[1].phase.as_deref(), Some("source_conflict"));
     assert_eq!(
@@ -122,7 +123,7 @@ fn native_conflicting_and_missing_facts_are_explicit_without_success_or_final_an
         &run,
         "session",
         json!({}),
-        vec![json!({"id":"missing","native_message":null})],
+        vec![json!({"id":"missing","display_sequence":0,"native_message":null})],
         vec![]
     )
     .is_err());

@@ -128,9 +128,6 @@ pub(super) async fn read(
         }
         batch.events.extend(events);
     }
-    batch.events.sort_by(|left, right| {
-        (left.sequence, &left.event_id).cmp(&(right.sequence, &right.event_id))
-    });
     batch
         .validate()
         .map_err(|_| ControlPlaneError::Conflict("agent_logs_native_facts"))?;
@@ -146,14 +143,12 @@ fn event(
     kind: Kind,
     time: OffsetDateTime,
 ) -> Result<AgentLogEvent, ApiError> {
-    let sequence = i64::try_from(time.unix_timestamp_nanos())
-        .map_err(|_| ControlPlaneError::Conflict("agent_logs_native_timestamp"))?;
     Ok(AgentLogEvent {
         event_id: format!("native:{session}:{}:{id}", run.id),
         source_session_id: session.into(),
         source_task_id: run.id.to_string(),
         parent_source_task_id: None,
-        sequence,
+        sequence: 0,
         occurred_at: time.format(&Rfc3339)?,
         kind,
         content: None,
@@ -191,7 +186,7 @@ pub(super) fn normalize(
     run: &domain::FlowRunRecord,
     session: &str,
     archive: Value,
-    messages: Vec<Value>,
+    mut messages: Vec<Value>,
     usage: Vec<domain::UsageLedgerRecord>,
 ) -> Result<Vec<AgentLogEvent>, ApiError> {
     let mut result = Vec::new();
@@ -202,7 +197,22 @@ pub(super) fn normalize(
         diagnostic(&mut source.raw, "canonical_messages_missing");
     }
     result.push(source);
-    for unit in messages {
+    // The persisted sequence, including negative context positions, is the
+    // canonical message order. Time and UUID/hash order cannot stand in for it.
+    let mut ordered = Vec::with_capacity(messages.len());
+    for unit in messages.drain(..) {
+        let sequence = unit.get("display_sequence").and_then(Value::as_i64).ok_or(
+            ControlPlaneError::Conflict("agent_logs_native_message_sequence"),
+        )?;
+        ordered.push((sequence, unit));
+    }
+    ordered.sort_by_key(|(sequence, _)| *sequence);
+    if ordered.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return Err(
+            ControlPlaneError::Conflict("agent_logs_native_message_sequence_conflict").into(),
+        );
+    }
+    for (_, unit) in ordered {
         let id = unit
             .get("id")
             .and_then(Value::as_str)
@@ -310,18 +320,15 @@ pub(super) fn normalize(
     }
     // Source facts are immutable. A corrected source unit gets a new version;
     // repeated unchanged exports keep byte-identical event and span identities.
-    for fact in &mut result {
+    for (ordinal, fact) in result.iter_mut().enumerate() {
+        // Dense ordinals have no reserved numeric capacity or timestamp packing.
+        // The signed original message sequence remains in its single raw unit.
+        fact.sequence = i64::try_from(ordinal)
+            .map_err(|_| ControlPlaneError::Conflict("agent_logs_native_sequence_range"))?;
         use sha2::{Digest, Sha256};
-        let identity = serde_json::to_vec(&json!([
-            fact.kind,
-            fact.content,
-            fact.phase,
-            fact.name,
-            fact.call_id,
-            fact.model_id,
-            fact.usage,
-            fact.raw
-        ]))?;
+        // Hash the complete exported fact, with the stable source locator before
+        // appending its version. This includes occurred_at, sequence and provenance.
+        let identity = serde_json::to_vec(&*fact)?;
         fact.event_id.push(':');
         fact.event_id
             .push_str(&format!("{:x}", Sha256::digest(identity)));

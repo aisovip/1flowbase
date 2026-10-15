@@ -225,6 +225,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         Ok(sqlx::query_scalar::<_, Value>(r#"
             select jsonb_build_object('id',m.id,'source_item_key',m.source_item_key,
                 'source_kind',m.source_kind,'role',m.role,'started_at',m.started_at,
+                'display_sequence',m.display_sequence,
                 'native_message',runtime_original_json(m.native_message,m.raw_json_payloads,'native_message'))
             from application_run_conversation_message_items m
             where m.scope_id=$1 and m.application_id=$2 and m.flow_run_id=$3
