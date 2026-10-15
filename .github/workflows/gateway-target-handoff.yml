@@ -9,6 +9,10 @@ on:
         description: Verify callback attachment live and durable delivery before building the candidate
         type: boolean
         default: false
+      verify_history_migration:
+        description: Verify the single Responses history path and offline migration with PostgreSQL
+        type: boolean
+        default: false
       verify_fork_projection:
         description: Verify native fork task projections with real PostgreSQL migrations
         type: boolean
@@ -112,6 +116,35 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test orchestration_runtime_integration application_logs::task_projection > tmp/test-governance/gateway-target-handoff/ci/fork-projection.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/fork-projection.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/fork-projection.log
+      - name: Single runtime Responses history and recovery invariants
+        if: ${{ !cancelled() && inputs.verify_history_migration }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --lib application_public_api::compat::openai > tmp/test-governance/gateway-target-handoff/ci/history-runtime.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-runtime.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-runtime.log
+      - name: Offline history verification and DAG planner
+        if: ${{ !cancelled() && inputs.verify_history_migration }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane --features responses-history-migration --lib application_public_api::compat::openai::history > tmp/test-governance/gateway-target-handoff/ci/history-migration.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-migration.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-migration.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts --features responses-history-migration responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-contracts.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-contracts.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-contracts.log
+          cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --features responses-history-migration --lib responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-storage.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-storage.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-storage.log
+      - name: Real PostgreSQL history migration and dependency boundaries
+        if: ${{ !cancelled() && inputs.verify_history_migration }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --features responses-history-migration --test responses_history_migration > tmp/test-governance/gateway-target-handoff/ci/history-postgres.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-postgres.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-postgres.log
+          cargo test --locked --manifest-path api/Cargo.toml -p control-plane-postgres-tests --test dependency_boundaries > tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-dependencies.log
+      - name: Build explicit offline maintenance executable
+        if: ${{ !cancelled() && inputs.verify_history_migration }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-cli.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-cli.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/history-cli.log
+          cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin responses-history-migrate --features responses-history-migration > tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/history-maintenance-build.log; exit 1; }
+          cp api/target/debug/responses-history-migrate tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate
+          sha256sum tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate > tmp/test-governance/gateway-target-handoff/ci/responses-history-migrate.sha256
       - uses: actions/upload-artifact@v6
         if: always()
         with:

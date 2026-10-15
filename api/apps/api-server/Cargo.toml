@@ -10,6 +10,13 @@ license.workspace = true
 # unrelated API test module before it can exercise the persisted egress path.
 root-1805-consumer-fixture = []
 
+responses-history-migration = ["control-plane/responses-history-migration", "storage-durable-postgres/responses-history-migration"]
+
+[[bin]]
+name = "responses-history-migrate"
+path = "src/bin/responses_history_migrate/main.rs"
+required-features = ["responses-history-migration"]
+
 [dependencies]
 opentelemetry-proto.workspace = true
 prost.workspace = true
