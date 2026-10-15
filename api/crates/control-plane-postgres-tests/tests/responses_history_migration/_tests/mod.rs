@@ -1025,15 +1025,20 @@ async fn failed_flow_original_public_request_migrates_only_input_slots_and_rolls
                 .request_input_histories,
             vec![current]
         );
-        assert_eq!(
-            after
-                .contexts
-                .iter()
-                .find(|c| c.identity.context_version_id == original.id)
-                .unwrap()
-                .content,
-            before.contexts[0].content
-        );
+        // The effective snapshot follows current checkpoint/latest heads. The
+        // original COW root is intentionally no longer reachable there; verify
+        // its immutable projection and canonical content in durable storage.
+        for table in ["runtime_context_projections", "runtime_canonical_contents"] {
+            for original_row in before_state[table].as_array().unwrap() {
+                assert!(
+                    after_state[table]
+                        .as_array()
+                        .unwrap()
+                        .contains(original_row),
+                    "original immutable {table} row changed or disappeared"
+                );
+            }
+        }
         store
             .rollback_responses_history_migration(&applied, KEY)
             .await
