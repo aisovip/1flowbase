@@ -95,6 +95,11 @@ async function main() {
   const env = { ...process.env, CARGO_BUILD_JOBS: String(budget.cargoJobs), CARGO_INCREMENTAL: '0' };
   // Keep archive decompression/network downloads separate from compilation.
   await command('fetch', ['fetch', '--locked', '--manifest-path', 'api/Cargo.toml'], env);
+  // Match the current protected baseline's API gate fixture setup. Preparing
+  // workers once avoids nested Cargo from mounted notification/catalog tests.
+  await command('notification-workers', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', 'notification_worker', '--example', 'notification_authorization_worker', ...profile], env);
+  env.NOTIFICATION_WORKER_FIXTURE = path.join(root, 'api/target/debug/examples/notification_worker');
+  env.NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE = path.join(root, 'api/target/debug/examples/notification_authorization_worker');
   const api = ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--lib', '--features', 'tikv-jemallocator/stats', ...profile];
   // Entire named modules, plus directly affected native ingress/archive/registration routes.
   const selectors = [
