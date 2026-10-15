@@ -69,8 +69,13 @@ export function NotificationInstanceDrawer({
       )
     };
   }, [savedInstance, type, t]);
-  const initialValues = useMemo(
-    () => ({ ...savedInstance?.config_json, ...draftConfig.current }),
+  const initialValues = useMemo<SchemaFormValues>(
+    // config_json is a backend JSON object; the schema adapter narrows the
+    // transport's unknown values without filtering nested configuration.
+    () => ({
+      ...(savedInstance?.config_json as SchemaFormValues | undefined),
+      ...draftConfig.current
+    }),
     [savedInstance, type, t]
   );
   const unavailable = !!savedInstance && !savedInstance.available;

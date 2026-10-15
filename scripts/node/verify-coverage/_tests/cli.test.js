@@ -87,7 +87,7 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
   }
 
   const outputPath = `${repoRoot}/tmp/test-governance/coverage/backend/control-plane.json`;
-  const integrationCommand = (label, packageName, filter) => ({
+  const integrationCommand = (label, packageName, { filter, testTarget }) => ({
     ...baseCommand,
     label,
     env: packageName === 'api-server'
@@ -101,13 +101,14 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
       packageName,
       '--exclude-from-report',
       packageName,
+      ...(testTarget ? ['--test', testTarget] : []),
       '--no-clean',
       '--json',
       '--summary-only',
       '--output-path',
       outputPath,
       '--',
-      filter,
+      ...(filter ? [filter] : []),
       `--test-threads=${cargoTestThreads}`,
     ],
   });
@@ -116,23 +117,23 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
     { ...baseCommand, label: 'backend-coverage-control-plane-tests' },
     integrationCommand(
       'backend-coverage-control-plane-mcp-management-integration',
-      'storage-durable-postgres',
-      'mcp_management_repository_tests'
+      'control-plane-postgres-tests',
+      { testTarget: 'mcp_management_integration' }
     ),
     integrationCommand(
       'backend-coverage-control-plane-ui-management-integration',
       'storage-durable-postgres',
-      'ui_management_repository_tests'
+      { filter: 'ui_management_repository_tests' }
     ),
     integrationCommand(
       'backend-coverage-control-plane-mcp-routes-integration',
       'api-server',
-      'mcp_management_routes'
+      { filter: 'mcp_management_routes' }
     ),
     integrationCommand(
       'backend-coverage-control-plane-ui-routes-integration',
       'api-server',
-      'ui_management_routes'
+      { filter: 'ui_management_routes' }
     ),
   ];
 }
@@ -340,7 +341,7 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
     },
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: '', stderr: '' };
+      return { status: 0, stdout: 'test result: ok. 1 passed; 0 failed;', stderr: '' };
     },
     readFileSyncImpl(filePath) {
       return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });

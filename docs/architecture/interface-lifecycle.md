@@ -29,6 +29,10 @@ flowchart LR
 
 人通过 GUI/HTTP、AI 通过 MCP/WebMCP 调用等价业务意图时，应遵守同一核心权限、业务规则与终态语义。协议包装、调用 ID 可以不同；可关联身份和业务效果必须符合各自契约。
 
+## 验收入口与测试归属
+
+跨层行为测试随职责迁移到当前测试宿主；例如 Control Plane 的 MCP management + PostgreSQL 验收由 `control-plane-postgres-tests` 的 `mcp_management_integration` target 承载。覆盖率编排使用显式 Cargo target，不继续在旧 adapter crate 按已删除的模块名过滤。每条 libtest 覆盖率命令独立提供非零通过用例证据，nextest 使用 `--no-tests=fail`；编译成功、相邻测试通过或已有 coverage JSON 均不能替代该命令的行为执行。编排单元测试使用隔离源码 fixture，生产静态规则仍由独立门禁检查。
+
 ## 维护边界
 
 - 本文描述架构与不变量，不将某次 CI 通过写成所有接口、所有输入已验证。

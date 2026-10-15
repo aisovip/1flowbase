@@ -161,7 +161,7 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
   );
   expect(plugin.display_name).toBe('Raw plugin name');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Save changes', exact: true })
+    screen.getByRole('button', { name: 'Save changes' })
   );
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({

@@ -65,9 +65,11 @@ export function NotificationBell() {
         items={[
           {
             key: 'notifications',
-            'aria-label': t('inbox'),
             label: (
-              <span className="notification-bell-menu__icon">
+              <span
+                className="notification-bell-menu__icon"
+                aria-label={t('inbox')}
+              >
                 <Badge
                   count={inbox.unread.data?.unread_count}
                   size="small"

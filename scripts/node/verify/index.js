@@ -531,7 +531,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       );
       const command = 'cargo';
       const cwd = 'api';
-      const integrationCommand = (label, packageName, filter) => ({
+      const integrationCommand = (label, packageName, { filter, testTarget }) => ({
         label,
         command,
         args: [
@@ -542,13 +542,14 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           packageName,
           '--exclude-from-report',
           packageName,
+          ...(testTarget ? ['--test', testTarget] : []),
           '--no-clean',
           '--json',
           '--summary-only',
           '--output-path',
           outputPath,
           '--',
-          filter,
+          ...(filter ? [filter] : []),
           `--test-threads=${cargoTestThreads}`,
         ],
         cwd,
@@ -578,23 +579,23 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         },
         integrationCommand(
           'backend-coverage-control-plane-mcp-management-integration',
-          'storage-durable-postgres',
-          'mcp_management_repository_tests'
+          'control-plane-postgres-tests',
+          { testTarget: 'mcp_management_integration' }
         ),
         integrationCommand(
           'backend-coverage-control-plane-ui-management-integration',
           'storage-durable-postgres',
-          'ui_management_repository_tests'
+          { filter: 'ui_management_repository_tests' }
         ),
         integrationCommand(
           'backend-coverage-control-plane-mcp-routes-integration',
           'api-server',
-          'mcp_management_routes'
+          { filter: 'mcp_management_routes' }
         ),
         integrationCommand(
           'backend-coverage-control-plane-ui-routes-integration',
           'api-server',
-          'ui_management_routes'
+          { filter: 'ui_management_routes' }
         ),
       ];
     }
@@ -1056,7 +1057,21 @@ async function runCoverage(argv = [], deps = {}) {
         status = runCommandSequence({
           ...sequenceOptions,
           commands: sequenceOptions.commands,
-        });
+          onCommandComplete({ command, result }) {
+            // nextest already fails on an empty selection via --no-tests=fail.
+            // Every libtest coverage command needs its own executed-test proof;
+            // adjacent suites and a valid coverage JSON cannot fill the gap.
+            if (!command.label.startsWith('backend-coverage-')
+              || command.args.includes('nextest') || result.status !== 0) return;
+            const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
+            if (!(counts.passedCount > 0 && counts.failedCount === 0)) {
+              status = 1;
+              (deps.writeStderr || process.stderr.write.bind(process.stderr))(
+                `${command.label}: no executed passing tests; refusing invalid coverage evidence\n`,
+              );
+            }
+          },
+        }) || status;
 
         if (status === 0) {
           status = reportCoverageThresholds({

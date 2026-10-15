@@ -90,14 +90,19 @@ test('control-plane coverage includes its storage-backed management service test
   );
   assert.deepEqual(
     commands[1].args.slice(-2),
-    ['mcp_management_repository_tests', '--test-threads=2']
+    ['--', '--test-threads=2']
   );
   assert.deepEqual(
     commands[2].args.slice(-2),
     ['ui_management_repository_tests', '--test-threads=2']
   );
   assert.equal(commands[1].args.includes('--exclude-from-report'), true);
-  assert.equal(commands[1].args.includes('storage-durable-postgres'), true);
+  assert.equal(commands[1].args.includes('control-plane-postgres-tests'), true);
+  assert.equal(commands[1].args.includes('mcp_management_repository_tests'), false);
+  const testTargetIndex = commands[1].args.indexOf('--test');
+  assert.equal(commands[1].args[testTargetIndex + 1], 'mcp_management_integration');
+  const root = path.resolve(__dirname, '../../../..');
+  assert.ok(fs.existsSync(path.join(root, 'api/crates/control-plane-postgres-tests/tests/mcp_management_integration.rs')));
   assert.equal(commands[2].args.includes('--output-path'), true);
   assert.deepEqual(
     commands[3].args.slice(-2),
@@ -137,7 +142,7 @@ test('backend coverage removes stale json summaries before threshold reporting',
       return { status: 0, stdout: '', stderr: '' };
     },
     spawnSyncImpl() {
-      return { status: 0, stdout: '', stderr: '' };
+      return { status: 0, stdout: 'test result: ok. 1 passed; 0 failed;', stderr: '' };
     },
     readFileSyncImpl() {
       return JSON.stringify({ data: [{ totals: { lines: { percent: 100 } } }] });
