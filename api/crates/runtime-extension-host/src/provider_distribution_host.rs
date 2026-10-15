@@ -163,6 +163,8 @@ fn distribution_host_calls(
         },
         plugin_data,
         file_read: None,
+        application_logs: None,
+        http_egress: None,
         file_import: None,
         plugin_credentials: None,
     }))

@@ -819,3 +819,28 @@ pub trait FileReadPort: Send + Sync {
         record_id: &'a str,
     ) -> FileReadFuture<'a, FileReadSource>;
 }
+
+/// Host-only services reuse the admitted caller and installed contribution identity.
+pub type ApplicationLogsBinding = FileImportBinding;
+pub type HttpEgressBinding = FileImportBinding;
+pub type HostServiceFuture<'a, T> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<T, extension_contracts::HostServiceError>>
+            + Send
+            + 'a,
+    >,
+>;
+pub trait ApplicationLogsPort: Send + Sync {
+    fn execute<'a>(
+        &'a self,
+        binding: &'a ApplicationLogsBinding,
+        request: &'a extension_contracts::ApplicationLogsRequest,
+    ) -> HostServiceFuture<'a, extension_contracts::ApplicationLogsResponse>;
+}
+pub trait HttpEgressPort: Send + Sync {
+    fn execute<'a>(
+        &'a self,
+        binding: &'a HttpEgressBinding,
+        request: &'a extension_contracts::HttpEgressRequest,
+    ) -> HostServiceFuture<'a, extension_contracts::HttpEgressResponse>;
+}

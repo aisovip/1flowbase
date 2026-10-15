@@ -883,7 +883,7 @@ pub(crate) fn production_interface_contributions(
             "api-server.console-application-log-exchange",
             crate::routes::application_runtime::log_exchange::OPERATIONS,
             &["api-server.console-application-log-exchange"],
-            crate::routes::application_runtime::log_exchange::compile_registry(state.store.clone(), state.network_egress_http_clients())?,
+            crate::routes::application_runtime::log_exchange::compile_registry(state.clone())?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-application-logs-delete",

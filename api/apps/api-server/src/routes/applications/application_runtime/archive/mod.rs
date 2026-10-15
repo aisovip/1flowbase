@@ -2,7 +2,7 @@ use super::*;
 
 mod codec;
 #[path = "../../../../application_runtime_archive/document.rs"]
-mod document;
+pub(crate) mod document;
 pub(crate) mod interface;
 #[path = "../../../../application_runtime_archive/query.rs"]
 mod query;

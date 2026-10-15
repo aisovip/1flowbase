@@ -110,11 +110,28 @@ sys.stdin.read()
         duplex: None,
     };
     let port = Arc::new(DataPort::default());
+    // This data-only contribution has no application-log or HTTP grants/caller binding.
     assert!(workers
-        .execute_with_services(request("foreign"), port.clone(), None, None, None)
+        .execute_with_services(
+            request("foreign"),
+            port.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .is_err());
     let output = workers
-        .execute_with_services(request("system-scope"), port.clone(), None, None, None)
+        .execute_with_services(
+            request("system-scope"),
+            port.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap()
         .await
         .unwrap();
@@ -127,7 +144,7 @@ sys.stdin.read()
     drop(calls);
     workers.unmount(&handle).unwrap();
     assert!(workers
-        .execute_with_services(request("system-scope"), port, None, None, None)
+        .execute_with_services(request("system-scope"), port, None, None, None, None, None)
         .is_err());
 }
 

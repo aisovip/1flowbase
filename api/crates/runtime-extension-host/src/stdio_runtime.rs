@@ -75,6 +75,15 @@ pub struct StreamingProviderOutput {
 
 #[derive(Clone)]
 pub(crate) struct ProviderHostCallContext {
+    pub application_logs: Option<(
+        runtime_core::runtime_backend::ApplicationLogsBinding,
+        Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>,
+    )>,
+    pub http_egress: Option<(
+        runtime_core::runtime_backend::HttpEgressBinding,
+        Arc<dyn runtime_core::runtime_backend::HttpEgressPort>,
+    )>,
+
     pub binding: PluginDataBinding,
     pub plugin_data: Arc<dyn PluginDataPort>,
     pub file_read: Option<super::file_read_host::FileReadCall>,

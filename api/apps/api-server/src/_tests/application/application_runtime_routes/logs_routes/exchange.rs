@@ -80,21 +80,11 @@ async fn console_otlp_roundtrip_preserves_multisource_facts_and_null_console_pro
         batch("source-b", "task-b", "context"),
     ];
     let body = import_body(&facts);
-    for operation in [
-        "otlp/import",
-        "otlp/export",
-        "langfuse/import",
-        "langfuse/export",
-    ] {
-        let payload = match operation {
-            "otlp/import" => body.clone(),
-            "otlp/export" => json!({"record_ids":[]}),
-            "langfuse/import" => {
-                json!({"trace_ids":["trace"],"base_url":"http://localhost","public_key":"pk","secret_key":"sk"})
-            }
-            _ => {
-                json!({"record_ids":[],"base_url":"http://localhost","public_key":"pk","secret_key":"sk"})
-            }
+    for operation in ["otlp/import", "otlp/export"] {
+        let payload = if operation == "otlp/import" {
+            body.clone()
+        } else {
+            json!({"record_ids":[]})
         };
         assert_eq!(
             request(&app, id, operation, None, None, payload.clone())
@@ -321,215 +311,10 @@ async fn console_multisource_partial_import_keeps_commits_and_idempotent_retry()
 }
 
 #[tokio::test]
-async fn console_langfuse_gathers_all_pages_before_persistence_and_exports_original_envelope() {
-    use axum::{
-        body::Bytes,
-        extract::State,
-        http::{HeaderMap, Uri},
-        response::IntoResponse,
-        routing::any,
-    };
-    use std::{
-        collections::VecDeque,
-        sync::{Arc, Mutex},
-    };
-    type Mock = Arc<Mutex<(VecDeque<Value>, Vec<(String, String, Vec<u8>)>)>>;
-    async fn remote(
-        State(mock): State<Mock>,
-        uri: Uri,
-        headers: HeaderMap,
-        body: Bytes,
-    ) -> impl IntoResponse {
-        let mut mock = mock.lock().unwrap();
-        mock.1.push((
-            uri.to_string(),
-            headers["authorization"].to_str().unwrap().into(),
-            body.to_vec(),
-        ));
-        let reply = mock.0.pop_front().expect("unexpected remote call");
-        ([("content-type", "application/json")], reply.to_string())
-    }
-    fn observation(trace: &str, batch: &AgentLogsBatch) -> Value {
-        json!({"id":batch.events[0].event_id,"traceId":trace,"metadata":{"1flowbase_agent_log":{"schema_version":batch.schema_version,"source_id":batch.source_id,"source_client":batch.source_client,"event":batch.events[0]}}})
-    }
-    fn page(items: Vec<Value>, meta: Value) -> Value {
-        json!({"data":items,"meta":meta})
-    }
-    let a = batch("source-a", "task-a", "original first page");
-    let mut a2 = batch("source-a", "task-a", "original second page");
-    a2.events[0].event_id = "second-event".into();
-    a2.events[0].sequence = 1;
-    let b = batch("source-b", "task-b", "original next trace");
-    let mock: Mock = Arc::new(Mutex::new((
-        vec![
-            page(vec![observation("trace-a", &a)], json!({})),
-            page(vec![observation("wrong-trace", &b)], json!({})),
-            page(
-                vec![observation("trace-a", &a)],
-                json!({"cursor":"page-two"}),
-            ),
-            page(vec![observation("trace-a", &a2)], json!({})),
-            page(vec![observation("trace-b", &b)], json!({})),
-            json!({}),
-            json!({"partialSuccess":{"rejectedSpans":"1","errorMessage":"REMOTE_PRIVATE_ERROR"}}),
-        ]
-        .into(),
-        vec![],
-    )));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap());
-    let remote_app = axum::Router::new()
-        .fallback(any(remote))
-        .with_state(mock.clone());
-    struct Stop(tokio::task::JoinHandle<()>);
-    impl Drop for Stop {
-        fn drop(&mut self) {
-            self.0.abort();
-        }
-    }
-    let _server = Stop(tokio::spawn(async move {
-        axum::serve(listener, remote_app).await.unwrap();
-    }));
-    let (app, database_url) = test_app_with_database_url().await;
-    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let id = create(&app, &cookie, &csrf, "agent_logs").await;
-    let pool = storage_durable_postgres::connect(&database_url)
-        .await
-        .unwrap();
-    let scope: Uuid = sqlx::query_scalar("select scope_id from applications where id=$1")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    let store = MainDurableStore::new(pool.clone());
-    enable_agent_logs_fixture(&store, scope, id).await;
-    let body = json!({"trace_ids":["trace-a","trace-b"],"base_url":base,"public_key":"pk","secret_key":"sk"});
-    let response = request(
-        &app,
-        id,
-        "langfuse/import",
-        Some(&cookie),
-        Some(&csrf),
-        body.clone(),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>(
-            "select count(*) from application_run_log_tasks where application_id=$1"
-        )
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .unwrap(),
-        0,
-        "no first-trace commit on later gathering failure"
-    );
-    let response = request(
-        &app,
-        id,
-        "langfuse/import",
-        Some(&cookie),
-        Some(&csrf),
-        body,
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let receipt = value(response).await;
-    assert_eq!(receipt["data"]["accepted_events"], 3);
-    let records: Vec<Uuid> = serde_json::from_value(receipt["data"]["record_ids"].clone()).unwrap();
-    let facts = store
-        .read_imported_agent_logs(id, scope, &records)
-        .await
-        .unwrap();
-    let mut expected = a.clone();
-    expected.events.push(a2.events[0].clone());
-    assert_eq!(
-        serde_json::to_value(facts).unwrap(),
-        serde_json::to_value(vec![expected, b]).unwrap()
-    );
-    let export = json!({"record_ids":records,"base_url":base,"public_key":"pk","secret_key":"sk"});
-    let response = request(
-        &app,
-        id,
-        "langfuse/export",
-        Some(&cookie),
-        Some(&csrf),
-        export.clone(),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let exported = value(response).await;
-    assert_eq!(exported["data"]["exported_records"], 2);
-    assert_eq!(exported["data"]["exported_spans"], 3);
-    let response = request(
-        &app,
-        id,
-        "langfuse/export",
-        Some(&cookie),
-        Some(&csrf),
-        export,
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
-    assert!(!value(response)
-        .await
-        .to_string()
-        .contains("REMOTE_PRIVATE_ERROR"));
-    let mock = mock.lock().unwrap();
-    assert_eq!(mock.1.len(), 7);
-    assert!(mock
-        .1
-        .iter()
-        .all(|(_, authorization, _)| authorization == "Basic cGs6c2s="));
-    assert!(mock.1[3].0.contains("cursor=page-two"));
-    let sent: crate::agent_logs_protocol::ExportTraceServiceRequest =
-        serde_json::from_slice(&mock.1[5].2).unwrap();
-    let restored = crate::agent_logs_protocol::traces_to_batches(&sent).unwrap();
-    assert_eq!(
-        restored
-            .iter()
-            .map(|batch| batch.events.len())
-            .sum::<usize>(),
-        3
-    );
-    assert_eq!(restored[0].events[0].raw, a.events[0].raw);
-}
-
-#[tokio::test]
 async fn console_conversation_export_includes_all_tasks_and_record_export_remains_exact() {
-    use axum::{
-        body::Bytes, extract::State, http::HeaderMap, response::IntoResponse, routing::post,
-    };
     use control_plane_contracts::ports::{
         ApplicationPublicationRepository, ApplicationRepository, SetApplicationApiEnabledInput,
     };
-    use std::sync::{Arc, Mutex};
-    type Captures = Arc<Mutex<Vec<Vec<u8>>>>;
-    async fn accept(
-        State(captures): State<Captures>,
-        headers: HeaderMap,
-        body: Bytes,
-    ) -> impl IntoResponse {
-        assert_eq!(headers["authorization"].to_str().unwrap(), "Basic cGs6c2s=");
-        captures.lock().unwrap().push(body.to_vec());
-        ([("content-type", "application/json")], "{}")
-    }
-    let captures: Captures = Arc::new(Mutex::new(vec![]));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap());
-    let remote = axum::Router::new()
-        .route("/api/public/otel/v1/traces", post(accept))
-        .with_state(captures.clone());
-    struct Stop(tokio::task::JoinHandle<()>);
-    impl Drop for Stop {
-        fn drop(&mut self) {
-            self.0.abort();
-        }
-    }
-    let _server = Stop(tokio::spawn(async move {
-        axum::serve(listener, remote).await.unwrap();
-    }));
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let id = create(&app, &cookie, &csrf, "agent_logs").await;
@@ -623,44 +408,8 @@ async fn console_conversation_export_includes_all_tasks_and_record_export_remain
         serde_json::to_value(&restored[0].events).unwrap(),
         serde_json::to_value(&facts.events[..7]).unwrap()
     );
-    for (selector, records, spans, traces) in [
-        (json!({"log_conversation_ids":conversations}), 3, 21, 2),
-        (json!({"record_ids":[record]}), 1, 7, 1),
-    ] {
-        let mut body = selector;
-        body["base_url"] = json!(base);
-        body["public_key"] = json!("pk");
-        body["secret_key"] = json!("sk");
-        let response = request(
-            &app,
-            id,
-            "langfuse/export",
-            Some(&cookie),
-            Some(&csrf),
-            body,
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let receipt = value(response).await;
-        assert_eq!(receipt["data"]["exported_records"], records);
-        assert_eq!(receipt["data"]["exported_spans"], spans);
-        assert_eq!(
-            receipt["data"]["trace_ids"].as_array().unwrap().len(),
-            traces
-        );
-    }
-    let sent = captures.lock().unwrap();
-    assert_eq!(sent.len(), 2);
-    let sent_all: crate::agent_logs_protocol::ExportTraceServiceRequest =
-        serde_json::from_slice(&sent[0]).unwrap();
-    assert_eq!(
-        serde_json::to_value(crate::agent_logs_protocol::traces_to_batches(&sent_all).unwrap())
-            .unwrap(),
-        serde_json::to_value(&[facts]).unwrap()
-    );
-    drop(sent);
-    for operation in ["otlp/export", "langfuse/export"] {
-        for mut selector in [
+    for operation in ["otlp/export"] {
+        for selector in [
             json!({}),
             json!({"record_ids":[]}),
             json!({"log_conversation_ids":[]}),
@@ -668,11 +417,6 @@ async fn console_conversation_export_includes_all_tasks_and_record_export_remain
             json!({"record_ids":[],"log_conversation_ids":conversations}),
             json!({"record_ids":[record],"log_conversation_ids":[]}),
         ] {
-            if operation == "langfuse/export" {
-                selector["base_url"] = json!(base);
-                selector["public_key"] = json!("pk");
-                selector["secret_key"] = json!("sk");
-            }
             assert_eq!(
                 request(&app, id, operation, Some(&cookie), Some(&csrf), selector)
                     .await
@@ -681,11 +425,6 @@ async fn console_conversation_export_includes_all_tasks_and_record_export_remain
             );
         }
     }
-    assert_eq!(
-        captures.lock().unwrap().len(),
-        2,
-        "invalid selectors never reach remote export"
-    );
     assert_eq!(
         request(
             &app,
@@ -710,7 +449,7 @@ async fn console_conversation_export_includes_all_tasks_and_record_export_remain
         )
         .await
         .status(),
-        StatusCode::BAD_REQUEST
+        StatusCode::NOT_FOUND
     );
     assert_eq!(
         request(

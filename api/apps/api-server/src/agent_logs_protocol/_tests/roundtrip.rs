@@ -15,15 +15,13 @@ fn self_export_is_one_observation_per_source_fact_with_stable_identity_and_paren
     let metadata = spans[0]
         .attributes
         .iter()
-        .find(|attr| attr.key == "langfuse.observation.metadata")
+        .find(|attr| attr.key == "1flowbase.agent_log.source_fact")
         .unwrap();
     let Some(any_value::Value::StringValue(metadata)) = &metadata.value.as_ref().unwrap().value
     else {
         panic!("metadata JSON blob");
     };
-    let metadata: Value = serde_json::from_str(metadata).unwrap();
-    assert!(metadata.is_object());
-    let encoded = metadata["1flowbase_agent_log"].as_str().unwrap();
+    let encoded = metadata;
     let payload = encoded
         .strip_prefix("1flowbase.agent-logs.source-fact/v1;base64,")
         .unwrap();
@@ -54,6 +52,8 @@ fn legacy_nested_otlp_file_still_replays_all_original_source_facts() {
         .zip(&batches[0].events)
     {
         let legacy = json!({"1flowbase_agent_log":{"schema_version":batches[0].schema_version,"source_id":batches[0].source_id,"source_client":batches[0].source_client,"event":event}});
+        span.attributes
+            .retain(|attr| attr.key != "1flowbase.agent_log.source_fact");
         string_attr(span, "langfuse.observation.metadata", &legacy.to_string());
     }
     for (mime, body) in [
@@ -78,6 +78,8 @@ fn malformed_self_metadata_is_rejected_without_generic_fallback() {
     ] {
         let mut request = batches_to_traces(&source_batches()).unwrap();
         let span = &mut request.resource_spans[0].scope_spans[0].spans[0];
+        span.attributes
+            .retain(|attr| attr.key != "1flowbase.agent_log.source_fact");
         string_attr(span, "langfuse.observation.metadata", metadata);
         assert!(
             traces_to_batches(&request).is_err(),
@@ -86,6 +88,8 @@ fn malformed_self_metadata_is_rejected_without_generic_fallback() {
     }
     let mut request = batches_to_traces(&source_batches()).unwrap();
     let span = &mut request.resource_spans[0].scope_spans[0].spans[0];
+    span.attributes
+        .retain(|attr| attr.key != "1flowbase.agent_log.source_fact");
     let mut fact = json!({"schema_version": AGENT_LOGS_SCHEMA_VERSION,"source_id":"collector-a","source_client":"codex","event":source_batches()[0].events[0]});
     fact["event"]["source_task_id"] = Value::String(String::new());
     string_attr(
@@ -97,7 +101,7 @@ fn malformed_self_metadata_is_rejected_without_generic_fallback() {
 }
 
 #[test]
-fn langfuse_display_usage_matches_canonical_delta_precedence_and_cumulative_ownership() {
+fn standard_usage_matches_canonical_delta_precedence_and_cumulative_ownership() {
     let template = source_batches()[0].events[0].clone();
     let mut events = Vec::new();
     // First record: only deltas (3 + 7) count, not the superseding
@@ -195,30 +199,19 @@ fn langfuse_display_usage_matches_canonical_delta_precedence_and_cumulative_owne
             let Some(attr) = span
                 .attributes
                 .iter()
-                .find(|attr| attr.key == "langfuse.observation.usage_details")
+                .find(|attr| attr.key == "gen_ai.usage.total_tokens")
             else {
                 assert!(span
                     .attributes
                     .iter()
                     .all(|attr| !attr.key.starts_with("gen_ai.usage.")));
-                let kind = span
-                    .attributes
-                    .iter()
-                    .find(|attr| attr.key == "langfuse.observation.type")
-                    .unwrap();
-                assert_eq!(
-                    kind.value.as_ref().unwrap().value,
-                    Some(any_value::Value::StringValue("span".into()))
-                );
-                return 0; // No projected contribution, not a declared zero attribute.
+                return 0;
             };
-            let Some(any_value::Value::StringValue(details)) = &attr.value.as_ref().unwrap().value
+            let Some(any_value::Value::IntValue(total)) = &attr.value.as_ref().unwrap().value
             else {
-                panic!("usage blob");
+                panic!("integer usage");
             };
-            serde_json::from_str::<Value>(details).unwrap()["total"]
-                .as_i64()
-                .unwrap()
+            *total
         })
         .collect();
     assert_eq!(contributions, [3, 7, 0, 0, 0, 0, 12]);
@@ -231,4 +224,39 @@ fn langfuse_display_usage_matches_canonical_delta_precedence_and_cumulative_owne
         serde_json::to_value(traces_to_batches(&request).unwrap()).unwrap(),
         serde_json::to_value([expected]).unwrap()
     );
+}
+
+#[test]
+fn neutral_capsule_rejects_malformed_ambiguous_or_flattened_authority() {
+    let original = batches_to_traces(&source_batches()).unwrap();
+    for malformed in [
+        "",
+        "{}",
+        "1flowbase.agent-logs.source-fact/v1;base64,not-base64",
+    ] {
+        let mut request = original.clone();
+        string_attr(
+            &mut request.resource_spans[0].scope_spans[0].spans[0],
+            "1flowbase.agent_log.source_fact",
+            malformed,
+        );
+        assert!(traces_to_batches(&request).is_err());
+    }
+    let mut ambiguous = original.clone();
+    string_attr(
+        &mut ambiguous.resource_spans[0].scope_spans[0].spans[0],
+        "langfuse.observation.metadata",
+        "{}",
+    );
+    assert!(traces_to_batches(&ambiguous).is_err());
+    let mut flattened = original;
+    let span = &mut flattened.resource_spans[0].scope_spans[0].spans[0];
+    span.attributes
+        .retain(|attr| attr.key != "1flowbase.agent_log.source_fact");
+    string_attr(
+        span,
+        "langfuse.observation.metadata",
+        r#"{"1flowbase_agent_log.event":{"content":"ambiguous"}}"#,
+    );
+    assert!(traces_to_batches(&flattened).is_err());
 }

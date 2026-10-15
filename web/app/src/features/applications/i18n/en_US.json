@@ -347,16 +347,9 @@
       "operation": "Exchange operation",
       "otlp_export": "Export OTLP JSON",
       "otlp_import": "Import OTLP JSON",
-      "langfuse_export": "Export to Langfuse",
-      "langfuse_import": "Import from Langfuse",
       "selection": "{{count}} logs selected; each application is exported separately.",
       "file": "OTLP JSON file",
       "invalid_file": "Select a valid JSON object file.",
-      "credentials_hint": "Credentials are used for this exchange only and cleared when this window closes.",
-      "base_url": "Langfuse URL",
-      "public_key": "Public Key",
-      "secret_key": "Secret Key",
-      "trace_ids": "Trace IDs (comma or newline separated)",
       "failed": "Exchange failed. Check inputs or connectivity and retry.",
       "downloaded": "Downloaded {{filename}}",
       "missing_conversation": "Some selected logs have no conversation ID. Refresh the list before exporting.",
@@ -366,9 +359,7 @@
       "receipt": "Server exchange receipt",
       "accepted_events": "Accepted events",
       "duplicate_events": "Duplicate events",
-      "record_ids": "Record IDs",
-      "exported_records": "Exported records",
-      "exported_spans": "Exported spans"
+      "record_ids": "Record IDs"
     }
   },
   "agent_logs": {

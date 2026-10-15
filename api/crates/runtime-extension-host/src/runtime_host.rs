@@ -87,6 +87,9 @@ pub struct RuntimeExtensionHost {
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
     plugin_data: Arc<dyn PluginDataPort>,
     pub(crate) file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
+    pub(crate) application_logs:
+        Option<Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>>,
+    pub(crate) http_egress: Option<Arc<dyn runtime_core::runtime_backend::HttpEgressPort>>,
     pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     managed_hash_budget: Arc<tokio::sync::Semaphore>,
@@ -189,6 +192,8 @@ impl RuntimeExtensionHost {
             artifact_resolver,
             plugin_data,
             file_read: None,
+            application_logs: None,
+            http_egress: None,
             file_import: None,
             plugin_credentials: None,
             managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -205,6 +210,20 @@ impl RuntimeExtensionHost {
         self
     }
 
+    pub fn with_application_logs(
+        mut self,
+        port: Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>,
+    ) -> Self {
+        self.application_logs = Some(port);
+        self
+    }
+    pub fn with_http_egress(
+        mut self,
+        port: Arc<dyn runtime_core::runtime_backend::HttpEgressPort>,
+    ) -> Self {
+        self.http_egress = Some(port);
+        self
+    }
     pub fn with_file_import(
         mut self,
         port: Arc<dyn runtime_core::runtime_backend::FileImportPort>,
@@ -1012,6 +1031,8 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                 self.plugin_credentials.clone(),
                 self.file_import.clone(),
                 self.file_read.clone(),
+                self.application_logs.clone(),
+                self.http_egress.clone(),
             )?
         };
         Ok(Box::pin(async move {

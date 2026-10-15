@@ -109,35 +109,3 @@ pub(super) fn int_attribute(key: &str, value: i64) -> KeyValue {
         ..Default::default()
     }
 }
-
-pub(super) fn langfuse_usage(attrs: &mut Attributes) -> Result<()> {
-    let Some(value) = attrs.get("langfuse.observation.usage_details") else {
-        return Ok(());
-    };
-    let usage = structured(value);
-    for (keys, target) in [
-        (&["input", "input_tokens"][..], "gen_ai.usage.input_tokens"),
-        (
-            &["output", "output_tokens"][..],
-            "gen_ai.usage.output_tokens",
-        ),
-        (&["total", "total_tokens"][..], "gen_ai.usage.total_tokens"),
-        (
-            &["cache_read_input_tokens", "input_cached_tokens"][..],
-            "gen_ai.usage.cache.read_input_tokens",
-        ),
-        (
-            &["cache_creation_input_tokens", "cache_write_tokens"][..],
-            "gen_ai.usage.cache.creation_input_tokens",
-        ),
-    ] {
-        if let Some(value) = keys
-            .iter()
-            .find_map(|key| usage.get(*key))
-            .filter(|value| !value.is_null())
-        {
-            attrs.entry(target.into()).or_insert_with(|| value.clone());
-        }
-    }
-    Ok(())
-}

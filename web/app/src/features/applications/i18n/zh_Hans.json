@@ -347,16 +347,9 @@
       "operation": "交换方式",
       "otlp_export": "导出 OTLP JSON",
       "otlp_import": "导入 OTLP JSON",
-      "langfuse_export": "导出到 Langfuse",
-      "langfuse_import": "从 Langfuse 导入",
       "selection": "已选择 {{count}} 条日志；跨应用将分别导出。",
       "file": "OTLP JSON 文件",
       "invalid_file": "请选择有效的 JSON 对象文件。",
-      "credentials_hint": "凭据仅用于本次交换，关闭窗口后清空。",
-      "base_url": "Langfuse 地址",
-      "public_key": "Public Key",
-      "secret_key": "Secret Key",
-      "trace_ids": "Trace IDs（逗号或换行分隔）",
       "failed": "交换失败，请检查输入或连接后重试。",
       "downloaded": "已下载 {{filename}}",
       "missing_conversation": "部分所选日志缺少会话标识，请刷新列表后再导出。",
@@ -366,9 +359,7 @@
       "receipt": "服务端交换回执",
       "accepted_events": "接收事件数",
       "duplicate_events": "重复事件数",
-      "record_ids": "日志记录 ID",
-      "exported_records": "导出日志数",
-      "exported_spans": "导出 Span 数"
+      "record_ids": "日志记录 ID"
     }
   },
   "agent_logs": {

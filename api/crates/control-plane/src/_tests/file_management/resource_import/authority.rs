@@ -241,3 +241,65 @@ pub(super) fn fixture(actor: ActorContext) -> (Arc<Authority>, FileImportBinding
         binding,
     )
 }
+
+#[tokio::test]
+async fn exchange_host_services_recheck_installed_grants_and_reject_revocation_or_contract_mismatch(
+) {
+    let actor: ActorContext = serde_json::from_value(json!({"user_id":"00000000-0000-0000-0000-000000000001","tenant_id":"00000000-0000-0000-0000-000000000000","current_workspace_id":"00000000-0000-0000-0000-000000000002","effective_display_role":"root","is_root":true,"permissions":[]})).unwrap();
+    for (permission, contract) in [
+        ("application.logs.read", "application-logs"),
+        ("application.logs.import", "application-logs"),
+        ("network.http.request", "http-egress"),
+    ] {
+        let (authority, binding) = fixture(actor.clone());
+        assert!(crate::file_management::authorize_file_service(
+            authority.as_ref(),
+            &binding,
+            permission
+        )
+        .await
+        .is_err());
+        {
+            let mut state = authority.state.lock().await;
+            state.installation.metadata_json["managed"]["module"]["contributions"][0]
+                ["required_permissions"] = json!(["service.execute", permission]);
+            let mut grant = state.snapshot.authorizations[1].clone();
+            grant.permission = permission.into();
+            grant.permission_contract_id = contract.into();
+            state.snapshot.authorizations[1] = grant;
+        }
+        let lease = crate::file_management::authorize_file_service(
+            authority.as_ref(),
+            &binding,
+            permission,
+        )
+        .await
+        .unwrap();
+        assert!(authority.held.load(Ordering::SeqCst));
+        lease.release().await.unwrap();
+        assert!(!authority.held.load(Ordering::SeqCst));
+        {
+            let mut state = authority.state.lock().await;
+            state.snapshot.authorizations[1].permission_contract_id = "wrong-contract".into();
+        }
+        assert!(crate::file_management::authorize_file_service(
+            authority.as_ref(),
+            &binding,
+            permission
+        )
+        .await
+        .is_err());
+        {
+            let mut state = authority.state.lock().await;
+            state.snapshot.authorizations[1].permission_contract_id = contract.into();
+            state.snapshot.authorizations[1].status = ContributionAuthorizationStatus::Revoked;
+        }
+        assert!(crate::file_management::authorize_file_service(
+            authority.as_ref(),
+            &binding,
+            permission
+        )
+        .await
+        .is_err());
+    }
+}

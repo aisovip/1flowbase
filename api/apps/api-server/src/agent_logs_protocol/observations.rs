@@ -45,11 +45,7 @@ impl Observation {
         }
         if let Some(value) = self.attrs.get("gen_ai.input.messages") {
             self.messages(&snapshot, value, false, timestamp, &mut output)?;
-        } else if let Some(value) = self
-            .attrs
-            .get("langfuse.observation.input")
-            .or_else(|| self.attrs.get("gen_ai.prompt"))
-        {
+        } else if let Some(value) = self.attrs.get("gen_ai.prompt") {
             let value = structured(value);
             if value.is_array() || value.get("messages").is_some() {
                 self.messages(&snapshot, &value, false, timestamp, &mut output)?;
@@ -68,11 +64,7 @@ impl Observation {
         let end = if self.end > 0 { self.end } else { timestamp };
         if let Some(value) = self.attrs.get("gen_ai.output.messages") {
             self.messages(&snapshot, value, true, end, &mut output)?;
-        } else if let Some(value) = self
-            .attrs
-            .get("langfuse.observation.output")
-            .or_else(|| self.attrs.get("gen_ai.completion"))
-        {
+        } else if let Some(value) = self.attrs.get("gen_ai.completion") {
             let value = structured(value);
             if value.is_array() || value.get("messages").is_some() {
                 self.messages(&snapshot, &value, true, end, &mut output)?;
@@ -147,6 +139,14 @@ impl Observation {
                 timestamp,
             )?);
         }
+        // One raw source span is retained once. Other normalized events point to
+        // that source unit rather than duplicating a complete transcript.
+        for event in &mut output {
+            event.raw = serde_json::json!({"otlp_source_snapshot": snapshot});
+        }
+        if let Some(first) = output.first_mut() {
+            first.raw = self.raw.clone();
+        }
         Ok(output)
     }
 
@@ -175,11 +175,7 @@ impl Observation {
             call_id,
             model_id: text(
                 &self.attrs,
-                &[
-                    "gen_ai.response.model",
-                    "gen_ai.request.model",
-                    "langfuse.observation.model.name",
-                ],
+                &["gen_ai.response.model", "gen_ai.request.model"],
             ),
             reasoning_effort: text(&self.attrs, &["gen_ai.request.reasoning_effort"]),
             provider_code: text(&self.attrs, &["gen_ai.provider.name", "gen_ai.system"]),
