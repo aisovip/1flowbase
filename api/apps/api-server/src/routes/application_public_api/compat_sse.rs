@@ -637,7 +637,7 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
             )
             .await;
         }
-        return follow_missing_compatible_round(dependencies, initial_run, command, actor).await;
+        return follow_missing_compatible_round(dependencies, initial_run, command, actor);
     }
     if initial_run.metadata["native_inference_recovery_replay"] == true {
         return attach_compatible_typed_stream(
@@ -753,7 +753,9 @@ impl control_plane::ports::RuntimeEventTerminalWriter for ReplayOnlyTerminalWrit
     }
 }
 
-async fn follow_missing_compatible_round(
+// Subscription creation is synchronous; the spawned worker owns all awaits.
+// Keeping this boundary concrete breaks the resume/follower opaque-future cycle.
+fn follow_missing_compatible_round(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
