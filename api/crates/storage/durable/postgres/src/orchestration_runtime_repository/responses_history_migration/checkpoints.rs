@@ -1,12 +1,6 @@
 use super::*;
-
+use std::collections::HashMap;
 const MARKER: &str = "__runtime_recovery_context";
-
-pub(super) struct ContextRecord {
-    pub entry: ResponsesHistoryContextLineageEntry,
-    pub transition_kind: Option<String>,
-    pub transition_actor: Option<String>,
-}
 
 pub(super) fn locator_context(locator: &Value) -> Result<Option<Uuid>> {
     let object = locator
@@ -24,91 +18,40 @@ pub(super) fn locator_context(locator: &Value) -> Result<Option<Uuid>> {
         .transpose()
 }
 
-pub(super) fn replacement_content(change: &ResponsesHistoryCheckpointChange) -> Result<Value> {
-    let mut pool = change
-        .replacement_variable_pool
-        .as_object()
-        .cloned()
-        .ok_or_else(|| anyhow!("responses_history_checkpoint_pool_invalid"))?;
-    pool.remove(MARKER);
-    Ok(json!({"format":"runtime_snapshot_v1","variable_pool":pool}))
+pub(super) fn inline_content(change: &ResponsesHistoryCheckpointChange) -> Result<Option<Value>> {
+    anyhow::ensure!(
+        change.before_context.is_none() == change.legacy_inline_variable_pool.is_some(),
+        "responses_history_checkpoint_representation_invalid"
+    );
+    change
+        .legacy_inline_variable_pool
+        .as_ref()
+        .map(|pool| {
+            let mut pool = pool
+                .as_object()
+                .cloned()
+                .ok_or_else(|| anyhow!("responses_history_checkpoint_pool_invalid"))?;
+            pool.remove(MARKER);
+            Ok(json!({"format":"runtime_snapshot_v1","variable_pool":pool}))
+        })
+        .transpose()
 }
 
-fn projected_checkpoint(
+fn projected(
     change: &ResponsesHistoryCheckpointChange,
     id: Uuid,
     sequence: i64,
 ) -> Result<(Value, Value)> {
     let mut locator = change.before_locator_payload.clone();
     anyhow::ensure!(
-        locator.is_object(),
-        "responses_history_checkpoint_locator_invalid"
+        locator.is_object() && change.before_variable_snapshot.is_object(),
+        "responses_history_checkpoint_projection_invalid"
     );
     locator["context_version_id"] = json!(id);
-    anyhow::ensure!(
-        change.before_variable_snapshot.is_object(),
-        "responses_history_checkpoint_snapshot_invalid"
-    );
-    let snapshot = json!({MARKER:{"context_version_id":id,"sequence":sequence,"parent_context_version_id":null}});
-    Ok((locator, snapshot))
-}
-
-pub(super) async fn context(
-    tx: &mut sqlx::Transaction<'_, Postgres>,
-    flow: &ResponsesHistoryFlowKey,
-    id: Uuid,
-) -> Result<ContextRecord> {
-    let row=sqlx::query("select p.id,p.previous_projection_id,p.context_sequence,p.actual_content_id,p.transition_kind,p.transition_actor,c.content_hash,c.byte_size,runtime_original_json(c.content,c.raw_json_payloads,'content') as content from runtime_context_projections p join runtime_canonical_contents c on c.id=p.actual_content_id and c.scope_id=p.scope_id and c.application_id=p.application_id where p.id=$1 and p.flow_run_id=$2 and p.scope_id=$3 and p.application_id=$4 and p.projection_kind='context_version'")
-        .bind(id).bind(flow.flow_run_id).bind(flow.scope_id).bind(flow.application_id)
-        .fetch_optional(&mut **tx).await?.ok_or_else(|| anyhow!("responses_history_checkpoint_context_owner_mismatch"))?;
-    let content: Value = row.try_get("content")?;
-    let hash: String = row.try_get("content_hash")?;
-    let size: i64 = row.try_get("byte_size")?;
-    anyhow::ensure!(
-        canonical_runtime_json_identity(&content)? == (hash.clone(), size),
-        "responses_history_checkpoint_content_integrity"
-    );
-    Ok(ContextRecord {
-        entry: ResponsesHistoryContextLineageEntry {
-            identity: ResponsesHistoryContextIdentity {
-                context_version_id: id,
-                actual_content_id: row.try_get("actual_content_id")?,
-                content_hash: hash,
-            },
-            previous_projection_id: row.try_get("previous_projection_id")?,
-            sequence: row.try_get("context_sequence")?,
-            content,
-        },
-        transition_kind: row.try_get("transition_kind")?,
-        transition_actor: row.try_get("transition_actor")?,
-    })
-}
-
-pub(super) async fn lineage(
-    tx: &mut sqlx::Transaction<'_, Postgres>,
-    flow: &ResponsesHistoryFlowKey,
-    locator: &Value,
-) -> Result<Vec<ResponsesHistoryContextLineageEntry>> {
-    let mut next = locator_context(locator)?;
-    let mut visited = std::collections::HashSet::new();
-    let mut result: Vec<ResponsesHistoryContextLineageEntry> = Vec::new();
-    while let Some(id) = next {
-        anyhow::ensure!(
-            visited.insert(id),
-            "responses_history_checkpoint_lineage_cycle"
-        );
-        let record = context(tx, flow, id).await?;
-        if let Some(child) = result.last() {
-            anyhow::ensure!(
-                record.entry.sequence < child.sequence,
-                "responses_history_checkpoint_sequence_invalid"
-            );
-        }
-        next = record.entry.previous_projection_id;
-        result.push(record.entry);
-    }
-    result.reverse();
-    Ok(result)
+    Ok((
+        locator,
+        json!({MARKER:{"context_version_id":id,"sequence":sequence,"parent_context_version_id":null}}),
+    ))
 }
 
 pub(super) async fn load_all(
@@ -117,7 +60,7 @@ pub(super) async fn load_all(
     lock: bool,
 ) -> Result<Vec<ResponsesHistoryCheckpoint>> {
     let suffix = if lock { "for update of c" } else { "" };
-    let rows=sqlx::query(&format!("select c.id,c.scope_id,c.node_run_id,(n.flow_run_id=$1 and n.scope_id=$2) as node_valid,runtime_original_json(c.locator_payload,c.raw_json_payloads,'locator_payload') as locator_payload,runtime_original_json(c.variable_snapshot,c.raw_json_payloads,'variable_snapshot') as variable_snapshot from flow_run_checkpoints c left join node_runs n on n.id=c.node_run_id where c.flow_run_id=$1 order by c.id {suffix}"))
+    let rows=sqlx::query(&format!("select c.id,c.scope_id,c.node_run_id,(n.flow_run_id=$1 and n.scope_id=$2) as node_valid,runtime_original_json(c.locator_payload,c.raw_json_payloads,'locator_payload') as locator_payload,runtime_original_json(c.variable_snapshot,c.raw_json_payloads,'variable_snapshot') as variable_snapshot from flow_run_checkpoints c left join node_runs n on n.id=c.node_run_id where c.flow_run_id=$1 order by c.created_at,c.id {suffix}"))
         .bind(flow.flow_run_id).bind(flow.scope_id).fetch_all(&mut **tx).await?;
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
@@ -135,12 +78,12 @@ pub(super) async fn load_all(
                 .await?;
         }
         let locator_payload: Value = row.try_get("locator_payload")?;
-        let lineage = lineage(tx, flow, &locator_payload).await?;
+        locator_context(&locator_payload)?;
         result.push(ResponsesHistoryCheckpoint {
             checkpoint_id: id,
             locator_payload,
             variable_snapshot: row.try_get("variable_snapshot")?,
-            lineage,
+            context: None,
         });
     }
     Ok(result)
@@ -171,56 +114,6 @@ pub(super) async fn read_shadow(
     .transpose()
 }
 
-pub(super) async fn verify_before(
-    tx: &mut sqlx::Transaction<'_, Postgres>,
-    flow: &ResponsesHistoryFlowKey,
-    change: &ResponsesHistoryCheckpointChange,
-) -> Result<()> {
-    let locator_id = locator_context(&change.before_locator_payload)?;
-    anyhow::ensure!(
-        locator_id
-            == change
-                .before_context
-                .as_ref()
-                .map(|id| id.context_version_id),
-        "responses_history_checkpoint_preimage_context_invalid"
-    );
-    if let Some(identity) = &change.before_context {
-        anyhow::ensure!(
-            context(tx, flow, identity.context_version_id)
-                .await?
-                .entry
-                .identity
-                == *identity,
-            "responses_history_checkpoint_preimage_context_changed"
-        );
-    }
-    replacement_content(change)?;
-    Ok(())
-}
-
-pub(super) async fn is_after(
-    tx: &mut sqlx::Transaction<'_, Postgres>,
-    flow: &ResponsesHistoryFlowKey,
-    current: &ResponsesHistoryCheckpoint,
-    change: &ResponsesHistoryCheckpointChange,
-) -> Result<bool> {
-    let Some(id) = locator_context(&current.locator_payload)? else {
-        return Ok(false);
-    };
-    if Some(id) == change.before_context.as_ref().map(|c| c.context_version_id) {
-        return Ok(false);
-    }
-    let record = context(tx, flow, id).await?;
-    let (locator, snapshot) = projected_checkpoint(change, id, record.entry.sequence)?;
-    Ok(record.entry.content == replacement_content(change)?
-        && record.entry.previous_projection_id.is_none()
-        && record.transition_kind.as_deref() == Some("append")
-        && record.transition_actor.as_deref() == Some("host")
-        && current.locator_payload == locator
-        && current.variable_snapshot == snapshot)
-}
-
 pub(super) async fn verify_current_shadow(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
@@ -249,48 +142,79 @@ async fn write_checkpoint(
     Ok(())
 }
 
+pub(super) fn is_before(
+    actual: &ResponsesHistoryCheckpoint,
+    change: &ResponsesHistoryCheckpointChange,
+) -> bool {
+    actual.locator_payload == change.before_locator_payload
+        && actual.variable_snapshot == change.before_variable_snapshot
+        && actual.context == change.before_context
+}
+
+pub(super) fn has_after_projection(
+    actual: &ResponsesHistoryCheckpoint,
+    change: &ResponsesHistoryCheckpointChange,
+    entry: &ResponsesHistoryContextLineageEntry,
+) -> Result<bool> {
+    let (locator, snapshot) = projected(change, entry.identity.context_version_id, entry.sequence)?;
+    Ok(actual.locator_payload == locator
+        && actual.variable_snapshot == snapshot
+        && actual.context.as_ref() == Some(&entry.identity)
+        && change
+            .before_context
+            .as_ref()
+            .is_none_or(|old| old.context_version_id != entry.identity.context_version_id))
+}
+
+/// Inline nodes are the only newly introduced full snapshots. Existing DAG nodes
+/// are copied separately, once per old ID, preserving their actual encoding.
+pub(super) async fn append_inline(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow: &ResponsesHistoryFlowKey,
+    changes: &[ResponsesHistoryCheckpointChange],
+) -> Result<HashMap<Uuid, ResponsesHistoryContextLineageEntry>> {
+    let mut result = HashMap::new();
+    for change in changes {
+        if let Some(content) = inline_content(change)? {
+            result.insert(
+                change.checkpoint_id,
+                contexts::append(tx, flow, &content, None).await?,
+            );
+        }
+    }
+    Ok(result)
+}
+
 pub(super) async fn apply(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow: &ResponsesHistoryFlowKey,
     changes: &[ResponsesHistoryCheckpointChange],
+    mapping: &HashMap<Uuid, ResponsesHistoryContextLineageEntry>,
+    inline: &HashMap<Uuid, ResponsesHistoryContextLineageEntry>,
 ) -> Result<Vec<ResponsesHistoryCheckpointReceipt>> {
     let mut result = Vec::with_capacity(changes.len());
     for change in changes {
-        let before_shadow = read_shadow(tx, flow, change.checkpoint_id).await?;
-        let content = replacement_content(change)?;
-        let (content_id, hash, _) = put_canonical_runtime_content_in_transaction(
-            tx,
-            flow.scope_id,
-            flow.application_id,
-            &content,
-        )
-        .await?;
-        let sequence=sqlx::query_scalar::<_,i64>("select coalesce(max(context_sequence),-1)+1 from runtime_context_projections where flow_run_id=$1").bind(flow.flow_run_id).fetch_one(&mut **tx).await?;
-        let id = Uuid::now_v7();
-        sqlx::query("insert into runtime_context_projections(id,flow_run_id,projection_kind,source_item_refs,model_input_ref,model_input_hash,provider_continuation_metadata,previous_projection_id,scope_id,application_id,context_sequence,transition_kind,transition_actor,actual_content_id) values($1,$2,'context_version','[]'::jsonb,'runtime_canonical_content:'||$3::text,$4,'{}'::jsonb,null,$5,$6,$7,'append','host',$3)")
-            .bind(id).bind(flow.flow_run_id).bind(content_id).bind(&hash).bind(flow.scope_id).bind(flow.application_id).bind(sequence).execute(&mut **tx).await?;
+        let after = if let Some(before) = &change.before_context {
+            mapping.get(&before.context_version_id)
+        } else {
+            inline.get(&change.checkpoint_id)
+        }
+        .ok_or_else(|| anyhow!("responses_history_checkpoint_context_mapping_missing"))?;
         let (after_locator_payload, after_variable_snapshot) =
-            projected_checkpoint(change, id, sequence)?;
-        let after_context = ResponsesHistoryContextIdentity {
-            context_version_id: id,
-            actual_content_id: content_id,
-            content_hash: hash.clone(),
-        };
+            projected(change, after.identity.context_version_id, after.sequence)?;
+        let before_shadow = read_shadow(tx, flow, change.checkpoint_id).await?;
         let mut after_shadow = before_shadow.clone();
         if let Some(binding) = &mut after_shadow {
-            // The legacy shadow owns the exact mutable source projection. The
-            // full recovery context has a separate immutable content owner.
-            let (marker_id, marker_hash, marker_size) =
-                put_canonical_runtime_content_in_transaction(
-                    tx,
-                    flow.scope_id,
-                    flow.application_id,
-                    &after_variable_snapshot,
-                )
-                .await?;
-            binding.source_hash = marker_hash;
-            binding.source_byte_size = marker_size;
-            binding.canonical_content_id = marker_id;
+            let (id, hash, size) = put_canonical_runtime_content_in_transaction(
+                tx,
+                flow.scope_id,
+                flow.application_id,
+                &after_variable_snapshot,
+            )
+            .await?;
+            binding.source_hash = hash;
+            binding.source_byte_size = size;
+            binding.canonical_content_id = id;
             binding.context_version_id = None;
             documents::write_shadow(tx, binding).await?;
         }
@@ -309,8 +233,8 @@ pub(super) async fn apply(
             before_context: change.before_context.clone(),
             after_locator_payload,
             after_variable_snapshot,
-            after_context,
-            after_context_sequence: sequence,
+            after_context: after.identity.clone(),
+            after_context_sequence: after.sequence,
             before_shadow,
             after_shadow,
         });
@@ -324,19 +248,15 @@ pub(super) async fn rollback(
     current: &[ResponsesHistoryCheckpoint],
     receipts: &[ResponsesHistoryCheckpointReceipt],
 ) -> Result<()> {
+    let current_index: HashMap<_, _> = current.iter().map(|c| (c.checkpoint_id, c)).collect();
     for receipt in receipts {
-        let checkpoint = current
-            .iter()
-            .find(|c| c.checkpoint_id == receipt.checkpoint_id)
+        let checkpoint = current_index
+            .get(&receipt.checkpoint_id)
             .ok_or_else(|| anyhow!("responses_history_checkpoint_missing"))?;
         anyhow::ensure!(
             checkpoint.locator_payload == receipt.after_locator_payload
                 && checkpoint.variable_snapshot == receipt.after_variable_snapshot
-                && checkpoint
-                    .lineage
-                    .last()
-                    .is_some_and(|last| last.identity == receipt.after_context
-                        && last.sequence == receipt.after_context_sequence),
+                && checkpoint.context.as_ref() == Some(&receipt.after_context),
             "responses_history_checkpoint_rollback_conflict"
         );
         anyhow::ensure!(
@@ -347,9 +267,17 @@ pub(super) async fn rollback(
                     .map(|id| id.context_version_id),
             "responses_history_checkpoint_receipt_context_invalid"
         );
+        let after = contexts::context(tx, flow, receipt.after_context.context_version_id)
+            .await?
+            .entry;
+        anyhow::ensure!(
+            after.identity == receipt.after_context
+                && after.sequence == receipt.after_context_sequence,
+            "responses_history_checkpoint_context_receipt_invalid"
+        );
         if let Some(identity) = &receipt.before_context {
             anyhow::ensure!(
-                context(tx, flow, identity.context_version_id)
+                contexts::context(tx, flow, identity.context_version_id)
                     .await?
                     .entry
                     .identity
