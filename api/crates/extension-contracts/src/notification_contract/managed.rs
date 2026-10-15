@@ -12,6 +12,9 @@ use super::{identity, invalid, ContractResult, NotificationTypeDescriptor};
 pub struct NotificationAuthorizationDescriptor {
     pub actions: Vec<NotificationAuthorizationAction>,
     pub managed_secret_keys: Vec<String>,
+    /// Declares that an authorized account also has an independent delivery window.
+    #[serde(default)]
+    pub supports_delivery_window: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,13 +31,34 @@ pub enum NotificationAuthorizationActionKind {
     QrCode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationAuthorizationOperation {
     Begin { action: String },
     Poll,
     Cancel,
     Maintain,
+}
+
+impl<'de> Deserialize<'de> for NotificationAuthorizationOperation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Serde unit variants ignore extra fields even with deny_unknown_fields.
+        // Empty struct wire variants retain the public enum while rejecting injection.
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+        enum WireOperation {
+            Begin { action: String },
+            Poll {},
+            Cancel {},
+            Maintain {},
+        }
+        Ok(match WireOperation::deserialize(deserializer)? {
+            WireOperation::Begin { action } => Self::Begin { action },
+            WireOperation::Poll {} => Self::Poll,
+            WireOperation::Cancel {} => Self::Cancel,
+            WireOperation::Maintain {} => Self::Maintain,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,11 +70,61 @@ pub enum NotificationAuthorizationStatus {
     Invalid,
 }
 
+/// Provider-owned evidence and deadline; Host projects expiry without defining its duration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationDeliveryWindowStatus {
+    Unknown,
+    WaitingForMessage,
+    Active,
+    Expired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationDeliveryWindowView {
+    pub status: NotificationDeliveryWindowStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_received_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<u64>,
+}
+
+impl NotificationDeliveryWindowView {
+    pub fn validate(&self) -> ContractResult {
+        let has_pair = match (self.last_received_at_ms, self.expires_at_ms) {
+            (None, None) => false,
+            (Some(last), Some(expiry)) if last > 0 && expiry > last => true,
+            _ => {
+                return Err(invalid(
+                    "delivery window requires positive ordered timestamp pair",
+                ))
+            }
+        };
+        match self.status {
+            NotificationDeliveryWindowStatus::Active
+            | NotificationDeliveryWindowStatus::Expired
+                if !has_pair =>
+            {
+                Err(invalid(
+                    "active or expired delivery window requires timestamps",
+                ))
+            }
+            NotificationDeliveryWindowStatus::WaitingForMessage if has_pair => {
+                Err(invalid("waiting delivery window cannot carry timestamps"))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 /// Canonical client DTO. Enabled/disabled is an independent administrator setting.
 /// No credential, recipient id, context token or provider error belongs in this view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationAuthorizationView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_window: Option<NotificationDeliveryWindowView>,
     pub status: NotificationAuthorizationStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_action: Option<NotificationAuthorizationUserAction>,
@@ -72,6 +146,9 @@ pub struct NotificationAuthorizationUserAction {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationRuntimeInput {
+    /// Public evidence injected by Host, separate from both config and managed secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_window: Option<NotificationDeliveryWindowView>,
     pub operation: NotificationOperation,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub managed_secrets: BTreeMap<String, Value>,
@@ -94,6 +171,9 @@ pub enum NotificationFailureCode {
     AuthorizationRequired,
     AuthorizationInvalid,
     RecipientNotReady,
+    SubscriptionRequired,
+    SubscriptionExpired,
+    SubscriptionUnavailable,
     ProviderRejected,
     ProviderResultUnknown,
 }
@@ -195,6 +275,9 @@ impl NotificationAuthorizationDescriptor {
 
 impl NotificationAuthorizationView {
     pub fn validate(&self) -> ContractResult {
+        if let Some(window) = &self.delivery_window {
+            window.validate()?;
+        }
         if (self.status == NotificationAuthorizationStatus::Pending) != self.user_action.is_some() {
             return Err(invalid("only pending authorization requires a user action"));
         }
@@ -223,6 +306,9 @@ impl NotificationRuntimeInput {
             .as_ref()
             .ok_or_else(|| invalid("notification has not opted into authorization"))?;
         authorization.validate_secret_keys(&self.managed_secrets)?;
+        if let Some(window) = &self.delivery_window {
+            window.validate()?;
+        }
         match &self.operation {
             NotificationOperation::Authorize {
                 operation: NotificationAuthorizationOperation::Begin { action },
@@ -285,7 +371,11 @@ impl NotificationRuntimeResult {
                             failure_code: NotificationFailureCode::AuthorizationInvalid,
                         } => Some(NotificationAuthorizationStatus::Invalid),
                         NotificationSendOutcome::Failed {
-                            failure_code: NotificationFailureCode::RecipientNotReady,
+                            failure_code:
+                                NotificationFailureCode::RecipientNotReady
+                                | NotificationFailureCode::SubscriptionRequired
+                                | NotificationFailureCode::SubscriptionExpired
+                                | NotificationFailureCode::SubscriptionUnavailable,
                         } => Some(NotificationAuthorizationStatus::Authorized),
                         _ => None,
                     };

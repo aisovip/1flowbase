@@ -172,6 +172,21 @@ test.each([
     'The recipient conversation is not ready. Send a message to the bot and try again'
   ],
   [
+    'subscription_required',
+    '尚未收到可验证的用户消息，请先向机器人发送任意消息以开启通知订阅窗口',
+    'No verifiable user message received. Send any message to the bot to open the notification subscription window'
+  ],
+  [
+    'subscription_expired',
+    '24小时通知订阅窗口已过，请向机器人发送任意消息续期后重试',
+    'The 24-hour notification subscription window has expired. Send any message to the bot to renew it and try again'
+  ],
+  [
+    'subscription_unavailable',
+    '无法确认通知订阅状态，请稍后重试',
+    'The notification subscription status cannot be confirmed. Try again later'
+  ],
+  [
     'provider_rejected',
     '供应商拒绝了本次消息发送',
     'The provider rejected the message'
