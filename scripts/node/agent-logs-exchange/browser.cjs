@@ -163,7 +163,8 @@ async function captureLangfuse({ args, langfuse, receipt, playwright }) {
       try {
         const page = await context.newPage();
         await page.goto(`${langfuse.base_url}/project/${encodeURIComponent(langfuse.project_id)}/traces`, { waitUntil: 'domcontentloaded' });
-        await page.locator('tbody tr').first().waitFor({ state: 'visible', timeout: 30000 });
+        // Skeleton rows also use <tr>; require an actual exported source Span name.
+        await page.locator('tbody tr').filter({ hasText: /agent-log\./ }).first().waitFor({ state: 'visible', timeout: 60000 });
         const output = path.join(args.outDir, name === 'desktop' ? '03-langfuse-traces.png' : `${name}-03-langfuse-traces.png`);
         await page.screenshot({ path: output, fullPage: true, animations: 'disabled' });
         receipt.screenshots.push({ path: output, viewport, scope: 'Langfuse traces page only; API readiness is checked separately' });
