@@ -15,6 +15,7 @@ import type {
   NotificationReadStatus
 } from '@1flowbase/api-client';
 export {
+  authorizeNotificationInstance,
   createNotificationInstance,
   updateNotificationInstance,
   deleteNotificationInstance,

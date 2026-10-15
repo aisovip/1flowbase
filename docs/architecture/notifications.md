@@ -65,3 +65,21 @@ HTTP owner 是 `/api/console/notifications`：types、instances CRUD、`instance
 `channels` 只聚合当前工作区当前用户的站内消息。`read_status=all|unread|read` 先过滤，再选渠道最新消息并按最新时间排序；每渠道 unread_count 独立计算全部未读事实。cursor 分页上限 100。消息接口支持 instance_id/read_status，保留 unread_only 兼容参数；显式 read_status 优先。删除实例后 left join 保留渠道，deleted=true，display_name='Deleted notification channel'，type_code='system'（历史消息表只保存系统站内消息）。
 
 `messages/{id}/unread` 清除本人消息 read_at；`channels/{instance_id}/read-all` 只标记本人该渠道消息，包含已删除渠道历史。两个写入口都发布同一 recipient/workspace SSE 刷新信号。旧全局 read-all 保留。
+
+## 通知实例扫码授权
+
+类型描述的可选 `authorization` 声明扫码动作和 `managed_secret_keys`，缺省仍走原始发送契约。授权沿同一个 `1flowbase.notification.send` 贡献与 Capability Execute managed dispatcher，不注册模型 provider 或通知 slot。Rust 插件复用 SDK async `execute_authorizable_notification` 与共享 `serve`；授权 fixture 顶层和 execution binding 都使用 `stdio_json_multiplex_v1`，旧 one-shot fixture 保留 `stdio_json`。
+
+`POST /api/console/notifications/instances/{instance_id}/authorization` 接收 canonical `NotificationAuthorizationOperation`，body 为 `{type:"begin",action:"qr"}`、`{type:"poll"}`、`{type:"cancel"}` 或 `{type:"maintain"}`。该写入口需要 CSRF 和独立 `notifications.instances.authorization` console operation，经 Canonical Interface/typed Handler 再由 service 检查工作区与权限。历史设置 grant 不默认获得这项新授权，root 保留既有管理员权限。
+
+响应的 ApiSuccess data 和实例 DTO 的 `authorization` 使用同一个 `NotificationAuthorizationView`：`status=unauthorized|pending|authorized|invalid`。pending 必须含 `user_action={kind:"qr_code",qr_code_url,poll_interval_seconds,expires_at?}`，仅展示合理 HTTPS QR URL，不返回内部二维码 challenge、bot token、context token、绑定收件人或供应商错误。legacy 实例的 authorization 为 null。管理员 `status=enabled|disabled` 与账户授权完全独立，授权成功不会启用已停用实例。
+
+宿主在 `notification_instances.authorization_json` 保存公开状态，在 `encrypted_managed_secret_json` 加密管理凭证，和用户可编辑密码配置 `encrypted_secret_json` 分开。两者都绑定 workspace/instance 身份，并使用独立 AAD；selective backup 的现有 rekey 路径同时处理两类密文，跨 master key 恢复时不丢失授权。管理字段不能放进公开 config 或由客户端设置，patch 只接受描述符声明键，null 删除，省略保留。插件可以加密缓存可展示 `qr_code_url`；只有授权 `user_action.qr_code_url` 的同值显示字段可公开，发送 result、expiry 或其他字段中的该管理值仍会被秘密反射校验拒绝。
+
+`authorization_revision` 是持久化 CAS fence。begin/cancel 在网络调用前占新 revision、清除旧管理凭证；插件调用期间不持数据库事务锁。poll 返回后只在 revision 未改变时原子写公开状态和加密秘密，迟到 poll 无法覆盖 cancel/re-begin。发送返回的旧 patch 也不能替换新授权；外部发送确认不会因为旧 patch 被丢弃而改成失败。进程重启后从宿主存储恢复 pending challenge 或已授权凭证，不依赖 worker 内存。
+
+授权通知的 Execute input_payload 是 `NotificationRuntimeInput`，含 `operation`（authorize 或 send）和 Host 注入的 `managed_secrets`；用户 config_payload 继续独立。runtime result 是 `NotificationRuntimeResult`，公开授权视图和管理秘密 patch 分离。宿主独立验证响应、allowlist、输出 schema 和秘密反射，不信任作者 SDK 已做校验。未经验证的 patch 不保存，raw result 不写日志。
+
+发送前 unauthorized/pending 在 service 本地拒绝，日志为 failure/authorization_required；invalid 本地拒绝并记录 failure/authorization_invalid。authorized 允许直接尝试供应商发送，不要求 context token 或 recipient-ready 布尔前置。供应商明确返回 recipient_not_ready 时账户仍 authorized；明确 provider_rejected 记录 failure；请求错误、异常返回、秘密泄漏或无法确认外部结果均保留 unknown/provider_result_unknown，不虚报成功。供应商可在成功、拒绝或 unknown 响应中提交有效游标/context patch，宿主加密保存。真实供应商只匹配扫码绑定用户的入站 peer，不能用其他 sender 重绑定目标。
+
+授权集成 fixture 入口在 API tests 的 `extension_bus/notifications/authorization.rs`；构建 SDK `notification_authorization_worker` 后设置绝对路径环境变量 `NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE`。它覆盖真实安装、独立贡献授权、canonical HTTP、加密 PostgreSQL、重启恢复、受控迟到 poll、固定失败日志及 legacy system 回归；fixture 不表示真实微信送达。实际执行证据仍由 Root 的集中 QA 记录。

@@ -7,8 +7,25 @@ pub struct SaveNotificationInstanceInput {
     pub secret_config_json: Value,
     pub master_key: String,
     pub create: bool,
+    /// Only used on create; ordinary config/name/status updates never replace authorization.
+    pub initial_authorization: Option<extension_contracts::NotificationAuthorizationView>,
 }
 // Credentials deliberately have no Debug implementation.
+
+pub struct NotificationAuthorizationSnapshot {
+    pub authorization: Option<extension_contracts::NotificationAuthorizationView>,
+    pub managed_secrets: std::collections::BTreeMap<String, Value>,
+    pub revision: i64,
+}
+
+pub struct SaveNotificationAuthorizationInput {
+    pub workspace_id: Uuid,
+    pub instance_id: Uuid,
+    pub expected_revision: i64,
+    pub authorization: extension_contracts::NotificationAuthorizationView,
+    pub managed_secrets: std::collections::BTreeMap<String, Value>,
+    pub master_key: String,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct NotificationMessageListInput {
@@ -40,6 +57,23 @@ pub struct NotificationChannelListInput {
 }
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    async fn notification_authorization_view(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+    ) -> anyhow::Result<Option<extension_contracts::NotificationAuthorizationView>>;
+    async fn resolve_notification_authorization(
+        &self,
+        workspace_id: Uuid,
+        id: Uuid,
+        master_key: &str,
+    ) -> anyhow::Result<NotificationAuthorizationSnapshot>;
+    /// Compare-and-swap the complete encrypted state; None means deleted or superseded.
+    /// No provider I/O or transaction lock is held by this operation.
+    async fn save_notification_authorization(
+        &self,
+        input: SaveNotificationAuthorizationInput,
+    ) -> anyhow::Result<Option<i64>>;
     async fn create_notification_send_log(
         &self,
         log: domain::NotificationSendLog,

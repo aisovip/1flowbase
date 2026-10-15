@@ -70,6 +70,14 @@ export function NotificationLogs() {
           return t('failure_input_invalid');
         case 'config_invalid':
           return t('failure_config_invalid');
+        case 'authorization_required':
+          return t('failure_authorization_required');
+        case 'authorization_invalid':
+          return t('failure_authorization_invalid');
+        case 'recipient_not_ready':
+          return t('failure_recipient_not_ready');
+        case 'provider_rejected':
+          return t('failure_provider_rejected');
         case 'provider_result_unknown':
           return t('failure_provider_result_unknown');
         case 'provider_output_invalid':

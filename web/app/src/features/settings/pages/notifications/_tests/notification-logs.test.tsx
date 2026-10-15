@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -8,6 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { NotificationSendLog } from '@1flowbase/api-client';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { NotificationLogs } from '../NotificationLogs';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 
@@ -81,7 +83,8 @@ beforeEach(() => {
     </QueryClientProvider>
   );
 });
-afterEach(() => {
+afterEach(async () => {
+  await appI18n.changeLanguage('zh_Hans');
   client.clear();
   resetAuthStore();
   vi.unstubAllGlobals();
@@ -151,3 +154,56 @@ test('hides failure reasons for successful delivery and retains a safe reason fo
     unknown.queryByText('provider_result_unknown')
   ).not.toBeInTheDocument();
 });
+
+test.each([
+  [
+    'authorization_required',
+    '渠道尚未授权，请先完成扫码授权',
+    'This channel needs authorization before sending'
+  ],
+  [
+    'authorization_invalid',
+    '渠道授权已失效，请重新扫码授权',
+    'Channel authorization is invalid. Authorize again'
+  ],
+  [
+    'recipient_not_ready',
+    '收件人会话尚未就绪，请向机器人发送一条消息后重试',
+    'The recipient conversation is not ready. Send a message to the bot and try again'
+  ],
+  [
+    'provider_rejected',
+    '供应商拒绝了本次消息发送',
+    'The provider rejected the message'
+  ],
+  [
+    'provider_result_unknown',
+    '供应商发送结果未确认',
+    'The provider delivery result is unconfirmed'
+  ]
+])(
+  'renders safe translated reason for %s without provider diagnostics',
+  async (failure_code, label, english) => {
+    await screen.findByText('Delivery channel');
+    detail = {
+      ...log,
+      failure_code,
+      status:
+        failure_code === 'provider_result_unknown' ? 'unknown' : 'failure',
+      // An unexpected extra field must never become a default UI diagnostic.
+      ...{ provider_error: 'SECRET_TOKEN raw provider exception' }
+    };
+    fireEvent.click(screen.getByRole('button', { name: '详情' }));
+    await screen.findByText(label);
+    const drawer = within(screen.getByRole('dialog'));
+    expect(drawer.getByText(label)).toBeInTheDocument();
+    expect(drawer.queryByText(failure_code)).not.toBeInTheDocument();
+    expect(
+      drawer.queryByText(/SECRET_TOKEN|raw provider exception/)
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      await appI18n.changeLanguage('en_US');
+    });
+    expect(drawer.getByText(english)).toBeInTheDocument();
+  }
+);

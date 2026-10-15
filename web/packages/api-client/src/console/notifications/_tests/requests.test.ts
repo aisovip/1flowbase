@@ -94,3 +94,49 @@ test('refresh signals and every open reread persistent state; close releases sou
   close();
   expect(source.close).toHaveBeenCalledOnce();
 });
+
+test('authorization posts canonical commands and reads only the public view', async () => {
+  const { authorizeNotificationInstance } = await import('../index');
+  const authorization = {
+    status: 'pending',
+    user_action: {
+      kind: 'qr_code',
+      qr_code_url: 'https://example.com/qr',
+      poll_interval_seconds: 5,
+      expires_at: '2026-10-15T02:00:00Z'
+    }
+  };
+  const fetch = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ data: authorization, meta: null }))
+  );
+  vi.stubGlobal('fetch', fetch);
+  const controller = new AbortController();
+  for (const body of [
+    { type: 'begin', action: 'scan' } as const,
+    { type: 'poll' } as const,
+    { type: 'cancel' } as const,
+    { type: 'maintain' } as const
+  ]) {
+    expect(
+      await authorizeNotificationInstance(
+        'id/1',
+        body,
+        'csrf',
+        controller.signal
+      )
+    ).toEqual(authorization);
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        '/api/console/notifications/instances/id%2F1/authorization'
+      ),
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': 'csrf' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      })
+    );
+  }
+});

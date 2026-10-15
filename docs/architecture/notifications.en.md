@@ -45,3 +45,75 @@ System messages and log success commit in one transaction, recording only safe s
 The channels endpoint aggregates only the current workspace and authenticated recipient. It applies all/unread/read before choosing each channel's latest message, orders by that latest time, and independently counts all unread messages per channel. Cursor pages are bounded to 100. Messages support instance_id/read_status; explicit read_status takes precedence over the retained unread_only parameter. LEFT JOIN preserves deleted-instance history with deleted=true, display_name='Deleted notification channel', type_code='system', because the inbox table contains only system messages.
 
 Message unread clears only the recipient's read_at. Channel read-all changes only that recipient/channel, including deleted-channel history. Both publish recipient/workspace refresh signals. Existing global read-all remains available.
+
+## Notification instance QR authorization
+
+The optional descriptor `authorization` declares QR actions and `managed_secret_keys`.
+Its absence preserves the original send contract. Authorization uses the same
+`1flowbase.notification.send` contribution, Capability Execute envelope and managed
+dispatcher; it creates no model provider or notification slot. Rust suppliers reuse
+async `execute_authorizable_notification` inside the shared SDK `serve`. The
+authorization fixture uses `stdio_json_multiplex_v1` at both package and binding
+runtime levels; the legacy one-shot fixture keeps `stdio_json`.
+
+`POST /api/console/notifications/instances/{instance_id}/authorization` accepts the
+canonical `NotificationAuthorizationOperation`: `{type:"begin",action:"qr"}`,
+`{type:"poll"}`, `{type:"cancel"}`, or `{type:"maintain"}`. This mutating endpoint
+requires CSRF and the independent `notifications.instances.authorization` console
+operation. Canonical Interface and its typed handler dispatch to the service,
+which checks workspace and permission again. Historical settings grants do not
+implicitly receive this new operation; root retains existing administrator access.
+
+ApiSuccess data and the instance DTO's `authorization` use the same
+`NotificationAuthorizationView`, with `status=unauthorized|pending|authorized|invalid`.
+Pending requires `user_action={kind:"qr_code",qr_code_url,poll_interval_seconds,expires_at?}`.
+Only a reasonable HTTPS display URL is public; internal QR challenges, bot/context
+tokens, recipient binding and provider errors are excluded. Legacy authorization
+is null. Administrator `status=enabled|disabled` remains independent; successful
+authorization never enables a disabled instance.
+
+The Host stores the public view in `notification_instances.authorization_json`
+and encrypts managed credentials in `encrypted_managed_secret_json`, separately
+from user-editable password configuration in `encrypted_secret_json`. Both use
+workspace/instance identity and distinct AAD. The existing selective-backup rekey
+path handles both ciphertext domains so a restore under a new master key retains
+authorization. Managed keys are forbidden in public/editable config. Patches may
+contain declared keys only; null deletes a key, omission preserves it. A supplier may
+encrypt/cache displayable `qr_code_url`; only that exact authorization user-action
+display field is exempt from reflection checks. The same cached value in send
+result, expiry or another field is still rejected.
+
+Persisted `authorization_revision` fences state writes by CAS. Begin/cancel claim
+a new revision and remove old managed credentials before provider I/O, without
+holding a database transaction lock during the network call. Poll atomically
+writes the public view and encrypted secrets only if that revision is unchanged.
+Delayed poll results cannot overwrite cancellation or a fresh begin. Old send
+patches likewise cannot replace newer authorization; discarding an obsolete patch
+does not turn an externally confirmed send into a failure. A reconstructed Host
+recovers pending challenges and authorized credentials from durable storage,
+without depending on worker memory.
+
+Execute input_payload is the canonical `NotificationRuntimeInput`, with authorize
+or send `operation` and Host-injected `managed_secrets`; config_payload stays
+separate. `NotificationRuntimeResult` separates public authorization from the
+Host-only secret patch. The Host independently validates response correlation,
+allowlists, output schemas and credential reflection even when a worker bypasses
+SDK helpers. Invalid patches are never persisted and raw results are never logged.
+
+Unauthorized/pending sends are rejected locally as failure/authorization_required;
+invalid authorization produces failure/authorization_invalid. Authorized accounts
+may attempt provider sending without a context token or recipient-ready boolean.
+An explicit recipient_not_ready provider response preserves account authorization;
+a definite provider_rejected response is failure. Provider errors, invalid responses,
+credential reflection or ambiguous external effects remain unknown/provider_result_unknown.
+Valid cursor/context patches may accompany success, rejection or unknown outcomes
+and are encrypted by the Host. A real supplier matches inbound context only to the
+scanned bound user's peer; another sender cannot rebind the recipient.
+
+The API test fixture `extension_bus/notifications/authorization.rs` uses the built
+SDK `notification_authorization_worker` at the absolute path in
+`NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE`. It covers real package intake,
+independent contribution authority, canonical HTTP, encrypted PostgreSQL, Host
+reconstruction, controlled stale polling, fixed failure logs and legacy system
+notifications. It is not evidence of real WeChat delivery. Actual execution
+receipts belong to the Root's concentrated QA batch.
