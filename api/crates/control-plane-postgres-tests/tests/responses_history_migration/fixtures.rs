@@ -276,7 +276,9 @@ pub(super) async fn fixture_with_output(version: u32, output: Value) -> Fixture 
     for _ in 0..2 {
         store.create_checkpoint(&CreateCheckpointInput {flow_run_id:flow.flow_run_id,node_run_id:Some(node.id),status:"paused".into(),reason:"shared delta head".into(),locator_payload:json!({"node_id":"node-llm","context_version_id":delta.id}),variable_snapshot:json!({"__runtime_recovery_context":{"context_version_id":delta.id,"sequence":delta.sequence}}),external_ref_payload:None}).await.unwrap();
     }
-    let span=store.append_runtime_span(&AppendRuntimeSpanInput {flow_run_id:flow.flow_run_id,node_run_id:Some(node.id),parent_span_id:None,kind:domain::RuntimeSpanKind::LlmTurn,name:"proof metadata".into(),status:domain::RuntimeSpanStatus::Succeeded,capability_id:None,input_ref:None,output_ref:None,error_payload:None,metadata:json!({"native_response":{"history":old},"user":{"history":old,"raw":"span\0raw"}}),started_at:OffsetDateTime::now_utc(),finished_at:Some(OffsetDateTime::now_utc())}).await.unwrap();
+    // The existing span append contract writes PostgreSQL JSONB directly.
+    // Keep NUL coverage in the lossless document/context/capsule owners above.
+    let span=store.append_runtime_span(&AppendRuntimeSpanInput {flow_run_id:flow.flow_run_id,node_run_id:Some(node.id),parent_span_id:None,kind:domain::RuntimeSpanKind::LlmTurn,name:"proof metadata".into(),status:domain::RuntimeSpanStatus::Succeeded,capability_id:None,input_ref:None,output_ref:None,error_payload:None,metadata:json!({"native_response":{"history":old},"user":{"history":old,"raw":"span\nraw"}}),started_at:OffsetDateTime::now_utc(),finished_at:Some(OffsetDateTime::now_utc())}).await.unwrap();
     store
         .bind_invocation_context(&BindInvocationContextInput {
             invocation_span_id: span.id,
