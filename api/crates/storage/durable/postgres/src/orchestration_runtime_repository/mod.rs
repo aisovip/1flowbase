@@ -222,8 +222,9 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         application_id: Uuid,
         run_id: Uuid,
     ) -> Result<Vec<Value>> {
+        // Keep the restored original as JSON: JSONB rejects valid NUL characters.
         Ok(sqlx::query_scalar::<_, Value>(r#"
-            select jsonb_build_object('id',m.id,'source_item_key',m.source_item_key,
+            select json_build_object('id',m.id,'source_item_key',m.source_item_key,
                 'source_kind',m.source_kind,'role',m.role,'started_at',m.started_at,
                 'display_sequence',m.display_sequence,
                 'native_message',runtime_original_json(m.native_message,m.raw_json_payloads,'native_message'))
