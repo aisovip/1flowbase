@@ -5,6 +5,10 @@ on:
     branches: [codex/gateway-target-handoff]
   workflow_dispatch:
     inputs:
+      verify_callback_attachment:
+        description: Verify callback attachment live and durable delivery before building the candidate
+        type: boolean
+        default: false
       verify_fork_projection:
         description: Verify native fork task projections with real PostgreSQL migrations
         type: boolean
@@ -65,6 +69,11 @@ jobs:
         run: |
           cargo test --locked --manifest-path api/Cargo.toml -p api-server provider_runtime::transport_session_lifecycle > tmp/test-governance/gateway-target-handoff/ci/coordinator.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/coordinator.log; exit 1; }
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/coordinator.log
+      - name: Callback attachment live and durable delivery regressions
+        if: ${{ inputs.verify_callback_attachment }}
+        run: |
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib routes::application_public_api::compat_sse::tests::forwarding > tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log; exit 1; }
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/gateway-target-handoff/ci/callback-forwarding.log
       - name: Build candidate API for task-owned runtime verification
         run: |
           cargo build --locked --manifest-path api/Cargo.toml -p api-server --bin api-server --features tikv-jemallocator/stats > tmp/test-governance/gateway-target-handoff/ci/build.log 2>&1 || { tail -c 6000 tmp/test-governance/gateway-target-handoff/ci/build.log; exit 1; }
