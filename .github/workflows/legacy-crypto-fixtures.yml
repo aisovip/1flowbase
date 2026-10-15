@@ -1,6 +1,11 @@
 name: Legacy crypto fixture producer
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       source_ref:
