@@ -26,7 +26,7 @@ async function createActiveLeaseMock({ allowRecovery = false } = {}) {
     createFrameReader(socket, raw => {
       const body = JSON.parse(raw);
       const ordinal = trace.length + 1;
-      trace.push({ ordinal, model: body.model, reasoning: body.reasoning,
+      trace.push({ ordinal, request: body, model: body.model, reasoning: body.reasoning,
         previous_response_id: body.previous_response_id });
       let sequence = 0;
       const emit = event => sendJson(socket, { ...event, sequence_number: sequence++ });

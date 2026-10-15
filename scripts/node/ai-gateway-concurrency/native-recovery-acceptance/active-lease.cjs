@@ -8,6 +8,7 @@ const cp = require('node:child_process');
 const assert = require('node:assert/strict');
 const { createOwnedGateway } = require('./gateway-owner.cjs');
 const { createActiveLeaseMock } = require('./active-lease-mock.cjs');
+const { beginExpiredFullContextRetry, assertExpiredFullContextResult } = require('./active-lease-expired-retry.cjs');
 const { decodeSseChunks } = require('../protocol-oracle/decoder');
 
 async function bounded(promise, label) {
@@ -144,11 +145,10 @@ async function run() {
     // An attached response follows the durable round terminal. Keep the
     // provider live while the retry is in flight, then finish the original
     // invocation; waiting for retry headers before this would deadlock the fixture.
-    if (legacyMode !== 'output-replay') {
+    if (!legacyMode) {
       outputTimer = setTimeout(() => {
         (async () => {
           try {
-            if (legacyMode === 'expired-no-output') await bounded(mock.recovering, 'Controlled recovery did not start');
             evidence.during = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'claim_status',c.status,'lease_live',c.lease_expires_at>now()) from flow_run_callback_resume_attempts a join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
             assert.equal(evidence.during.attempt_status, 'processing');
             assert.equal(evidence.during.claim_status, 'processing');
@@ -160,10 +160,14 @@ async function run() {
         })().catch(error => { releaseError = error; });
       }, 2000);
     }
-    const retry = await fetch(gateway.target.gateway.responses_url, {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: gateway.target.gateway.authorization,
-        'session-id': session }, body: JSON.stringify(followup), signal: AbortSignal.timeout(45_000),
-    });
+    const headers = { 'content-type': 'application/json', authorization: gateway.target.gateway.authorization,
+      'session-id': session };
+    const retry = legacyMode === 'expired-no-output'
+      ? await beginExpiredFullContextRetry({ url: gateway.target.gateway.responses_url, headers,
+        followup, body, seedCompleted: completed, mock, sql, evidence, save, artifactRoot, bounded })
+      : await fetch(gateway.target.gateway.responses_url, {
+        method: 'POST', headers, body: JSON.stringify(followup), signal: AbortSignal.timeout(45_000),
+      });
     evidence.httpStatus = retry.status;
     if (retry.status !== 200) { evidence.body = await retry.text(); save(); }
     assert.equal(retry.status, 200, 'Retry must recover the same callback under the selected live, settled, or expired ownership case');
@@ -187,6 +191,10 @@ async function run() {
     if (releaseError) throw releaseError;
     if (legacyMode !== 'output-replay') assert.ok(evidence.during, 'The invocation must remain live until controlled release');
     evidence.events = decodeSseChunks([Buffer.from(raw)]).filter(record => !record.done).map(record => record.data);
+    if (legacyMode === 'expired-no-output') {
+      fs.writeFileSync(path.join(artifactRoot, 'expired-full-context-retry.sse'), raw);
+      evidence.fullContextRetry.result = { httpStatus: retry.status, raw, events: evidence.events };
+    }
     assert.equal(evidence.events.filter(event => event.type === 'response.completed').length, 1);
     assert.ok(!evidence.events.some(event => ['error', 'response.failed'].includes(event.type)));
     const terminal = evidence.events.find(event => event.type === 'response.completed');
@@ -211,8 +219,7 @@ async function run() {
     assert.equal(mock.trace.length, legacyMode === 'expired-no-output' ? 3 : 2,
       'Seed, original continuation, and only an explicitly acquired recovery may invoke the provider');
     if (legacyMode === 'expired-no-output') {
-      assert.equal(mock.trace[1].released, undefined, 'Abandoned original invocation never produced callback output');
-      assert.equal(mock.trace[2].released, true, 'Exactly one new owned execution completed');
+      assertExpiredFullContextResult({ mock, sql, evidence, terminal });
     }
     evidence.after = JSON.parse(sql("select jsonb_build_object('attempts',(select count(*) from flow_run_callback_resume_attempts),'claims',(select count(*) from flow_run_resume_claims),'completed_callbacks',(select count(*) from flow_run_callback_tasks where status='completed'));"));
     assert.equal(evidence.after.attempts, 1);
