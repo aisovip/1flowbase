@@ -32,7 +32,7 @@ without model calls. `--native-application-id` optionally chooses that history.
 On desktop and mobile it saves/reloads the connection, checks the real remote,
 exports both sources by date, waits for remote persistence, imports into the chosen
 Agent Logs application, repeats import, compares exact original source facts, and
-captures actual pages. It also imports the current synthetic traces by date and checks source/target/date label associations and unique form IDs. Source selection follows the managed component prefix and real virtual-list scrolling; no hidden UI state is set. The source application keys are revoked independently on exit (including normal DELETE204 responses); labeled
+captures actual pages. It also imports the current synthetic traces by date and checks source/target/date label associations and unique form IDs. Source and target selection use the real label-associated combobox, supported ArrowDown/Enter input, and the active option UUID. No private CSS or virtual scroll state is assumed, and no hidden UI state is set. The source application keys are revoked independently on exit (including normal DELETE204 responses); labeled
 applications and imported history remain available for manual inspection.
 
 Receipts and screenshots go beneath `tmp/test-governance/`. A resource supervisor

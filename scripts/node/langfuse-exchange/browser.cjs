@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { createRequire } = require('node:module');
 const { openTemporaryConsoleSession, rebaseStorageStateCookies } = require('../page-debug/auth');
 const route = '/api/console/managed-services/langfuse/';
+const { chooseApplication } = require('./choose-application.cjs');
 function connectionUrl(value) {
   const url = new URL(value);
   if (!url.pathname.endsWith('/')) url.pathname += '/';
@@ -28,28 +29,6 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         if (await settings.getByRole('button',{name:'English',exact:true}).isVisible()) await settings.getByRole('button',{name:'English',exact:true}).click();
         const forms = settings.locator('form');
         const config = forms.nth(0), exporter = forms.nth(1), importer = forms.nth(2);
-        const chooseApplication = async (form, label) => {
-          const combo = form.getByRole('combobox'); await combo.click();
-          const match = (await combo.getAttribute('class')).match(/([^\s]+)-select-input/);
-          assert.ok(match, 'managed Select exposes its isolated component prefix');
-          const popup = page.locator('.' + match[1] + '-select-dropdown:visible'); await popup.waitFor();
-          const listId = await combo.getAttribute('aria-controls'); assert.ok(listId, 'expanded Select owns its list');
-          const holder = popup.locator('.' + match[1] + '-select-dropdown-list-holder');
-          const deadline = Date.now() + args.deadlineMs;
-          for (;;) {
-            const option = popup.getByText(label, { exact: true });
-            if (await option.count()) { await option.click(); return; }
-            const before = await holder.evaluate(el => ({ top: el.scrollTop, height: el.clientHeight, total: el.scrollHeight }));
-            assert.ok(before.top + before.height < before.total, 'application option absent from complete dropdown: ' + label);
-            assert.ok(Date.now() < deadline, 'application dropdown scrolling deadline');
-            await holder.hover(); await page.mouse.wheel(0, before.height);
-            await page.waitForFunction(({listId, prefix, top}) => {
-              const holder = document.getElementById(listId)?.closest('.' + prefix + '-select-dropdown')?.querySelector('.' + prefix + '-select-dropdown-list-holder');
-              return holder && holder.scrollTop !== top;
-            }, {listId, prefix:match[1], top:before.top},
-              {timeout:Math.max(1, deadline - Date.now())});
-          }
-        };
         const settledReceipt = async value => {
           const box = settings.getByTestId('langfuse-receipt'); await box.waitFor();
           const labels = { exported_records:'Exported records', exported_spans:'Exported spans', imported_traces:'Imported traces', accepted_events:'Accepted events', duplicate_events:'Duplicate events' };
@@ -85,7 +64,7 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         await screenshot('01-saved-connection');
         receipt.checks.push({name:`${name} browser config save/reload/real connection`,status:'pass'});
         for (const source of sources) {
-          await chooseApplication(exporter, `${source.name} (${source.application_type})`);
+          await chooseApplication({page,form:exporter,label:'Source application',applicationId:source.application_id,deadlineMs:args.deadlineMs});
           await exporter.getByLabel('Started at or after (RFC3339)',{exact:true}).fill(source.started_at_from);
           await exporter.getByLabel('Started before (RFC3339)',{exact:true}).fill(source.started_at_to);
           const result = await action('export',exporter.getByRole('button',{name:'Export complete records',exact:true}));
@@ -97,7 +76,7 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
           receipt.exports.push({viewport:name,application_id:source.application_id,...result.receipt});
         }
         const remote = await waitRemote([...traceIds], receipt.exports.filter(item => item.viewport === name).reduce((sum, item) => sum + item.exported_spans, 0));
-        await chooseApplication(importer, target.name);
+        await chooseApplication({page,form:importer,label:'Target AgentLogs application',applicationId:target.application_id,deadlineMs:args.deadlineMs});
         await importer.getByLabel('Trace IDs (one per line or comma-separated)',{exact:true}).fill([...traceIds].join('\n'));
         const imported = await action('import',importer.getByRole('button',{name:'Import complete traces',exact:true}));
         assert.ok(imported.receipt.accepted_events + imported.receipt.duplicate_events > 0);
@@ -127,8 +106,11 @@ async function capture({ args, credentials, langfuse, sources, target, receipt, 
         receipt.checks.push({ name:`${name} unique form IDs and source/target/date label associations`, status:'pass' });
         // Full browser reload proves persisted connection, rather than component state alone.
         await page.reload({waitUntil:'domcontentloaded'});
-        await config.locator('input[placeholder="https://cloud.langfuse.com/"]').waitFor();
-        await page.waitForFunction(url => document.querySelector('input[placeholder="https://cloud.langfuse.com/"]')?.value === url,saved.base_url);
+        const savedAddress = await config.getByLabel('Service URL', {exact:true}).elementHandle();
+        try {
+          await page.waitForFunction(({input, url}) => input.value === url,
+            {input:savedAddress, url:saved.base_url}, {timeout:args.deadlineMs});
+        } finally { await savedAddress.dispose(); }
         const importedRecordId = await verifyTarget(imported.receipt.record_ids);
         await page.goto(`${args.webBaseUrl}/applications/${target.application_id}/logs?language=en&run_id=${encodeURIComponent(importedRecordId)}`,{waitUntil:'domcontentloaded'});
         await page.getByTestId('application-logs-floating-run-detail').getByText('Synthetic answer 2.',{exact:true}).waitFor();
