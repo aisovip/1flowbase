@@ -9,21 +9,22 @@ const { loadRootCredentials, openTemporaryOwnerSession } = require('../page-debu
 const { syntheticBatch } = require('../agent-logs-exchange/fixtures.cjs');
 const { capture } = require('./browser.cjs');
 const { readTraceObservations } = require('./remote-readback.cjs');
+const { verifyOpenApi } = require('./openapi.cjs');
 const root = path.resolve(__dirname,'../../..');
 async function main() {
   const { values } = parseArgs({options:{'api-base-url':{type:'string'},'web-base-url':{type:'string'},'credentials-root':{type:'string'},'langfuse-private-file':{type:'string'},'langfuse-storage-private-file':{type:'string'},'out-dir':{type:'string'},'native-application-id':{type:'string'},'deadline-ms':{type:'string',default:'120000'}}});
-  for(const field of ['api-base-url','web-base-url','credentials-root','langfuse-private-file','out-dir']) assert.ok(values[field],`missing ${field}`);
+  for(const field of ['api-base-url','web-base-url','credentials-root','langfuse-private-file','langfuse-storage-private-file','out-dir']) assert.ok(values[field],`missing ${field}`);
   const args=Object.fromEntries(Object.entries(values).map(([k,v])=>[k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v]));
   args.deadlineMs=Number(args.deadlineMs);args.outDir=path.resolve(args.outDir);
   for(const url of [args.apiBaseUrl,args.webBaseUrl]) assert.ok(!['7600','7800'].includes(new URL(url).port),'independent candidate only');
   assert.ok(args.outDir.startsWith(path.join(root,'tmp/test-governance/')),'evidence stays within candidate governance');
   fs.mkdirSync(path.join(args.outDir,'private'),{recursive:true,mode:0o700});
-  const receipt={source_sha:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),result:'incomplete',checks:[],exports:[],imports:[],screenshots:[],created_application_ids:[]};
+  const receipt={source_sha:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),run_id:crypto.randomUUID().slice(0,8),result:'incomplete',checks:[],exports:[],imports:[],screenshots:[],created_application_ids:[],created_application_api_keys:[],created_instance_ids:[],created_user_api_key_ids:[]};
   const checkpoint=()=>fs.writeFileSync(path.join(args.outDir,'receipt.json'),JSON.stringify(receipt,null,2));
   const credentials=loadRootCredentials({repoRoot:args.credentialsRoot});
   const owner=await openTemporaryOwnerSession({apiBaseUrl:args.apiBaseUrl,...credentials});
-  const keys=[];
-  let failure;
+  const keys=[], userKeys=[];
+  let failure, originalLocale, existingInstances;
   async function request(method,route,body,token) {
     const response=await fetch(args.apiBaseUrl+route,{method,redirect:'error',signal:AbortSignal.timeout(args.deadlineMs),headers:{'content-type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{cookie:owner.cookie,'x-csrf-token':owner.csrfToken})},...(body===undefined?{}:{body:JSON.stringify(body)})});
     const text=await response.text(); let result;
@@ -34,15 +35,31 @@ async function main() {
     assert.ok(result, `HTTP ${response.status} missing JSON ${route}`);
     return route.endsWith('/otlp/export')?result:result.data;
   }
+  async function listInstances() {
+    const items=[]; let page=1,total;
+    do {
+      const value=await request('GET',`/api/console/managed-services/langfuse/instances?page=${page}&page_size=50`);
+      assert.equal(value.success,true); assert.equal(value.page,page);
+      total=value.total; items.push(...value.items);
+      assert.equal(new Set(items.map(item=>item.instance_id)).size,items.length,'instance pagination progresses');
+      assert.ok(value.items.length>0 || items.length===total,'instance pagination complete'); page++;
+    } while(items.length<total);
+    assert.equal(items.length,total);return items;
+  }
   try {
+    const me=await request('GET','/api/console/me');
+    originalLocale={preferred_locale:me.preferred_locale,meta_preferred_locale:me.meta?.ui?.locale?.preferred_locale};
+    receipt.original_locale=originalLocale;checkpoint();
+    existingInstances=await listInstances();
     const langfuse=JSON.parse(fs.readFileSync(args.langfusePrivateFile,'utf8'));langfuse.base_url=langfuse.base_url.replace(/\/$/,'');
-    const suffix=crypto.randomUUID().slice(0,8);
+    const suffix=receipt.run_id;
     const apps=[];
     for(const label of ['Langfuse plugin source','Langfuse plugin imported']) {
       const app=await request('POST','/api/console/applications',{application_type:'agent_logs',name:`${label} ${suffix}`,description:'Public Langfuse plugin browser acceptance fixture',icon:null,icon_type:null,icon_background:null});
-      apps.push(app);receipt.created_application_ids.push(app.id);
+      apps.push(app);receipt.created_application_ids.push(app.id);checkpoint();
       await request('PATCH',`/api/console/applications/${app.id}/api-status`,{api_enabled:true});
       const key=await request('POST',`/api/console/applications/${app.id}/api-keys`,{name:`langfuse-${suffix}`,expires_at:null});keys.push({application_id:app.id,...key});
+      receipt.created_application_api_keys.push({application_id:app.id,id:key.id});checkpoint();
     }
     const batch=syntheticBatch();const ingested=await request('POST','/api/logs/v1/events',batch,keys[0].token);
     assert.equal(ingested.accepted_events,batch.events.length);
@@ -96,14 +113,59 @@ async function main() {
       }
       assert.equal(importedTasks,3);assert.ok(first);return first;
     }
-    receipt.trace_ids=await capture({args,credentials,langfuse,sources,target:{application_id:apps[1].id,name:apps[1].name},receipt,waitRemote,verifyTarget});
+    receipt.trace_ids=await capture({args,credentials,langfuse,sources,target:{application_id:apps[1].id,name:apps[1].name},receipt,waitRemote,verifyTarget,checkpoint,request,
+      verifyInstance:instanceId=>verifyOpenApi({request,args,instanceId,secrets:[langfuse.public_key,langfuse.secret_key,Buffer.from(`${langfuse.public_key}:${langfuse.secret_key}`).toString('base64')],receipt,checkpoint,userKeys})});
+    assert.equal(receipt.screenshots.length,20,'original 14 safe screenshots plus bilingual instance table/drawer evidence');
     receipt.result='pass';checkpoint();
   } catch(error) {receipt.result='fail';receipt.error=error.message;failure=error;checkpoint();}
   finally {
-    receipt.cleanup={revoked_keys:[],errors:[]};
+    receipt.cleanup={revoked_keys:[],revoked_user_api_keys:[],deleted_instance_ids:[],errors:[]};
     for(const key of keys) {
       try {await request('DELETE',`/api/console/applications/${key.application_id}/api-keys/${key.id}`);receipt.cleanup.revoked_keys.push(key.id);}
       catch(error) {receipt.cleanup.errors.push(error.message);}
+    }
+    for(const key of userKeys) {
+      try {await request('POST',`/api/console/user-api-keys/${key.id}/revoke`);}
+      catch(error) {receipt.cleanup.errors.push(error.message);}
+      // Verification is independent of the revoke result and never stores the token.
+      try {
+        const listed=await request('GET','/api/console/user-api-keys');
+        assert.equal(listed.items.find(item=>item.id===key.id)?.revoked,true,'temporary PAT independently confirmed revoked');
+        receipt.cleanup.revoked_user_api_keys.push(key.id);
+      } catch(error) {receipt.cleanup.errors.push(error.message);}
+    }
+    for(const id of receipt.created_instance_ids) {
+      try {
+        const listed=await listInstances();
+        if(listed.some(item=>item.instance_id===id)) await request('DELETE',`/api/console/managed-services/langfuse/instances/${encodeURIComponent(id)}`);
+        const after=await listInstances();
+        assert.ok(!after.some(item=>item.instance_id===id),'owned instance removed');
+        receipt.cleanup.deleted_instance_ids.push(id);
+      } catch(error) {receipt.cleanup.errors.push(error.message);}
+    }
+    if(existingInstances) {
+      try {
+        const after=await listInstances();
+        for(const original of existingInstances) assert.deepEqual(after.find(item=>item.instance_id===original.instance_id),original,'preexisting connections unchanged');
+        receipt.cleanup.preexisting_instances_preserved=true;
+      } catch(error) {receipt.cleanup.errors.push(error.message);}
+    }
+    if(originalLocale) {
+      try {
+        const current=await request('GET','/api/console/me');
+        // The API uses JSON Merge Patch. Null removes an originally absent owned
+        // preference; current metadata preserves unrelated concurrent preferences.
+        const meta={...current.meta,ui:{...current.meta?.ui,locale:{...current.meta?.ui?.locale,preferred_locale:originalLocale.meta_preferred_locale ?? null}}};
+        await request('PATCH','/api/console/me/meta',{meta});
+        if(current.preferred_locale!==originalLocale.preferred_locale) {
+          const body=Object.fromEntries(['name','nickname','email','phone','avatar_url','introduction'].map(field=>[field,current[field]]));
+          await request('PATCH','/api/console/me',{...body,preferred_locale:originalLocale.preferred_locale ?? null});
+        }
+        const restored=await request('GET','/api/console/me');
+        assert.equal(restored.meta?.ui?.locale?.preferred_locale,originalLocale.meta_preferred_locale);
+        assert.equal(restored.preferred_locale,originalLocale.preferred_locale);
+        receipt.cleanup.locale_restored=true;
+      } catch(error) {receipt.cleanup.errors.push(error.message);}
     }
     try {await owner.dispose();receipt.cleanup.session_revoked=true;}
     catch(error) {receipt.cleanup.errors.push(error.message);}

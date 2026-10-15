@@ -29,11 +29,40 @@ revoked in `finally`.
 The scenario creates two labeled Agent Logs applications, ingests a controlled
 21-event / 3-task / 2-conversation source, and reads retained Agent Flow history
 without model calls. `--native-application-id` optionally chooses that history.
-On desktop and mobile it saves/reloads the connection, checks the real remote,
+On desktop 1440×1000 and mobile 390×844 it creates two owned table instances with
+independent credential pairs, reloads both, edits the first with blank credentials,
+checks its real connection, verifies the invalid second pair fails independently,
+deletes the second, and checks the first still works. It switches English and
+Simplified Chinese through the real global LanguageChromeMenu and observes its
+`PATCH /api/console/me/meta`; language URL hints and plugin language buttons do not
+drive these assertions. Screenshots include the shared desktop table/mobile list
+and the Chinese instance drawer. Each row's export/import drawer explicitly submits
+that row's `instance_id`. The scenario then
 exports both sources by date, waits for remote persistence, imports into the chosen
 Agent Logs application, repeats import, compares exact original source facts, and
 captures actual pages. It also imports the current synthetic traces by date and checks source/target/date label associations and unique form IDs. Source and target selection use the real label-associated combobox, supported ArrowDown/Enter input, and the active option UUID. No private CSS or virtual scroll state is assumed, and no hidden UI state is set. The source application keys are revoked independently on exit (including normal DELETE204 responses); labeled
 applications and imported history remain available for manual inspection.
+
+The same batch checks real OpenAPI discovery against every operation in the live
+full document (no fixed operation count), selects the GET projects and observations
+operations by method/path metadata, checks operation schemas and local reference
+closure, and executes limited reads plus an invalid limit. Actual upstream status,
+JSON/error body, authoritative base64 bytes and absence of credentials are checked.
+No availability probe, alternate endpoint or retry is used by these new operations.
+It creates an ephemeral user PAT with the current actor role, chooses an existing
+enabled non-browser MCP instance, and calls actual `/mcp/{instance_id}` JSON-RPC
+`mcp_list`, `mcp_get`, and `mcp_call` for all four fixed tools. Oversized responses
+are read through documented `mcp_result` continuation/projection without rerunning
+the business operation.
+
+Finally it independently revokes the PAT and verifies `revoked=true` from the user
+key list, deletes only owned plugin instances, checks preexisting instance DTOs
+remain unchanged, restores only the original owned locale preference using current
+metadata, disposes both temporary session owners, and removes browser storage.
+`receipt.json` checkpoints each created instance, application key ID and user key ID
+immediately, plus the original locale preference, so the Root's independent cleanup
+can recover after interruption. Tokens and project keys are never written to receipts.
+The fixture does not mutate legacy/default connections or create native execution.
 
 Receipts and screenshots go beneath `tmp/test-governance/`. A resource supervisor
 must stop only this task's runtime/browser processes if system CPU, physical memory,
