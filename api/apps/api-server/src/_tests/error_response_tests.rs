@@ -271,3 +271,39 @@ async fn package_target_mismatch_has_a_stable_api_error_code() {
     assert_eq!(payload["code"], "plugin_runtime_target_mismatch");
     assert!(payload["message"].as_str().unwrap().contains("linux/arm64"));
 }
+
+#[tokio::test]
+async fn subscription_failures_have_safe_static_recovery_messages() {
+    for (error, status, code, action) in [
+        (
+            ControlPlaneError::Conflict("subscription_required"),
+            StatusCode::CONFLICT,
+            "subscription_required",
+            "Send a message",
+        ),
+        (
+            ControlPlaneError::Conflict("subscription_expired"),
+            StatusCode::CONFLICT,
+            "subscription_expired",
+            "Send a new message",
+        ),
+        (
+            ControlPlaneError::UpstreamUnavailable("subscription_unavailable"),
+            StatusCode::BAD_GATEWAY,
+            "subscription_unavailable",
+            "Refresh",
+        ),
+    ] {
+        let error = anyhow::Error::new(error).context("raw-provider-secret token=do-not-expose");
+        let response = ApiError(error).into_response();
+        assert_eq!(response.status(), status);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["code"], code);
+        let message = payload["message"].as_str().unwrap();
+        assert!(message.contains(action));
+        assert!(message.contains("retry"));
+        assert!(!message.contains("raw-provider-secret"));
+        assert!(!message.contains("do-not-expose"));
+    }
+}

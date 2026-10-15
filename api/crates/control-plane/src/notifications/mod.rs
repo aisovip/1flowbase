@@ -263,7 +263,7 @@ where
             .notification_authorization_view(actor.current_workspace_id, record.id)
             .await?;
         let authorization = match persisted {
-            Some(view) => Some(view),
+            Some(view) => Some(authorization::project_authorization(view)),
             None => self
                 .types(actor)
                 .await?
@@ -585,6 +585,15 @@ where
                 }
                 Error::Conflict("authorization_invalid") => {
                     Some(("failure", "authorization_invalid"))
+                }
+                Error::Conflict("subscription_required") => {
+                    Some(("failure", "subscription_required"))
+                }
+                Error::Conflict("subscription_expired") => {
+                    Some(("failure", "subscription_expired"))
+                }
+                Error::UpstreamUnavailable("subscription_unavailable") => {
+                    Some(("failure", "subscription_unavailable"))
                 }
                 Error::Conflict("recipient_not_ready") => Some(("failure", "recipient_not_ready")),
                 Error::UpstreamUnavailable("provider_rejected") => {

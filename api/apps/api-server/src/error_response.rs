@@ -245,7 +245,12 @@ impl IntoResponse for ApiError {
         // Always expose the real error message, but sanitize sensitive information.
         // Provider runtime errors are upstream passthrough. Surface the message so
         // callers can debug provider and protocol failures without host rewriting.
-        let message = sanitize_error_message(&self.0.to_string());
+        let message = match code {
+            "subscription_required" => "No verifiable user message has been received. Send a message to the bound notification account, then refresh and retry.".to_owned(),
+            "subscription_expired" => "The notification delivery window has expired. Send a new message to the bound notification account, then refresh and retry.".to_owned(),
+            "subscription_unavailable" => "The notification delivery window could not be verified. Refresh the authorization status and retry when the provider is available.".to_owned(),
+            _ => sanitize_error_message(&self.0.to_string()),
+        };
 
         (
             status,

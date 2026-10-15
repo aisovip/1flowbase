@@ -43,6 +43,11 @@ where
             .notification_config(actor, instance, descriptor)
             .await?;
         let input = NotificationRuntimeInput {
+            delivery_window: state
+                .authorization
+                .clone()
+                .map(super::authorization::project_authorization)
+                .and_then(|view| view.delivery_window),
             operation: NotificationOperation::Send { input_payload },
             managed_secrets: state.managed_secrets.clone(),
         };
@@ -128,6 +133,9 @@ fn failure_error(code: Code) -> Error {
         Code::AuthorizationRequired => Error::Conflict("authorization_required"),
         Code::AuthorizationInvalid => Error::Conflict("authorization_invalid"),
         Code::RecipientNotReady => Error::Conflict("recipient_not_ready"),
+        Code::SubscriptionRequired => Error::Conflict("subscription_required"),
+        Code::SubscriptionExpired => Error::Conflict("subscription_expired"),
+        Code::SubscriptionUnavailable => Error::UpstreamUnavailable("subscription_unavailable"),
         Code::ProviderRejected => Error::UpstreamUnavailable("provider_rejected"),
         Code::ProviderResultUnknown => Error::UpstreamUnavailable("notification_provider_failed"),
     }

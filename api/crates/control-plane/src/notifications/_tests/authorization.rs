@@ -159,3 +159,34 @@ fn qr_challenge_may_appear_only_in_its_exact_cached_display_url() {
         &patch
     ));
 }
+
+#[test]
+fn delivery_window_projection_expires_at_boundary_without_revoking_authorization() {
+    let active: NotificationAuthorizationView = serde_json::from_value(json!({"status":"authorized","delivery_window":{"status":"active","last_received_at_ms":100,"expires_at_ms":200}})).unwrap();
+    assert_eq!(project_authorization_at(active.clone(), 199), active);
+    for now in [200, 201, u64::MAX] {
+        let expired = project_authorization_at(active.clone(), now);
+        assert_eq!(expired.status, Status::Authorized);
+        let window = expired.delivery_window.unwrap();
+        assert_eq!(
+            window.status,
+            extension_contracts::NotificationDeliveryWindowStatus::Expired
+        );
+        assert_eq!(window.last_received_at_ms, Some(100));
+        assert_eq!(window.expires_at_ms, Some(200));
+    }
+    for window in [
+        json!({"status":"unknown","last_received_at_ms":100,"expires_at_ms":200}),
+        json!({"status":"waiting_for_message"}),
+    ] {
+        let view: NotificationAuthorizationView =
+            serde_json::from_value(json!({"status":"authorized","delivery_window":window}))
+                .unwrap();
+        assert_eq!(project_authorization_at(view.clone(), u64::MAX), view);
+    }
+    assert_eq!(
+        project_authorization_at(unauthorized(), 200),
+        unauthorized()
+    );
+    assert!(unauthorized().delivery_window.is_none());
+}
