@@ -1,0 +1,57 @@
+name: Legacy crypto fixture producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact commit containing the producer tooling (crypto source stays pinned to immutable pre-upgrade baseline)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Extract immutable old source outside the product Cargo graph
+        run: |
+          set -euo pipefail
+          node scripts/node/legacy-crypto-fixtures/prepare.mjs prepare
+          jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Resolve old-lock subset and reject dependency drift before execution
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path tmp/test-governance/legacy-crypto-fixtures/producer/Cargo.toml --format-version 1 > tmp/test-governance/legacy-crypto-fixtures/metadata.json 2> tmp/test-governance/legacy-crypto-fixtures/resolve.log || { tail -c 6000 tmp/test-governance/legacy-crypto-fixtures/resolve.log; exit 1; }
+          node scripts/node/legacy-crypto-fixtures/prepare.mjs verify-lock
+      - name: Generate public historical bytes using the old implementation and dependencies
+        run: |
+          set -euo pipefail
+          cargo run --locked --manifest-path tmp/test-governance/legacy-crypto-fixtures/producer/Cargo.toml -- tmp/test-governance/legacy-crypto-fixtures/artifact/fixtures.json > tmp/test-governance/legacy-crypto-fixtures/produce.log 2>&1 || { tail -c 6000 tmp/test-governance/legacy-crypto-fixtures/produce.log; exit 1; }
+          node scripts/node/legacy-crypto-fixtures/prepare.mjs provenance
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: legacy-crypto-fixtures-${{ github.run_id }}
+          path: |
+            tmp/test-governance/legacy-crypto-fixtures/artifact/
+            tmp/test-governance/legacy-crypto-fixtures/resolve.log
+            tmp/test-governance/legacy-crypto-fixtures/produce.log
+          if-no-files-found: error
+          retention-days: 30
