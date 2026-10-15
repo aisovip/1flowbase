@@ -92,17 +92,14 @@ async function run() {
     evidence.before = JSON.parse(sql("select jsonb_build_object('attempt_status',a.status,'attempt_age_seconds',extract(epoch from now()-a.updated_at),'claim_status',c.status,'lease_live',c.lease_expires_at>now(),'callback_status',t.status) from flow_run_callback_resume_attempts a join flow_run_callback_tasks t on t.id=a.callback_task_id join flow_run_resume_claims c on c.callback_task_id=a.callback_task_id;"));
     assert.equal(evidence.before.lease_live, true);
     assert.equal(evidence.before.callback_status, 'completed');
-    let waitingForIdentity = true;
-    try {
-      evidence.roundIdentityBefore = await bounded((async () => {
-        while (waitingForIdentity) {
-          const identity = callbackRoundIdentity(sql);
-          if (identity.markers.length) return identity;
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-      })(), 'Original WS resume did not persist its real callback round identity');
-    } finally { waitingForIdentity = false; }
-    assertCallbackRoundIdentity(evidence.roundIdentityBefore);
+    // Collect the pre-disconnect identity without short-circuiting the HTTP
+    // regression oracle when an older implementation never writes a marker.
+    const identityDeadline = Date.now() + 30_000;
+    for (;;) {
+      evidence.roundIdentityBefore = callbackRoundIdentity(sql);
+      if (evidence.roundIdentityBefore.markers.length || Date.now() >= identityDeadline) break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     save();
     socket.terminate();
     await new Promise(resolve => socket.readyState === WebSocket.CLOSED ? resolve() : socket.once('close', resolve));
@@ -128,6 +125,9 @@ async function run() {
     evidence.httpStatus = retry.status;
     if (retry.status !== 200) { evidence.body = await retry.text(); save(); }
     assert.equal(retry.status, 200, 'Live callback lease must attach, even when admission is older than five minutes');
+    // Positive results still require the real identity to have existed before
+    // disconnect; a marker created by the retry cannot satisfy this snapshot.
+    assertCallbackRoundIdentity(evidence.roundIdentityBefore);
     const reader = retry.body.getReader();
     const chunks = [];
     let raw = '';
