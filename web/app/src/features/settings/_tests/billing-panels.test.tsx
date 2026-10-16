@@ -331,14 +331,14 @@ describe('billing settings panels', () => {
       'false'
     );
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
+    const editor = await screen.findByRole('dialog', { name: '新增计费规则' });
     expect(
-      await screen.findByRole('dialog', { name: '新增计费规则' })
+      within(editor).getByLabelText('输入 Token 单位')
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
-    expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
-    expect(screen.getByLabelText('缓存写入单价')).toBeInTheDocument();
-    expect(screen.getByLabelText('条件计费规则')).toHaveValue('[]');
-    expect(screen.getByLabelText('条件计费规则')).toBeEnabled();
+    expect(within(editor).getByLabelText('缓存命中单价')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('缓存写入单价')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('条件计费规则')).toHaveValue('[]');
+    expect(within(editor).getByLabelText('条件计费规则')).toBeEnabled();
   });
 
   test('submits pricing filters through the shared server-paginated table', async () => {
