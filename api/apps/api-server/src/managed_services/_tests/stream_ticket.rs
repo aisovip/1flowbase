@@ -144,14 +144,14 @@ async fn mutation_and_hot_generation_revoke_preissued_ticket() {
 }
 #[test]
 fn browser_origin_is_bound_independently_of_proxy_host() {
-    for host in ["127.0.0.1:3400", "127.0.0.1:7600", "gateway.taichuy.cn"] {
+    for host in ["127.0.0.1:8080", "127.0.0.1:9000", "console.example"] {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert("host", host.parse().unwrap());
-        headers.insert("origin", "https://gateway.taichuy.cn".parse().unwrap());
+        headers.insert("origin", "https://console.example".parse().unwrap());
         headers.insert("x-forwarded-host", "unrelated.example".parse().unwrap());
         assert_eq!(
             stream_ticket::origin(&headers).unwrap(),
-            "https://gateway.taichuy.cn"
+            "https://console.example"
         );
     }
 }
