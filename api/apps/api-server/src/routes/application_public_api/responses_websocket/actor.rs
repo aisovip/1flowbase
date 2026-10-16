@@ -7,7 +7,8 @@ use control_plane::{
 };
 use std::sync::Arc;
 
-use axum::extract::ws::{CloseFrame, Message, WebSocket};
+use super::transport::Socket;
+use axum::extract::ws::{CloseFrame, Message};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use thiserror::Error;
@@ -173,7 +174,7 @@ impl ResponsesConnectionActor {
 }
 
 pub(crate) async fn run_connection(
-    socket: WebSocket,
+    socket: impl Into<Socket>,
     state: Arc<ApiState>,
     authorization: Arc<ResponsesWebSocketAuthorization>,
 ) {
@@ -202,7 +203,7 @@ pub(crate) async fn run_connection(
 }
 
 #[cfg(test)]
-pub(super) async fn run_connection_loop<F, Fut>(socket: WebSocket, execute: F)
+pub(super) async fn run_connection_loop<F, Fut>(socket: impl Into<Socket>, execute: F)
 where
     F: Fn(Value, mpsc::Sender<String>) -> Fut,
     Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
@@ -214,7 +215,7 @@ where
 
 #[cfg(test)]
 pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
-    socket: WebSocket,
+    socket: impl Into<Socket>,
     execute: F,
     terminations: Option<(
         Arc<crate::provider_runtime::TransportConnectionScope>,
@@ -236,7 +237,7 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
 }
 
 pub(super) async fn run_observed_connection_loop<F, Fut>(
-    socket: WebSocket,
+    socket: impl Into<Socket>,
     execute: F,
     mut terminations: Option<(
         Arc<crate::provider_runtime::TransportConnectionScope>,
@@ -249,7 +250,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
         + Send
         + 'static,
 {
-    let (mut sender, mut receiver) = socket.split();
+    let (mut sender, mut receiver) = socket.into().split();
     let mut terminal_delivered = false;
     let mut queued_response: Option<(Message, Option<CaptureGuard>)> = None;
     let mut capture: Option<CaptureGuard> = None;
@@ -525,7 +526,7 @@ async fn receive_termination(
 }
 
 async fn send_transport_terminal(
-    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    sender: &mut futures_util::stream::SplitSink<Socket, Message>,
     code: &str,
     active: bool,
     capture: Option<&mut CaptureGuard>,
@@ -572,8 +573,8 @@ const CLOSE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 /// A server-initiated close is complete only after the peer acknowledges it or a bounded timeout
 /// expires. `SinkExt::send` flushes the Close frame before we continue polling the read half.
 async fn finish_server_close(
-    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
-    receiver: &mut futures_util::stream::SplitStream<WebSocket>,
+    sender: &mut futures_util::stream::SplitSink<Socket, Message>,
+    receiver: &mut futures_util::stream::SplitStream<Socket>,
     frame: Option<CloseFrame>,
 ) {
     if sender.send(Message::Close(frame)).await.is_err() {
