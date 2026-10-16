@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { App, Button, Drawer, Form, Input, Space } from 'antd';
-import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
-import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
-import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
+import { App, Button, Drawer, Form, Input } from 'antd';
 import {
   deleteConsoleRuntimeModelRecord,
   updateConsoleRuntimeModelRecord,
@@ -33,17 +30,17 @@ export function FileRecordActions({
   const [form] = Form.useForm<{ filename: string }>();
   return (
     <>
-      <Space className="file-table-view__actions" size={8}>
+      <div className="file-table-view__actions">
         <Button
           className="file-table-view__public"
-          icon={<GlobalOutlined aria-hidden="true" />}
+          type="text"
           disabled={!csrfToken}
           onClick={onPublic}
         >
           {i18nText('frontstage', 'files.temporary_public')}
         </Button>
         <Button
-          icon={<EditOutlined aria-hidden="true" />}
+          type="text"
           disabled={!csrfToken}
           onClick={() => {
             form.setFieldsValue({ filename: record.filename });
@@ -54,7 +51,7 @@ export function FileRecordActions({
         </Button>
         <Button
           danger
-          icon={<DeleteOutlined aria-hidden="true" />}
+          type="text"
           disabled={!csrfToken}
           onClick={() => {
             confirmation.current = modal.confirm({
@@ -89,7 +86,7 @@ export function FileRecordActions({
         >
           {i18nText('frontstage', 'auto.delete')}
         </Button>
-      </Space>
+      </div>
       <Drawer
         open={editing}
         title={i18nText('frontstage', 'files.edit_title')}

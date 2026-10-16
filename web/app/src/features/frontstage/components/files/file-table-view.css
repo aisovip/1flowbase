@@ -113,13 +113,22 @@
 .file-table-view__url > button {
   flex: none;
 }
-.file-table-view__actions button {
-  height: 40px;
+.file-table-view__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  max-width: 100%;
 }
-.file-table-view__public {
+.file-table-view__actions button {
+  height: 32px;
+  padding-inline: 4px;
+  border: 0;
+  box-shadow: none;
+}
+.file-table-view__public:not(:disabled) {
   color: var(--ant-color-primary-text);
-  background: var(--ant-color-primary-bg);
-  border-color: var(--ant-color-primary-border);
 }
 .file-table-view__table .data-table__pagination {
   padding: 20px 24px;
