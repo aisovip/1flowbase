@@ -477,6 +477,10 @@ describe('ApplicationLogsPage - run export downloads', () => {
 
     await waitFor(() => expect(exportButton).toBeEnabled());
     fireEvent.click(exportButton);
+    expect(
+      runtimeApi.exportSelectedApplicationRunsTraceDumpZip
+    ).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
 
     await waitFor(() => {
       expect(
@@ -547,6 +551,10 @@ describe('ApplicationLogsPage - run export downloads', () => {
       name: '导出已选日志'
     });
     fireEvent.click(exportButton);
+    expect(
+      runtimeApi.exportSelectedApplicationRunsTraceDumpZip
+    ).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
 
     await waitFor(() => {
       expect(exportButton).toHaveClass('ant-btn-loading');
@@ -622,6 +630,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
       expect(screen.getByRole('button', { name: '导出已选日志' })).toBeEnabled()
     );
     fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
 
     expect(await screen.findByText('导出日志失败')).toBeInTheDocument();
     expect(createObjectUrlSpy).not.toHaveBeenCalled();
@@ -638,10 +647,9 @@ describe('ApplicationLogsPage - run export downloads', () => {
       expect(screen.getByRole('button', { name: '导出已选日志' })).toBeEnabled()
     );
     fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
 
-    expect(
-      await screen.findByText('缺少 CSRF token，无法导出日志')
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认下载' })).toBeDisabled();
     expect(
       runtimeApi.exportSelectedApplicationRunsTraceDumpZip
     ).not.toHaveBeenCalled();

@@ -342,6 +342,8 @@
     "import_target_application": "选择导入目标应用",
     "application": "应用",
     "exchange": {
+      "format": "导出格式",
+      "confirm_download": "确认下载",
       "open": "日志交换",
       "execute": "执行交换",
       "operation": "交换方式",

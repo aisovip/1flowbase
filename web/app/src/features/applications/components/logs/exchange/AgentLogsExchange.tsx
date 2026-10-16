@@ -1,3 +1,4 @@
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useRef, useState } from 'react';
 import {
   Alert,
@@ -7,7 +8,8 @@ import {
   Modal,
   Select,
   Space,
-  Typography
+  Typography,
+  Tooltip
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
@@ -22,10 +24,12 @@ import {
 } from '../../../api/log-exchange';
 import { saveApplicationRunExport } from '../../../lib/run-export-download';
 
-type Operation = 'otlp_export' | 'otlp_import';
+type Operation = 'native_export' | 'otlp_export' | 'otlp_import';
 interface Props {
   applicationId: string;
   allowImport?: boolean;
+  onExportArchive?: () => Promise<void>;
+  exportingArchive?: boolean;
   applications: Array<{ id: string; name: string }>;
   selectedRecords: Array<{
     id: string;
@@ -81,7 +85,19 @@ export function AgentLogsExchange(props: Props) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>{t('logs.exchange.open')}</Button>
+      {props.onExportArchive ? (
+        <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
+          <Button
+            aria-label={t('auto.export_selected_runs_trace_dump')}
+            icon={<UploadOutlined aria-hidden="true" />}
+            disabled={props.selectedRecords.length === 0}
+            loading={props.exportingArchive}
+            onClick={() => setOpen(true)}
+          />
+        </Tooltip>
+      ) : (
+        <Button onClick={() => setOpen(true)}>{t('logs.exchange.open')}</Button>
+      )}
       {open && <ExchangeModal {...props} onClose={() => setOpen(false)} />}
     </>
   );
@@ -90,6 +106,7 @@ export function AgentLogsExchange(props: Props) {
 function ExchangeModal({
   applicationId,
   allowImport = true,
+  onExportArchive,
   applications,
   selectedRecords,
   onImported,
@@ -98,7 +115,11 @@ function ExchangeModal({
   const { t } = useTranslation('applications');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [operation, setOperation] = useState<Operation>(
-    selectedRecords.length || !allowImport ? 'otlp_export' : 'otlp_import'
+    onExportArchive
+      ? 'native_export'
+      : selectedRecords.length || !allowImport
+        ? 'otlp_export'
+        : 'otlp_import'
   );
   const [target, setTarget] = useState(applicationId);
   const [otlp, setOtlp] = useState<object | null>(null);
@@ -113,7 +134,10 @@ function ExchangeModal({
   );
   const ready = Boolean(
     csrfToken &&
-    (!importing ? selectedRecords.length && !missingConversation : target) &&
+    (!importing
+      ? selectedRecords.length &&
+        (operation === 'native_export' || !missingConversation)
+      : target) &&
     (operation !== 'otlp_import' || otlp)
   );
 
@@ -122,6 +146,15 @@ function ExchangeModal({
     running.current = true;
     setBusy(true);
     setReceipts([]);
+    if (operation === 'native_export') {
+      try {
+        await onExportArchive?.();
+      } finally {
+        running.current = false;
+        setBusy(false);
+      }
+      return;
+    }
     const groups = new Map<string, string[]>();
     if (importing) groups.set(target, []);
     else
@@ -198,22 +231,40 @@ function ExchangeModal({
             loading={busy}
             onClick={() => void exchange()}
           >
-            {t('logs.exchange.execute')}
+            {t(
+              onExportArchive
+                ? 'logs.exchange.confirm_download'
+                : 'logs.exchange.execute'
+            )}
           </Button>
         </Space>
       }
     >
       <Form layout="vertical" disabled={busy}>
-        <Form.Item label={t('logs.exchange.operation')}>
+        <Form.Item
+          label={t(
+            onExportArchive ? 'logs.exchange.format' : 'logs.exchange.operation'
+          )}
+        >
           <Select
-            aria-label={t('logs.exchange.operation')}
+            aria-label={t(
+              onExportArchive
+                ? 'logs.exchange.format'
+                : 'logs.exchange.operation'
+            )}
             value={operation}
             onChange={(value: Operation) => {
               setOperation(value);
               setReceipts([]);
             }}
             options={[
-              { value: 'otlp_export', label: t('logs.exchange.otlp_export') },
+              ...(onExportArchive
+                ? [{ value: 'native_export', label: '1flowbase' }]
+                : []),
+              {
+                value: 'otlp_export',
+                label: onExportArchive ? 'OTLP' : t('logs.exchange.otlp_export')
+              },
               ...(allowImport
                 ? [
                     {
@@ -249,7 +300,7 @@ function ExchangeModal({
             <Typography.Paragraph>
               {t('logs.exchange.selection', { count: selectedRecords.length })}
             </Typography.Paragraph>
-            {missingConversation && (
+            {operation === 'otlp_export' && missingConversation && (
               <Alert
                 type="warning"
                 message={t('logs.exchange.missing_conversation')}

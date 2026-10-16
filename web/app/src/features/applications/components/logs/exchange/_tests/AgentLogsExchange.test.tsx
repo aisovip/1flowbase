@@ -272,3 +272,98 @@ test('native source exposes standard download and does not offer import into an 
     })
   ).not.toBeInTheDocument();
 });
+
+test('unified export defaults to native, cancels without download and confirms the chosen format', async () => {
+  const onExportArchive = vi.fn().mockResolvedValue(undefined);
+  api.exportApplicationLogsOtlp.mockResolvedValue({
+    blob: new Blob(['{}']),
+    filename: 'logs.json',
+    contentType: 'application/json'
+  });
+  render(
+    <AgentLogsExchange
+      applicationId="app-a"
+      allowImport={false}
+      applications={[{ id: 'app-a', name: 'App A' }]}
+      selectedRecords={[
+        { id: 'r1', application_id: 'app-a', log_conversation_id: 'c1' }
+      ]}
+      onImported={vi.fn()}
+      onExportArchive={onExportArchive}
+    />
+  );
+  const trigger = screen.getByRole('button', { name: '导出已选日志' });
+  expect(
+    screen.queryByRole('button', { name: '日志交换' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(trigger);
+  expect(
+    within(screen.getByRole('dialog')).getByText('1flowbase')
+  ).toBeInTheDocument();
+  expect(onExportArchive).not.toHaveBeenCalled();
+  expect(api.exportApplicationLogsOtlp).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /^关\s*闭$/
+    })
+  );
+  expect(onExportArchive).not.toHaveBeenCalled();
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+  await waitFor(() => expect(onExportArchive).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '确认下载' })).toBeEnabled()
+  );
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '导出格式' }));
+  fireEvent.click(
+    await screen.findByText('OTLP', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  expect(api.exportApplicationLogsOtlp).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
+  await waitFor(() =>
+    expect(api.exportApplicationLogsOtlp).toHaveBeenCalledWith(
+      'app-a',
+      { log_conversation_ids: ['c1'] },
+      'fixture-csrf'
+    )
+  );
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /^关\s*闭$/
+    })
+  );
+  fireEvent.click(trigger);
+  expect(
+    within(screen.getByRole('dialog')).getByText('1flowbase')
+  ).toBeInTheDocument();
+});
+
+test('native export allows runs without a conversation while OTLP explains why it cannot export them', async () => {
+  render(
+    <AgentLogsExchange
+      applicationId="app-a"
+      allowImport={false}
+      applications={[]}
+      selectedRecords={[
+        { id: 'r1', application_id: 'app-a', log_conversation_id: null }
+      ]}
+      onImported={vi.fn()}
+      onExportArchive={vi.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
+  expect(screen.getByRole('button', { name: '确认下载' })).toBeEnabled();
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '导出格式' }));
+  fireEvent.click(
+    await screen.findByText('OTLP', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  expect(screen.getByRole('button', { name: '确认下载' })).toBeDisabled();
+  expect(
+    screen.getByText('部分所选日志缺少会话标识，请刷新列表后再导出。')
+  ).toBeInTheDocument();
+});

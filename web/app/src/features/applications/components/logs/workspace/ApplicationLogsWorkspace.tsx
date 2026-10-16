@@ -1155,20 +1155,42 @@ export function ApplicationLogsWorkspace({
           onClick={() => setMobileFiltersExpanded((value) => !value)}
         />
         <div className="application-logs-page__filter-actions">
+          {(applicationType === 'agent_logs' ||
+            applicationType === 'agent_flow') && (
+            <AgentLogsExchange
+              allowImport={applicationType === 'agent_logs'}
+              onExportArchive={
+                applicationType === 'agent_flow'
+                  ? exportSelectedRuns
+                  : undefined
+              }
+              exportingArchive={exportingSelectedRuns}
+              applicationId={applicationId}
+              applications={applications}
+              selectedRecords={runs.filter((run) =>
+                selectedVisibleRunIds.includes(run.id)
+              )}
+              onImported={() => {
+                void refreshRunsFromDurable();
+              }}
+            />
+          )}
           {applicationType !== 'agent_logs' ? (
             <>
               {' '}
-              <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
-                <Button
-                  aria-label={t('auto.export_selected_runs_trace_dump')}
-                  disabled={selectedVisibleRunIds.length === 0}
-                  icon={<UploadOutlined aria-hidden="true" />}
-                  loading={exportingSelectedRuns}
-                  onClick={() => {
-                    void exportSelectedRuns();
-                  }}
-                />
-              </Tooltip>
+              {applicationType !== 'agent_flow' && (
+                <Tooltip title={t('auto.export_selected_runs_trace_dump')}>
+                  <Button
+                    aria-label={t('auto.export_selected_runs_trace_dump')}
+                    disabled={selectedVisibleRunIds.length === 0}
+                    icon={<UploadOutlined aria-hidden="true" />}
+                    loading={exportingSelectedRuns}
+                    onClick={() => {
+                      void exportSelectedRuns();
+                    }}
+                  />
+                </Tooltip>
+              )}
               <input
                 ref={archiveImportInputRef}
                 accept="application/json,.json,application/zip,.zip"
@@ -1195,20 +1217,6 @@ export function ApplicationLogsWorkspace({
               </Tooltip>
             </>
           ) : null}
-          {(applicationType === 'agent_logs' ||
-            applicationType === 'agent_flow') && (
-            <AgentLogsExchange
-              allowImport={applicationType === 'agent_logs'}
-              applicationId={applicationId}
-              applications={applications}
-              selectedRecords={runs.filter((run) =>
-                selectedVisibleRunIds.includes(run.id)
-              )}
-              onImported={() => {
-                void refreshRunsFromDurable();
-              }}
-            />
-          )}
           {applicationType === 'agent_logs' && applicationId && (
             <AgentLogsDeleteButton
               key={applicationId}

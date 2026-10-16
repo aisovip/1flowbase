@@ -1,5 +1,11 @@
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import {
@@ -128,6 +134,8 @@ test('exports selected rows by application and requires an explicit import targe
   fireEvent.click(screen.getByRole('checkbox', { name: '选择导出 run-a' }));
   fireEvent.click(screen.getByRole('checkbox', { name: '选择导出 run-b' }));
   fireEvent.click(screen.getByRole('button', { name: '导出已选日志' }));
+  expect(exportSelectedApplicationRunsTraceDumpZip).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认下载' }));
   await waitFor(() =>
     expect(exportSelectedApplicationRunsTraceDumpZip).toHaveBeenCalledWith(
       'app-b',
@@ -140,13 +148,27 @@ test('exports selected rows by application and requires an explicit import targe
     ['run-a'],
     'test-csrf'
   );
+  await waitFor(() =>
+    expect(
+      within(
+        document.querySelector('.ant-modal-footer') as HTMLElement
+      ).getByRole('button', { name: /^关\s*闭$/ })
+    ).toBeEnabled()
+  );
+  fireEvent.click(
+    within(
+      document.querySelector('.ant-modal-footer') as HTMLElement
+    ).getByRole('button', { name: /^关\s*闭$/ })
+  );
   fireEvent.click(screen.getByRole('button', { name: '导入运行归档' }));
   expect(
     await screen.findByRole('combobox', { name: '选择导入目标应用' })
   ).toBeInTheDocument();
   const importDialog = screen.getByRole('dialog');
   expect(within(importDialog).getByText('导入运行归档')).toBeInTheDocument();
-  expect(within(importDialog).getByRole('button', { name: /确\s*定/ })).toBeDisabled();
+  expect(
+    within(importDialog).getByRole('button', { name: /确\s*定/ })
+  ).toBeDisabled();
 });
 
 test('restores an in-progress import with its chosen application after reload', async () => {

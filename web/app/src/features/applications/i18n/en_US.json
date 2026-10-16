@@ -342,6 +342,8 @@
     "import_target_application": "Select the import target application",
     "application": "Application",
     "exchange": {
+      "format": "Export format",
+      "confirm_download": "Confirm download",
       "open": "Exchange logs",
       "execute": "Execute exchange",
       "operation": "Exchange operation",
