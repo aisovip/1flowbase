@@ -1,3 +1,6 @@
+mod activation;
+pub use activation::verified_installed_managed_manifest;
+
 use anyhow::Result;
 use domain::{ActorContext, ContributionResourceScope, PluginContributionAuthoritySnapshot};
 use serde_json::json;
@@ -367,7 +370,8 @@ where
         let installation = self.managed_installation(installation_id).await?;
         let scope_id =
             domain::managed_installation_scope(&installation, actor.current_workspace_id);
-        self.repository
+        let snapshot = self
+            .repository
             .query_contribution_authority(
                 installation_id,
                 scope_id,
@@ -380,7 +384,28 @@ where
                     json!({}),
                 ),
             )
-            .await
+            .await;
+        match snapshot {
+            // A fresh system installation has no durable authority history yet. Root may
+            // inspect its empty state; reading must not create a revision row or grant.
+            Err(error)
+                if actor.is_root
+                    && matches!(
+                        error.downcast_ref::<ControlPlaneError>(),
+                        Some(ControlPlaneError::PermissionDenied(
+                            "contribution_workspace_history_required"
+                        ))
+                    ) =>
+            {
+                Ok(PluginContributionAuthoritySnapshot {
+                    installation_id,
+                    workspace_id: scope_id,
+                    revision: 0,
+                    authorizations: Vec::new(),
+                })
+            }
+            result => result,
+        }
     }
 
     async fn ensure_operation(&self, actor: &ActorContext, operation: &str) -> Result<()> {

@@ -137,19 +137,23 @@ pub(super) fn validate_stored_console_policy(
 ) -> Result<(), ControlPlaneError> {
     let mut seen_groups = BTreeSet::new();
     for group_policy in policy.groups() {
-        let group_key = group_key(group_policy.group());
-        let expected_operations = operation_index
-            .get(&group_key)
-            .ok_or(ControlPlaneError::InvalidInput("console_policy_group"))?;
-        if !seen_groups.insert(group_key) {
+        let key = group_key(group_policy.group());
+        if !seen_groups.insert(key.clone()) {
             return Err(ControlPlaneError::InvalidInput(
                 "console_policy_group_duplicate",
             ));
         }
-
-        validate_custom_operations(group_policy.operations(), expected_operations)?;
+        // Unpublished plugin groups remain durable but do not participate in this catalog.
+        if let Some(expected) = operation_index.get(&key) {
+            let active = group_policy
+                .operations()
+                .iter()
+                .filter(|operation| expected.contains_key(operation.operation_id().as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            validate_custom_operations(&active, expected)?;
+        }
     }
-
     Ok(())
 }
 
@@ -158,22 +162,64 @@ pub(super) fn complete_stored_console_policy(
     operation_index: &CompiledConsolePolicyOperationIndex,
 ) -> Result<RoleConsolePolicy, ControlPlaneError> {
     validate_stored_console_policy(&policy, operation_index)?;
-    let mut policies_by_group = policy
+    let mut stored = policy
         .groups()
         .iter()
-        .cloned()
-        .map(|group_policy| (group_key(group_policy.group()), group_policy))
+        .map(|group| (group_key(group.group()), group))
         .collect::<BTreeMap<_, _>>();
     let mut groups = Vec::with_capacity(operation_index.len());
-
-    for group_key in operation_index.keys() {
-        let policy = policies_by_group
-            .remove(group_key)
-            .unwrap_or(RoleConsoleGroupPolicy::disabled(group_from_key(group_key)?));
-        groups.push(policy);
+    for (key, operations) in operation_index {
+        groups.push(match stored.remove(key) {
+            Some(group) => RoleConsoleGroupPolicy::new(
+                group.group().clone(),
+                group.enabled(),
+                group.strategy(),
+                group
+                    .operations()
+                    .iter()
+                    .filter(|operation| operations.contains_key(operation.operation_id().as_str()))
+                    .cloned()
+                    .collect(),
+            ),
+            None => RoleConsoleGroupPolicy::disabled(group_from_key(key)?),
+        });
     }
-
     Ok(RoleConsolePolicy::new(policy.role_id(), groups))
+}
+
+/// Editing the visible catalog must not erase settings belonging to stopped plugins.
+pub(super) fn retain_unpublished_console_policy(
+    mut groups: Vec<RoleConsoleGroupPolicy>,
+    previous: &RoleConsolePolicy,
+    operation_index: &CompiledConsolePolicyOperationIndex,
+) -> Vec<RoleConsoleGroupPolicy> {
+    for prior in previous.groups() {
+        let key = group_key(prior.group());
+        let Some(active) = operation_index.get(&key) else {
+            groups.push(prior.clone());
+            continue;
+        };
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group_key(group.group()) == key)
+        {
+            let mut operations = group.operations().to_vec();
+            operations.extend(
+                prior
+                    .operations()
+                    .iter()
+                    .filter(|operation| !active.contains_key(operation.operation_id().as_str()))
+                    .cloned(),
+            );
+            *group = RoleConsoleGroupPolicy::new(
+                group.group().clone(),
+                group.enabled(),
+                group.strategy(),
+                operations,
+            );
+        }
+    }
+    groups
 }
 
 fn group_from_input(

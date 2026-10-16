@@ -450,18 +450,33 @@ impl PluginInterfaceAdapter {
             PluginInterfaceInput::SwitchVersion {
                 provider_code,
                 body,
-            } => Ok(PluginInterfaceOutput::Task(to_task_response(
-                self.service(actor, "plugins.families.switch")
-                    .switch_version(SwitchPluginVersionCommand {
-                        actor_user_id: actor.user_id,
-                        provider_code,
-                        target_installation_id: parse_uuid(
-                            &body.installation_id,
-                            "installation_id",
-                        )?,
-                    })
-                    .await?,
-            ))),
+            } => {
+                let installation_id = parse_uuid(&body.installation_id, "installation_id")?;
+                control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(
+                    ),
+                )
+                .with_node_id(self.0.api_node_id.clone())
+                .authorize_root_installed_activation(
+                    actor,
+                    installation_id,
+                    std::path::Path::new(&self.0.provider_install_root),
+                )
+                .await?;
+                Ok(PluginInterfaceOutput::Task(to_task_response(
+                    self.service(actor, "plugins.families.switch")
+                        .switch_version(SwitchPluginVersionCommand {
+                            actor_user_id: actor.user_id,
+                            provider_code,
+                            target_installation_id: parse_uuid(
+                                &body.installation_id,
+                                "installation_id",
+                            )?,
+                        })
+                        .await?,
+                )))
+            }
             PluginInterfaceInput::DeleteFamily { provider_code } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
                     self.service(actor, "plugins.families.delete")

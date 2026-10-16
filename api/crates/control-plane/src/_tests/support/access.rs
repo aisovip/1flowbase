@@ -387,12 +387,23 @@ impl RoleRepository for MemoryRoleRepository {
         _workspace_id: Uuid,
         role_code: &str,
     ) -> Result<domain::RoleConsolePolicy> {
-        self.console_policies
+        if !self
+            .roles
             .read()
             .await
-            .get(role_code)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("role console policy not found"))
+            .iter()
+            .any(|role| role.code == role_code)
+        {
+            return Err(anyhow::anyhow!("role not found"));
+        }
+        // PostgreSQL returns an empty policy for an existing role without group rows.
+        Ok(self
+            .console_policies
+            .write()
+            .await
+            .entry(role_code.to_string())
+            .or_insert_with(|| domain::RoleConsolePolicy::new(Uuid::now_v7(), vec![]))
+            .clone())
     }
 
     async fn replace_role_console_policy(

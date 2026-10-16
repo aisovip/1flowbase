@@ -34,8 +34,9 @@ pub async fn sync_console_permission_catalog(
 }
 
 use console_policy_validation::{
-    complete_stored_console_policy, role_console_policy_groups_from_input,
-    CompiledConsolePolicyOperationIndex, ConsolePolicyGroupKey,
+    complete_stored_console_policy, retain_unpublished_console_policy,
+    role_console_policy_groups_from_input, CompiledConsolePolicyOperationIndex,
+    ConsolePolicyGroupKey,
 };
 pub use console_policy_validation::{
     ConsolePolicyAuthorization, ConsolePolicyCatalog, ConsolePolicyCatalogAction,
@@ -698,6 +699,11 @@ where
 
         let operation_index = validate_complete_console_policy_catalog(inventory)?;
         let groups = role_console_policy_groups_from_input(&command.groups, &operation_index)?;
+        let previous = self
+            .repository
+            .get_role_console_policy(actor.current_workspace_id, &command.role_code)
+            .await?;
+        let groups = retain_unpublished_console_policy(groups, &previous, &operation_index);
         let role_code = command.role_code.clone();
         let policy = self
             .repository
@@ -721,7 +727,7 @@ where
                 }),
             ))
             .await?;
-        Ok(policy)
+        complete_stored_console_policy(policy, &operation_index).map_err(Into::into)
     }
 
     pub async fn list_roles(&self, actor_user_id: Uuid) -> Result<Vec<domain::RoleTemplate>> {

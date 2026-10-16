@@ -55,32 +55,43 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         .unwrap()
         .installation
         .id;
-    PluginContributionAuthorityService::new(
-        runtime.store.clone(),
-        HostContributionGrantPolicy::root_composition(),
-    )
-    .with_node_id(&state.api_node_id)
-    .grant(
-        &actor,
-        id,
-        GrantContributionPermission {
-            contribution_id: "acme.composition-system.list".into(),
-            permission: "service.execute".into(),
-            resource_scope: domain::ContributionResourceScope::System,
-            permission_contract_id: "managed-service".into(),
-            permission_contract_version: "1".into(),
-        },
-    )
-    .await
-    .unwrap();
-    management
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: actor_id,
-            installation_id: id,
-        })
-        .await
-        .unwrap();
     let base = format!("/api/console/settings/extension-center/installed/{id}");
+    let authority_url = format!("{base}/contribution-authorizations");
+    let (status, before) = request(&app, &cookie, &csrf, "GET", &authority_url, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{before}");
+    assert_eq!(before["data"]["authorizations"], json!([]));
+    // Root's ordinary enable action is sufficient on a fresh installation: no manual grant.
+    let (status, enabled) = request(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        &format!("{base}/enable"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{enabled}");
+    assert_eq!(enabled["data"]["status"], "succeeded");
+    let (_, authorized) = request(&app, &cookie, &csrf, "GET", &authority_url, Value::Null).await;
+    assert_eq!(
+        authorized["data"]["authorizations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let (_, enabled_again) = request(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        &format!("{base}/enable"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(enabled_again["data"]["status"], "succeeded");
+    let (_, repeated) = request(&app, &cookie, &csrf, "GET", &authority_url, Value::Null).await;
+    assert_eq!(authorized["data"]["revision"], repeated["data"]["revision"]);
     let view = format!("{base}/managed-execution");
     let (status, body) = request(&app, &cookie, &csrf, "GET", &view, Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -125,6 +136,19 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
     replace_member_roles(&app, &cookie, &csrf, &member, &[role]).await;
     let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "system-governance-member", "temp-pass").await;
+    assert_eq!(
+        request(
+            &app,
+            &member_cookie,
+            &member_csrf,
+            "POST",
+            &format!("{base}/enable"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
     assert_eq!(
         request(
             &app,

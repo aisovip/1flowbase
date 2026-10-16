@@ -114,62 +114,24 @@ pub(super) async fn restore_installed_managed_schema(
     dependencies: &ExtensionCenterDependencies,
     workspace_id: uuid::Uuid,
     installation_id: uuid::Uuid,
-) -> Result<(), ApiError> {
-    use control_plane::ports::PluginRepository;
-    use sha2::{Digest, Sha256};
-    let installation = dependencies
-        .store
-        .get_installation(installation_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "plugin_installation",
-        ))?;
-    if domain::managed_installation_scope(&installation, domain::DEFAULT_SCOPE_ID)
-        != domain::SYSTEM_SCOPE_ID
-    {
-        return Ok(());
-    }
-    let local = control_plane::plugin_management::ready_current_node_plugin_installation(
+) -> Result<Option<PluginManifestV1>, ApiError> {
+    let Some(manifest) = control_plane::plugin_management::verified_installed_managed_manifest(
         &dependencies.store,
         &dependencies.api_node_id,
         std::path::Path::new(&dependencies.provider_install_root),
         installation_id,
     )
-    .await?;
-    let manifest_path = std::path::Path::new(
-        local
-            .local_path()
-            .ok_or(control_plane::errors::ControlPlaneError::PluginUnavailable)?,
-    )
-    .join("manifest.yaml");
-    let raw = tokio::fs::read(manifest_path).await?;
-    let fingerprint = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&raw)));
-    if local.installation.verification_status != domain::PluginVerificationStatus::Valid
-        || local.artifact.manifest_fingerprint.as_deref() != Some(fingerprint.as_str())
-    {
-        return Err(control_plane::errors::ControlPlaneError::Conflict(
-            "managed_schema_artifact_identity",
-        )
-        .into());
-    }
-    let manifest = plugin_framework::parse_plugin_manifest(std::str::from_utf8(&raw)?)?;
-    if manifest.publisher_namespace != local.installation.organization
-        || manifest.plugin_code()? != local.installation.provider_code
-        || manifest.version != local.installation.plugin_version
-        || manifest.managed_service.is_none()
-    {
-        return Err(control_plane::errors::ControlPlaneError::Conflict(
-            "managed_schema_artifact_identity",
-        )
-        .into());
-    }
+    .await?
+    else {
+        return Ok(None);
+    };
     let declaration = ManagedSchemaDeclaration::from_manifest(&manifest)?;
     if let Some(prepared) =
         prepare_managed_schema(dependencies, workspace_id, declaration.as_ref()).await?
     {
         prepared.apply(dependencies).await?;
     }
-    Ok(())
+    Ok(Some(manifest))
 }
 
 pub(super) async fn retain_managed_schema(

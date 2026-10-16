@@ -1,3 +1,4 @@
+mod unpublished_plugin_policy;
 use std::collections::BTreeSet;
 
 use access_control::{
