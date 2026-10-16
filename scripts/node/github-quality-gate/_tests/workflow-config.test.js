@@ -397,11 +397,11 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
     workflow,
     /react_doctor_base:\n\s+description: Protected baseline SHA for a manual React Doctor candidate run/u,
   );
-  assert.match(jobBlock, /gh api[\s\S]*actions\/workflows\/quality-gate\.yml\/runs/u);
-  assert.match(jobBlock, /previous-successful-quality-gate-run/u);
+  assert.match(jobBlock, /node scripts\/node\/github-quality-gate\/baseline\/cli\.js/u);
+  assert.doesNotMatch(jobBlock, /\.head_sha|previous_successful_run/u);
   assert.doesNotMatch(jobBlock, /REACT_DOCTOR_DIFF_BASE:-\$\(git rev-parse/u);
-  assert.match(jobBlock, /React Doctor manual runs require inputs\.react_doctor_base/u);
-  assert.match(jobBlock, /REACT_DOCTOR_BASE_SOURCE=/u);
+  assert.match(jobBlock, /REACT_DOCTOR_MANUAL_BASE: \$\{\{ inputs\.react_doctor_base \}\}/u);
+  assert.match(jobBlock, /REACT_DOCTOR_CANDIDATE_SOURCE=quality-gate-target-sha/u);
   assert.match(
     jobBlock,
     /repo-frontend-react-doctor-gate:[\s\S]*?scope: repo-frontend-react-doctor/u,
