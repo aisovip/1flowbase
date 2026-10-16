@@ -876,7 +876,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /scope: \$\{\{ matrix\.scope \}\}/u);
   assert.match(
     workflow,
-    /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \}\}/u,
+    /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \|\| matrix\.scope == 'repo-backend-history-maintenance' \}\}/u,
   );
   assert.match(workflow, /scope: backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /scope: coverage-frontend/u);
@@ -1084,7 +1084,7 @@ test("quality gate workflow keeps regular dispatch scopes on a single targeted j
   assert.match(workflow, /scope: \$\{\{ env\.QUALITY_GATE_SCOPE \}\}/u);
   assert.match(
     workflow,
-    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
+    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'repo-backend-history-maintenance' \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
   );
   assert.match(workflow, /publish_issue: "true"/u);
   assert.doesNotMatch(

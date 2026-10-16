@@ -240,6 +240,21 @@ async fn pdm_010_schema_drift_rolls_back_the_entire_schema_plan() {
     let ownership = store.list_managed_schema_ownership().await.unwrap();
     assert_eq!(ownership.len(), 1);
     assert_eq!(ownership[0].physical_table, "plugin_rollback_existing");
+    assert_eq!(ownership[0].owner_version, existing.owner_version);
+    assert_eq!(ownership[0].plan_fingerprint, existing.fingerprint);
+    assert!(ownership[0].active);
+    let unpublished_members: i64 = sqlx::query_scalar(
+        "select count(*) from plugin_schema_version_objects where owner_id=$1 and owner_version=$2",
+    )
+    .bind(&invalid.owner_id)
+    .bind(&invalid.owner_version)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(unpublished_members, 0);
+    let unpublished_receipts: i64 = sqlx::query_scalar("select count(*) from plugin_schema_reconcile_receipts where owner_id=$1 and owner_version=$2")
+        .bind(&invalid.owner_id).bind(&invalid.owner_version).fetch_one(&pool).await.unwrap();
+    assert_eq!(unpublished_receipts, 0);
     let marker: bool = sqlx::query_scalar("select exists(select 1 from information_schema.columns where table_schema=current_schema() and table_name='plugin_rollback_existing' and column_name='x_rollback_marker')")
         .fetch_one(&pool).await.unwrap();
     assert!(marker);
@@ -263,11 +278,7 @@ fn versioned_owned_plan(version: &str, fields: &[(&str, bool)]) -> ManagedSchema
             nullable: *nullable,
         }
     }));
-    let mut plan = plan(
-        "acme/versioned",
-        &format!("version-{version}"),
-        operations,
-    );
+    let mut plan = plan("acme/versioned", &format!("version-{version}"), operations);
     plan.owner_version = version.into();
     plan
 }
