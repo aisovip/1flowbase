@@ -14,12 +14,14 @@ import { useNativeBlockSurface } from '../../../../frontstage/lib/native-modules
 import { shadowViewerStyles } from '../ApplicationRunLogViewer';
 import { ApplicationLogsWorkspace } from './ApplicationLogsWorkspace';
 import tableStyles from '../../../../../shared/ui/data-table/data-table.css?inline';
+import columnSettingsStyles from '../../../../../shared/ui/data-table/data-table-column-settings.css?inline';
 import selectStyles from '../../../../../shared/ui/autosize-select/autosize-select.css?inline';
 import nativeStyles from './application-logs-native.css?inline';
 
 const styles = [
   shadowViewerStyles,
   tableStyles,
+  columnSettingsStyles,
   selectStyles,
   nativeStyles
 ].join('\n');

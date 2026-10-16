@@ -48,6 +48,7 @@ export function DataTableColumnSettings<T extends object>({
     <Popover
       trigger="click"
       placement="bottomLeft"
+      align={{ offset: [0, 0], overflow: { shiftX: true, shiftY: true } }}
       arrow={false}
       open={open}
       onOpenChange={(next) => {

@@ -3,10 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { expect, test, vi } from 'vitest';
 
 import { ApplicationRunLogViewer } from '../../ApplicationRunLogViewer';
-import {
-  AllAgentFlowLogs,
-  ApplicationLogs
-} from '../ApplicationLogs';
+import { AllAgentFlowLogs, ApplicationLogs } from '../ApplicationLogs';
 import { NativeBlockSurfaceProvider } from '../../../../../frontstage/lib/native-modules/native-block-surface-context';
 import { createNativeOverlayHost } from '../../../../../frontstage/lib/native-modules/native-overlay-host';
 import { createNativeBlockSurfaceRuntime } from '../../../../../frontstage/lib/native-modules/surface/native-block-surface-runtime';
@@ -20,6 +17,19 @@ vi.mock(
     return {
       default: await readFile(
         `${process.cwd()}/src/features/agent-flow/components/debug-console/trajectory/virtual/trajectory-virtual-list.css`,
+        'utf8'
+      )
+    };
+  }
+);
+
+vi.mock(
+  '../../../../../../shared/ui/data-table/data-table-column-settings.css?inline',
+  async () => {
+    const { readFile } = await import('node:fs/promises');
+    return {
+      default: await readFile(
+        `${process.cwd()}/src/shared/ui/data-table/data-table-column-settings.css`,
         'utf8'
       )
     };
@@ -51,7 +61,7 @@ test.each([
   ]
 ])(
   'injects the Listy viewport styles into the %s overlay ShadowRoot',
-  async (_, component) => {
+  async (name, component) => {
     const host = document.createElement('div');
     document.body.append(host);
     const targetRoot = host.attachShadow({ mode: 'open' });
@@ -85,6 +95,16 @@ test.each([
         );
         expect(style?.getRootNode()).toBe(targetRoot);
         expect(style?.textContent).toContain(trajectoryVirtualListStyles);
+        if (name !== 'run viewer') {
+          expect(style?.textContent).toContain('.data-table-columns__list');
+          expect(style?.textContent).toContain(
+            'overscroll-behavior-y: contain'
+          );
+          expect(
+            view.container.querySelector('style[data-application-logs-styles]')
+              ?.textContent
+          ).toContain('.data-table-columns__list');
+        }
       });
     } finally {
       view.unmount();
