@@ -14,6 +14,8 @@ pub use extension_contracts::{HttpEgressRequest, HttpEgressResponse};
 pub use http_egress::{HttpEgressClient, HttpEgressClientError};
 mod managed_hook;
 mod multiplex;
+mod owner_binding;
+pub use owner_binding::{ResourceOwnerBindingConflict, ResourceOwnerBindings};
 mod notification;
 mod plugin_data;
 mod simulator;
