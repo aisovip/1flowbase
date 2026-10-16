@@ -12,11 +12,7 @@ use crate::{
     app_state::ApiState,
     routes::application_public_api::{compatibility_interface, openai, openai::OpenAiRouteError},
 };
-use axum::{
-    extract::{ws::WebSocketUpgrade, State},
-    http::HeaderMap,
-    response::Response,
-};
+use axum::{extract::State, http::HeaderMap, response::Response};
 
 mod actor;
 mod auth;
@@ -24,7 +20,9 @@ mod projector;
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
+mod transport;
 mod turn_bridge;
+use transport::WebSocketUpgrade;
 
 /// Authentication context handed to the connection owner after HTTP upgrade.
 pub(crate) struct ResponsesWebSocketAuthorization {
@@ -66,5 +64,6 @@ pub(crate) async fn upgrade(
         .max_frame_size(crate::RESPONSES_REQUEST_MAX_BYTES)
         .on_upgrade(move |socket| async move {
             actor::run_connection(socket, state, Arc::new(authorization)).await;
-        }))
+        })
+        .await)
 }
