@@ -1,7 +1,4 @@
 {
-  "pagination": {
-    "range": "Showing {{start}}–{{end}} of {{total}}"
-  },
   "auto": {
     "all_categories": "All categories",
     "all_interfaces": "All interfaces",

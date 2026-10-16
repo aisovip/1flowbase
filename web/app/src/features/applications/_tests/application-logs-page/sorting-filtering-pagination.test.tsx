@@ -736,7 +736,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
         sortOrder: 'desc'
       }
     );
-    expect(screen.getByText('显示 1–20 条，共 42 条')).toBeInTheDocument();
+    expect(screen.getByText('共 42 条')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('2', { selector: 'li[title="2"] > a' }));
 
@@ -754,7 +754,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
       );
     });
     expect(await screen.findByText('title-21')).toBeInTheDocument();
-    expect(screen.getByText('显示 21–40 条，共 42 条')).toBeInTheDocument();
+    expect(screen.getByText('共 42 条')).toBeInTheDocument();
     fireEvent.mouseDown(
       within(
         document.querySelector('.data-table__pagination') as HTMLElement

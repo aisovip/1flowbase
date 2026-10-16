@@ -1,7 +1,4 @@
 {
-  "pagination": {
-    "range": "显示 {{start}}–{{end}} 条，共 {{total}} 条"
-  },
   "auto": {
     "all_categories": "全部分类",
     "all_interfaces": "全部接口",

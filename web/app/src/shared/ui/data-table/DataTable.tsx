@@ -290,8 +290,8 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
           <span className="data-table__pagination-total">
             {(
               props.showTotal ??
-              ((total, [start, end]) =>
-                i18nText('sharedUi', 'pagination.range', { start, end, total }))
+              ((total) =>
+                i18nText('sharedUi', 'auto.total_items', { value1: total }))
             )(
               props.total,
               props.total === 0

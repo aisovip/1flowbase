@@ -156,7 +156,7 @@ describe('DataTable', () => {
       screen.getByRole('columnheader', { name: '名称' })
     ).toBeInTheDocument();
     expect(screen.getByText('生产应用')).toBeInTheDocument();
-    expect(screen.getByText('显示 1–20 条，共 21 条')).toBeInTheDocument();
+    expect(screen.getByText('共 21 条')).toBeInTheDocument();
 
     const cssSource = await readFile(
       path.resolve(process.cwd(), 'src/shared/ui/data-table/data-table.css'),
