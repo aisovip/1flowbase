@@ -1,3 +1,4 @@
+import '../../../test/fixtures/rc-util-unique-ids';
 import {
   fireEvent,
   render,
