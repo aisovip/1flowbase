@@ -308,7 +308,9 @@ describe('billing settings panels', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
-    const columnOptions = await screen.findByRole('dialog', { name: '自定义显示字段' });
+    const columnOptions = await screen.findByRole('dialog', {
+      name: '自定义显示字段'
+    });
     for (const name of ['时区', '适用星期', '时段开始', '时段结束', '优先级']) {
       expect(
         within(columnOptions).getByRole('checkbox', { name })
@@ -320,10 +322,17 @@ describe('billing settings panels', () => {
     expect(await screen.findByText('每天')).toBeInTheDocument();
     expect(screen.getAllByText('不限')).toHaveLength(2);
 
-    fireEvent.keyDown(within(columnOptions).getByRole('textbox'), { key: 'Escape' });
-    expect(screen.getByRole('button', { name: '字段配置' })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.keyDown(within(columnOptions).getByRole('textbox'), {
+      key: 'Escape'
+    });
+    expect(screen.getByRole('button', { name: '字段配置' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
-    expect(await screen.findByRole('dialog', { name: '新增计费规则' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('dialog', { name: '新增计费规则' })
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
     expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
     expect(screen.getByLabelText('缓存写入单价')).toBeInTheDocument();

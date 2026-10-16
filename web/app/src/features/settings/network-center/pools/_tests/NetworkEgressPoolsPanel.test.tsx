@@ -1,11 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const networkCenterApi = vi.hoisted(() => ({
-  settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'] as const,
+  settingsNetworkEgressPoolsQueryKey: [
+    'settings',
+    'network-center',
+    'pools'
+  ] as const,
   fetchSettingsNetworkEgressPools: vi.fn(),
   fetchSettingsNetworkEgressProviderTypes: vi.fn(),
   fetchSettingsNetworkEgressProviders: vi.fn(),
@@ -88,11 +98,30 @@ describe('NetworkEgressPoolsPanel', () => {
     ]);
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressProxy.mockResolvedValue({
-      provider_id: 'provider-1', provider_code: 'builtin_static_http', display_name: 'US proxy', description: 'Initial proxy',
-      config: { host: '198.65.36.212', port: '37867', username: 'proxy-user' }, configured_secret_fields: ['password'],
-      form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [{ key: 'host', label: 'Hostname or IP', type: 'string', required: true }, { key: 'port', label: 'Port', type: 'string', required: true }, { key: 'username', label: 'Username', type: 'string' }, { key: 'password', label: 'Password', type: 'string' }] }
+      provider_id: 'provider-1',
+      provider_code: 'builtin_static_http',
+      display_name: 'US proxy',
+      description: 'Initial proxy',
+      config: { host: '198.65.36.212', port: '37867', username: 'proxy-user' },
+      configured_secret_fields: ['password'],
+      form_schema: {
+        schema_version: '1flowbase.plugin.form/v1',
+        fields: [
+          {
+            key: 'host',
+            label: 'Hostname or IP',
+            type: 'string',
+            required: true
+          },
+          { key: 'port', label: 'Port', type: 'string', required: true },
+          { key: 'username', label: 'Username', type: 'string' },
+          { key: 'password', label: 'Password', type: 'string' }
+        ]
+      }
     });
-    networkCenterApi.updateSettingsNetworkEgressProxy.mockResolvedValue({ provider_id: 'provider-1' });
+    networkCenterApi.updateSettingsNetworkEgressProxy.mockResolvedValue({
+      provider_id: 'provider-1'
+    });
     networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([
       {
         installation_id: null,
@@ -135,9 +164,13 @@ describe('NetworkEgressPoolsPanel', () => {
   test('AC-GP01 presents proxy creation in the shared fixed-height modal shell', async () => {
     renderPanel();
 
-    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /添加代理|Add proxy/ })
+    );
 
-    expect(screen.getByTestId('fixed-height-modal-scroll-body')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('fixed-height-modal-scroll-body')
+    ).toBeInTheDocument();
   });
 
   test('AC-OP02 uses the shared data-table layout and field configuration', async () => {
@@ -149,7 +182,9 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(document.querySelector('.data-table-layout')).toBeInTheDocument();
     expect(document.querySelector('.data-table')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
-    expect(await screen.findByRole('dialog', { name: '自定义显示字段' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('dialog', { name: '自定义显示字段' })
+    ).toBeInTheDocument();
   });
 
   test('AC-006 tests every proxy on the current page without testing the next page', async () => {
@@ -208,22 +243,31 @@ describe('NetworkEgressPoolsPanel', () => {
       id: 'provider-1'
     });
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /添加代理|Add proxy/ })
+    );
     const createModal = screen.getByTestId('fixed-height-modal-scroll-body');
-    fireEvent.mouseDown(within(createModal).getByLabelText(/代理类型|Proxy type/));
+    fireEvent.mouseDown(
+      within(createModal).getByLabelText(/代理类型|Proxy type/)
+    );
     fireEvent.click(await screen.findByText('HTTP proxy'));
     fireEvent.change(within(createModal).getByLabelText(/名称|Name/), {
       target: { value: 'US proxy' }
     });
-    fireEvent.change(await within(createModal).findByLabelText('Hostname or IP'), {
-      target: { value: '198.65.36.212' }
-    });
+    fireEvent.change(
+      await within(createModal).findByLabelText('Hostname or IP'),
+      {
+        target: { value: '198.65.36.212' }
+      }
+    );
     fireEvent.change(within(createModal).getByLabelText('Port'), {
       target: { value: '37867' }
     });
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
     await waitFor(() =>
-      expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith(
+      expect(
+        networkCenterApi.createSettingsNetworkEgressProxy
+      ).toHaveBeenCalledWith(
         {
           provider_code: 'builtin_static_http',
           display_name: 'US proxy',
@@ -233,8 +277,12 @@ describe('NetworkEgressPoolsPanel', () => {
         'csrf-123'
       )
     );
-    expect(networkCenterApi.testSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
-    expect(screen.queryByText(/创建代理池|Create proxy pool/)).not.toBeInTheDocument();
+    expect(
+      networkCenterApi.testSettingsNetworkEgressPoolMember
+    ).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/创建代理池|Create proxy pool/)
+    ).not.toBeInTheDocument();
   });
 
   test('AC-GP02 submits an extension parser form directly from proxy creation', async () => {
@@ -242,19 +290,28 @@ describe('NetworkEgressPoolsPanel', () => {
       id: 'provider-2'
     });
     renderPanel();
-    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /添加代理|Add proxy/ })
+    );
     const createModal = screen.getByTestId('fixed-height-modal-scroll-body');
-    fireEvent.mouseDown(within(createModal).getByLabelText(/代理类型|Proxy type/));
+    fireEvent.mouseDown(
+      within(createModal).getByLabelText(/代理类型|Proxy type/)
+    );
     fireEvent.click(await screen.findByText('Clash / Mihomo Proxy'));
     fireEvent.change(within(createModal).getByLabelText(/名称|Name/), {
       target: { value: 'Subscription' }
     });
-    fireEvent.change(await within(createModal).findByLabelText('Subscription URL'), {
-      target: { value: 'https://example.com/subscription' }
-    });
+    fireEvent.change(
+      await within(createModal).findByLabelText('Subscription URL'),
+      {
+        target: { value: 'https://example.com/subscription' }
+      }
+    );
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
     await waitFor(() =>
-      expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith(
+      expect(
+        networkCenterApi.createSettingsNetworkEgressProxy
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           provider_code: 'clash-proxy',
           config: { subscription_url: 'https://example.com/subscription' }
@@ -296,9 +353,15 @@ describe('NetworkEgressPoolsPanel', () => {
     });
     renderPanel();
 
-    expect(await screen.findByRole('columnheader', { name: /名称|Name/ })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: /代理类型|Proxy types/ })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: /延迟|Latency/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('columnheader', { name: /名称|Name/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: /代理类型|Proxy types/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: /延迟|Latency/ })
+    ).toBeInTheDocument();
     expect(await screen.findByText('HTTP proxy')).toBeInTheDocument();
     expect(screen.queryByText('builtin_static_http')).not.toBeInTheDocument();
     expect(await screen.findByText('198.65.36.212:37867')).toBeInTheDocument();
@@ -314,7 +377,11 @@ describe('NetworkEgressPoolsPanel', () => {
       })
     );
 
-    await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
+    await waitFor(() =>
+      expect(
+        networkCenterApi.testSettingsNetworkEgressPoolMember
+      ).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123')
+    );
   });
 
   test('AC-OP02 keeps testing feedback independent for each proxy member', async () => {
@@ -369,24 +436,40 @@ describe('NetworkEgressPoolsPanel', () => {
         ]
       }
     ]);
-    networkCenterApi.testSettingsNetworkEgressPoolMember.mockImplementation((_, memberId) => (memberId === 'member-1' ? pendingFirstProbe.promise : pendingSecondProbe.promise));
+    networkCenterApi.testSettingsNetworkEgressPoolMember.mockImplementation(
+      (_, memberId) =>
+        memberId === 'member-1'
+          ? pendingFirstProbe.promise
+          : pendingSecondProbe.promise
+    );
     renderPanel();
 
     await screen.findByText('US proxy');
     const tableBody = document.querySelector('.ant-table-tbody');
     expect(tableBody).not.toBeNull();
-    const testButtons = within(tableBody as HTMLElement).getAllByRole('button', {
-      name: /测试|Test/
-    });
+    const testButtons = within(tableBody as HTMLElement).getAllByRole(
+      'button',
+      {
+        name: /测试|Test/
+      }
+    );
     fireEvent.click(testButtons[0]);
 
-    await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
+    await waitFor(() =>
+      expect(
+        networkCenterApi.testSettingsNetworkEgressPoolMember
+      ).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123')
+    );
     expect(testButtons[0]).toHaveClass('ant-btn-loading');
     expect(testButtons[1]).not.toHaveClass('ant-btn-loading');
     expect(testButtons[1]).toBeEnabled();
 
     fireEvent.click(testButtons[1]);
-    await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-2', 'csrf-123'));
+    await waitFor(() =>
+      expect(
+        networkCenterApi.testSettingsNetworkEgressPoolMember
+      ).toHaveBeenCalledWith('global-pool', 'member-2', 'csrf-123')
+    );
     expect(testButtons[0]).toHaveClass('ant-btn-loading');
     expect(testButtons[1]).toHaveClass('ant-btn-loading');
 
@@ -426,7 +509,9 @@ describe('NetworkEgressPoolsPanel', () => {
     ]);
     renderPanel();
 
-    expect(await screen.findByRole('columnheader', { name: /延迟|Latency/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('columnheader', { name: /延迟|Latency/ })
+    ).toBeInTheDocument();
     expect(await screen.findByText('Untested proxy')).toBeInTheDocument();
     expect(screen.getByText('0ms')).toBeInTheDocument();
   });
@@ -472,73 +557,160 @@ describe('NetworkEgressPoolsPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('HTTP 未测试')).toBeInTheDocument();
     expect(screen.getByText('HTTPS 未测试')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '测试连接' })
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     const host = await screen.findByLabelText('Hostname or IP');
     expect(host).toHaveValue('198.65.36.212');
     expect(screen.getByLabelText('Port')).toHaveValue('37867');
     expect(screen.getByLabelText('Password')).toHaveValue('');
-    expect(screen.queryByLabelText(/成员顺序|Member sequence/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/成员顺序|Member sequence/)
+    ).not.toBeInTheDocument();
     fireEvent.change(host, { target: { value: '203.0.113.25' } });
-    fireEvent.change(screen.getByLabelText(/名称|Name/), { target: { value: 'Updated proxy' } });
+    fireEvent.change(screen.getByLabelText(/名称|Name/), {
+      target: { value: 'Updated proxy' }
+    });
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
-    await waitFor(() => expect(networkCenterApi.updateSettingsNetworkEgressProxy).toHaveBeenCalledWith('provider-1', {
-      provider_code: 'builtin_static_http', display_name: 'Updated proxy', description: 'Initial proxy',
-      config: { host: '203.0.113.25', port: '37867', username: 'proxy-user' }
-    }, 'csrf-123'));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(networkCenterApi.updateSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        networkCenterApi.updateSettingsNetworkEgressProxy
+      ).toHaveBeenCalledWith(
+        'provider-1',
+        {
+          provider_code: 'builtin_static_http',
+          display_name: 'Updated proxy',
+          description: 'Initial proxy',
+          config: {
+            host: '203.0.113.25',
+            port: '37867',
+            username: 'proxy-user'
+          }
+        },
+        'csrf-123'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(
+      networkCenterApi.updateSettingsNetworkEgressPoolMember
+    ).not.toHaveBeenCalled();
     expect(
       screen.getAllByRole('button', { name: /^(删\s*除|Delete)$/ }).length
     ).toBeGreaterThan(0);
   });
 
   test('AC-003 preserves the draft after a save error and allows retry with a new password', async () => {
-    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', members: [proxyPoolMember(1)] }]);
-    networkCenterApi.updateSettingsNetworkEgressProxy.mockRejectedValueOnce(new Error('save failed'));
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      { id: 'global-pool', members: [proxyPoolMember(1)] }
+    ]);
+    networkCenterApi.updateSettingsNetworkEgressProxy.mockRejectedValueOnce(
+      new Error('save failed')
+    );
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
     const host = await screen.findByLabelText('Hostname or IP');
     fireEvent.change(host, { target: { value: '203.0.113.30' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'new-password' } });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'new-password' }
+    });
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
     await screen.findByText(/代理更新失败|Failed to update proxy/);
     expect(host).toHaveValue('203.0.113.30');
     expect(screen.getByLabelText('Password')).toHaveValue('new-password');
-    await waitFor(() => expect(screen.getByRole('button', { name: /保\s*存|Save/ })).not.toHaveClass('ant-btn-loading'));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /保\s*存|Save/ })
+      ).not.toHaveClass('ant-btn-loading')
+    );
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(networkCenterApi.updateSettingsNetworkEgressProxy).toHaveBeenLastCalledWith('provider-1', expect.objectContaining({ config: expect.objectContaining({ password: 'new-password', host: '203.0.113.30' }) }), 'csrf-123');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(
+      networkCenterApi.updateSettingsNetworkEgressProxy
+    ).toHaveBeenLastCalledWith(
+      'provider-1',
+      expect.objectContaining({
+        config: expect.objectContaining({
+          password: 'new-password',
+          host: '203.0.113.30'
+        })
+      }),
+      'csrf-123'
+    );
   });
 
   test('AC-003 disables saving while configuration is unavailable and reloads on retry', async () => {
-    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', members: [proxyPoolMember(1)] }]);
-    networkCenterApi.fetchSettingsNetworkEgressProxy.mockRejectedValueOnce(new Error('load failed'));
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      { id: 'global-pool', members: [proxyPoolMember(1)] }
+    ]);
+    networkCenterApi.fetchSettingsNetworkEgressProxy.mockRejectedValueOnce(
+      new Error('load failed')
+    );
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-    await screen.findByText(/代理配置加载失败|Failed to load proxy configuration/);
+    await screen.findByText(
+      /代理配置加载失败|Failed to load proxy configuration/
+    );
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: /保\s*存|Save/ })).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole('button', { name: /刷\s*新|Refresh/ }));
-    expect(await screen.findByLabelText('Hostname or IP')).toHaveValue('198.65.36.212');
-    expect(within(dialog).getByRole('button', { name: /保\s*存|Save/ })).toBeEnabled();
+    expect(
+      within(dialog).getByRole('button', { name: /保\s*存|Save/ })
+    ).toBeDisabled();
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /刷\s*新|Refresh/ })
+    );
+    expect(await screen.findByLabelText('Hostname or IP')).toHaveValue(
+      '198.65.36.212'
+    );
+    expect(
+      within(dialog).getByRole('button', { name: /保\s*存|Save/ })
+    ).toBeEnabled();
   });
 
   test('AC-003 discards cancelled edits before opening a different proxy', async () => {
-    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', members: [proxyPoolMember(1), proxyPoolMember(2)] }]);
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      { id: 'global-pool', members: [proxyPoolMember(1), proxyPoolMember(2)] }
+    ]);
     renderPanel();
-    fireEvent.click((await screen.findAllByRole('button', { name: '编辑' }))[0]);
-    fireEvent.change(await screen.findByLabelText('Hostname or IP'), { target: { value: 'unsaved-host' } });
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: '编辑' }))[0]
+    );
+    fireEvent.change(await screen.findByLabelText('Hostname or IP'), {
+      target: { value: 'unsaved-host' }
+    });
     fireEvent.click(screen.getByRole('button', { name: /取\s*消|Cancel/ }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
     networkCenterApi.fetchSettingsNetworkEgressProxy.mockResolvedValueOnce({
-      provider_id: 'provider-2', provider_code: 'builtin_static_http', display_name: 'Proxy 2', description: '',
-      config: { host: '203.0.113.2', port: '3128' }, configured_secret_fields: [],
-      form_schema: { fields: [{ key: 'host', label: 'Hostname or IP', type: 'string', required: true }, { key: 'port', label: 'Port', type: 'string', required: true }] }
+      provider_id: 'provider-2',
+      provider_code: 'builtin_static_http',
+      display_name: 'Proxy 2',
+      description: '',
+      config: { host: '203.0.113.2', port: '3128' },
+      configured_secret_fields: [],
+      form_schema: {
+        fields: [
+          {
+            key: 'host',
+            label: 'Hostname or IP',
+            type: 'string',
+            required: true
+          },
+          { key: 'port', label: 'Port', type: 'string', required: true }
+        ]
+      }
     });
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[1]);
-    expect(await screen.findByLabelText('Hostname or IP')).toHaveValue('203.0.113.2');
-    expect(networkCenterApi.updateSettingsNetworkEgressProxy).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText('Hostname or IP')).toHaveValue(
+      '203.0.113.2'
+    );
+    expect(
+      networkCenterApi.updateSettingsNetworkEgressProxy
+    ).not.toHaveBeenCalled();
   });
 
   test('AC-OP04 exposes a successful HTTP egress and failed HTTPS CONNECT separately', async () => {
@@ -590,7 +762,9 @@ describe('NetworkEgressPoolsPanel', () => {
         )
       }
     ]);
-    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(undefined);
+    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(
+      undefined
+    );
     renderPanel();
 
     await screen.findByText('Proxy 1');
@@ -608,10 +782,14 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(deleteButton).toBeEnabled();
     fireEvent.click(deleteButton);
 
-    expect(await screen.findByText(/删除选中的 2 个代理|Delete 2 selected proxies/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/删除选中的 2 个代理|Delete 2 selected proxies/)
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
     await waitFor(() =>
-      expect(networkCenterApi.deleteSettingsNetworkEgressPoolMembers).toHaveBeenCalledWith(
+      expect(
+        networkCenterApi.deleteSettingsNetworkEgressPoolMembers
+      ).toHaveBeenCalledWith(
         'global-pool',
         { selection: 'selected', member_ids: ['member-1', 'member-21'] },
         'csrf-123'
@@ -628,14 +806,22 @@ describe('NetworkEgressPoolsPanel', () => {
         members: [proxyPoolMember(1), proxyPoolMember(2), proxyPoolMember(3)]
       }
     ]);
-    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(undefined);
+    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(
+      undefined
+    );
     renderPanel();
 
     await screen.findByText('Proxy 1');
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Proxy 1' } });
-    const filterForm = screen.getByRole('form', { name: /搜索代理|Search proxies/ });
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'Proxy 1' }
+    });
+    const filterForm = screen.getByRole('form', {
+      name: /搜索代理|Search proxies/
+    });
     fireEvent.submit(filterForm);
-    await waitFor(() => expect(screen.queryByText('Proxy 2')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText('Proxy 2')).not.toBeInTheDocument()
+    );
 
     const toolbar = document.querySelector('.data-table__toolbar');
     expect(toolbar).not.toBeNull();
@@ -644,14 +830,16 @@ describe('NetworkEgressPoolsPanel', () => {
         name: /全部删除|Delete all/
       })
     );
-    expect(await screen.findByText(/删除代理池中的全部 3 个代理|Delete all 3 proxies in the pool/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /删除代理池中的全部 3 个代理|Delete all 3 proxies in the pool/
+      )
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
     await waitFor(() =>
-      expect(networkCenterApi.deleteSettingsNetworkEgressPoolMembers).toHaveBeenCalledWith(
-        'global-pool',
-        { selection: 'all' },
-        'csrf-123'
-      )
+      expect(
+        networkCenterApi.deleteSettingsNetworkEgressPoolMembers
+      ).toHaveBeenCalledWith('global-pool', { selection: 'all' }, 'csrf-123')
     );
   });
 });
