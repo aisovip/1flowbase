@@ -27,10 +27,10 @@ export function FileRecordPreview({ record }: { record: ConsoleFileRecord }) {
     <Image
       src={previewUrl}
       alt={record.filename}
-      width={64}
-      height={64}
+      width={88}
+      height={56}
       loading="lazy"
-      style={{ objectFit: 'contain' }}
+      style={{ objectFit: 'cover', borderRadius: 8 }}
       onError={() => setFailedUrl(previewUrl)}
       preview={{ getContainer: surface?.overlayHost.getPopupContainer }}
     />

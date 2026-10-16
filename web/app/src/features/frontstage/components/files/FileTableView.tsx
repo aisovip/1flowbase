@@ -5,13 +5,20 @@ import {
   App,
   Button,
   ConfigProvider,
+  Input,
+  Tag,
   Modal,
   Space,
-  Typography,
   Tooltip,
   Upload
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import copy from 'copy-to-clipboard';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import { FileRecordActions } from './FileRecordActions';
+import './file-table-view.css';
 import InboxOutlined from '@ant-design/icons/es/icons/InboxOutlined';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
@@ -52,6 +59,17 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   );
   const surface = useNativeBlockSurface();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  const [search, setSearch] = useState('');
+  const [filename, setFilename] = useState('');
+  const [sort, setSort] = useState('created_at:desc');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilename(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [publicTarget, setPublicTarget] = useState<{
@@ -65,23 +83,36 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
     return () => {
       for (const controller of controllers) controller.abort();
     };
-  }, [workspaceId]);
+  }, [workspaceId, fileTableCode]);
 
   const tables = useQuery({
     queryKey: ['files', 'tables', workspaceId],
     queryFn: () => fetchConsoleFileTables()
   });
   const table = tables.data?.find((item) => item.code === fileTableCode);
-  const pageSize = 20;
   const records = useQuery({
-    queryKey: ['files', 'records', workspaceId, table?.id, page],
+    queryKey: [
+      'files',
+      'records',
+      workspaceId,
+      table?.id,
+      page,
+      pageSize,
+      filename,
+      sort
+    ],
     queryFn: ({ signal }) =>
-      fetchConsoleFileRecords(fileTableCode, page, pageSize, signal),
+      fetchConsoleFileRecords(fileTableCode, page, pageSize, signal, {
+        filename,
+        sort
+      }),
     enabled: Boolean(table)
   });
   useEffect(() => {
     setPage(1);
     setPublicTarget(undefined);
+    setSearch('');
+    setFilename('');
   }, [fileTableCode, workspaceId]);
   useEffect(() => setPublicTarget(undefined), [csrfToken]);
 
@@ -91,7 +122,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         key: 'preview_url',
         dataIndex: 'preview_url',
         title: i18nText('frontstage', 'auto.preview'),
-        width: 200,
+        width: 128,
         render: (_, record) => <FileRecordPreview record={record} />
       },
       {
@@ -99,20 +130,35 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         dataIndex: 'filename',
         title: i18nText('frontstage', 'files.filename'),
         width: 280,
-        render: (_, record) =>
-          table ? (
-            <a href={record.url} target="_blank" rel="noreferrer">
+        render: (_, record) => (
+          <div className="file-table-view__filename">
+            <a
+              href={record.url}
+              target="_blank"
+              rel="noreferrer"
+              title={record.filename}
+            >
               {record.filename}
             </a>
-          ) : (
-            record.filename
-          )
+            <span>
+              {record.mimetype.startsWith('image/')
+                ? i18nText('frontstage', 'files.image_file')
+                : i18nText('frontstage', 'files.other_file')}
+            </span>
+          </div>
+        )
       },
       {
         key: 'size',
         dataIndex: 'size',
         title: i18nText('frontstage', 'files.size'),
-        width: 140,
+        width: 124,
+        sorter: true,
+        sortOrder: sort.startsWith('size:')
+          ? sort.endsWith('asc')
+            ? 'ascend'
+            : 'descend'
+          : null,
         render: (_, record) => (
           <Tooltip
             title={`${formatNumber(record.size)} B`}
@@ -126,45 +172,94 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
         key: 'mimetype',
         dataIndex: 'mimetype',
         title: i18nText('frontstage', 'files.mimetype'),
-        width: 220
+        width: 154,
+        render: (_, record) => (
+          <Tag className="file-table-view__type">{record.mimetype}</Tag>
+        )
       },
       {
         key: 'url',
         dataIndex: 'url',
         title: i18nText('frontstage', 'files.url'),
-        width: 360,
+        width: 330,
         render: (_, record) => (
-          <a href={record.url} target="_blank" rel="noreferrer">
-            {record.url}
-          </a>
-        )
-      },
-      {
-        key: 'actions',
-        title: i18nText('frontstage', 'files.actions'),
-        width: 140,
-        render: (_, record) => (
-          <Button
-            type="link"
-            disabled={!table || !csrfToken}
-            onClick={() =>
-              table &&
-              setPublicTarget({ record, tableId: table.id, workspaceId })
-            }
-          >
-            {i18nText('frontstage', 'files.temporary_public')}
-          </Button>
+          <div className="file-table-view__url">
+            <a
+              href={record.url}
+              title={record.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {record.url}
+            </a>
+            <Tooltip
+              title={i18nText('frontstage', 'files.copy_link')}
+              getPopupContainer={surface?.overlayHost.getPopupContainer}
+            >
+              <Button
+                size="small"
+                type="text"
+                icon={<CopyOutlined aria-hidden="true" />}
+                aria-label={i18nText('frontstage', 'files.copy_link')}
+                onClick={async () =>
+                  (await copy(record.url))
+                    ? message.success(
+                        i18nText('frontstage', 'files.link_copied')
+                      )
+                    : message.error(i18nText('frontstage', 'files.copy_failed'))
+                }
+              />
+            </Tooltip>
+          </div>
         )
       },
       {
         key: 'created_at',
         dataIndex: 'created_at',
         title: i18nText('frontstage', 'files.created_at'),
-        width: 200,
+        width: 180,
+        sorter: true,
+        sortOrder: sort.startsWith('created_at:')
+          ? sort.endsWith('asc')
+            ? 'ascend'
+            : 'descend'
+          : null,
         render: (_, record) => formatDateTime(record.created_at)
+      },
+      {
+        key: 'actions',
+        title: i18nText('frontstage', 'files.actions'),
+        width: 300,
+        render: (_, record) => (
+          <FileRecordActions
+            key={`${workspaceId}:${fileTableCode}:${record.id}:${csrfToken}`}
+            record={record}
+            fileTableCode={fileTableCode}
+            csrfToken={csrfToken}
+            onPublic={() =>
+              table &&
+              setPublicTarget({ record, tableId: table.id, workspaceId })
+            }
+            onChanged={async () => {
+              await queryClient.invalidateQueries({
+                queryKey: ['files', 'records', workspaceId, table?.id]
+              });
+              setPage(1);
+            }}
+          />
+        )
       }
     ],
-    [table, csrfToken, workspaceId, surface]
+    [
+      table,
+      csrfToken,
+      workspaceId,
+      surface,
+      sort,
+      fileTableCode,
+      queryClient,
+      message
+    ]
   );
   const configuration = usePersistedDataTableConfiguration({
     columns,
@@ -216,10 +311,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
 
   const error = tables.error ?? records.error;
   return (
-    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        {table?.title ?? fileTableCode}
-      </Typography.Title>
+    <div className="file-table-view">
       {error ? <Alert showIcon type="error" title={error.message} /> : null}
       {!tables.isPending && !tables.error && !table ? (
         <Alert
@@ -228,8 +320,9 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
           title={i18nText('frontstage', 'files.table_unavailable')}
         />
       ) : null}
-      <DataTableLayout>
+      <DataTableLayout className="file-table-view__layout">
         <DataTable
+          className="file-table-view__table"
           columns={columns}
           configuration={configuration}
           dataSource={records.data?.items ?? []}
@@ -238,30 +331,76 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
           page={page}
           pageSize={pageSize}
           total={records.data?.total ?? 0}
-          onPageChange={setPage}
+          pageSizeOptions={[5, 10, 20, 50]}
+          onPageChange={(next, size) => {
+            setPage(size !== pageSize ? 1 : next);
+            setPageSize(size);
+          }}
+          showTotal={(total, [start, end]) =>
+            i18nText('frontstage', 'files.range', { start, end, total })
+          }
+          onChange={(_, __, sorter) => {
+            const selected = Array.isArray(sorter) ? sorter[0] : sorter;
+            setSort(
+              selected?.order
+                ? `${selected.columnKey}:${selected.order === 'ascend' ? 'asc' : 'desc'}`
+                : 'created_at:desc'
+            );
+            setPage(1);
+          }}
           emptyText={i18nText('frontstage', 'files.empty')}
           toolbar={
-            <Space wrap>
-              <Button
-                icon={<ReloadOutlined />}
-                disabled={!table}
-                onClick={() => void records.refetch()}
-              >
-                {i18nText('frontstage', 'files.refresh')}
-              </Button>
-              <DataTableColumnSettings
-                columns={columns}
-                configuration={configuration}
-              />
-              <Button
-                type="primary"
-                icon={<UploadOutlined />}
-                disabled={!table || !csrfToken}
-                onClick={() => setUploadOpen(true)}
-              >
-                {i18nText('frontstage', 'files.upload')}
-              </Button>
-            </Space>
+            <>
+              <div className="file-table-view__toolbar">
+                <div className="file-table-view__filters">
+                  <Input
+                    className="file-table-view__search"
+                    prefix={<SearchOutlined />}
+                    allowClear
+                    aria-label={i18nText('frontstage', 'files.search')}
+                    placeholder={i18nText('frontstage', 'files.search')}
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                  <DataTableColumnSettings
+                    columns={columns}
+                    configuration={configuration}
+                  />
+                </div>
+                <Space>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    aria-label={i18nText('frontstage', 'files.refresh')}
+                    disabled={!table}
+                    loading={records.isFetching}
+                    onClick={() => void records.refetch()}
+                  >
+                    {i18nText('frontstage', 'auto.refresh')}
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<UploadOutlined />}
+                    aria-label={i18nText('frontstage', 'files.upload')}
+                    disabled={!table || !csrfToken}
+                    onClick={() => setUploadOpen(true)}
+                  >
+                    {i18nText('frontstage', 'files.upload_short')}
+                  </Button>
+                </Space>
+              </div>
+              <div className="file-table-view__summary">
+                <FileTextOutlined />
+                <strong>
+                  {table?.title ?? i18nText('frontstage', 'files.list')}
+                </strong>
+                <span>
+                  ·{' '}
+                  {i18nText('frontstage', 'files.count', {
+                    count: records.data?.total ?? 0
+                  })}
+                </span>
+              </div>
+            </>
           }
         />
       </DataTableLayout>
@@ -320,6 +459,6 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
           </p>
         </Upload.Dragger>
       </Modal>
-    </Space>
+    </div>
   );
 }

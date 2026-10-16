@@ -195,15 +195,23 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       'DataTableLayout'
     ],
     async () => {
-      const [table, state, layout, tableStyle, layoutStyle, mobileStyle] =
-        await Promise.all([
-          import('../../../../shared/ui/data-table/DataTable'),
-          import('../../../../shared/ui/data-table/data-table-state'),
-          import('../../../../shared/ui/data-table/DataTableLayout'),
-          import('../../../../shared/ui/data-table/data-table.css?inline'),
-          import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
-          import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
-        ]);
+      const [
+        table,
+        state,
+        layout,
+        tableStyle,
+        layoutStyle,
+        mobileStyle,
+        columnStyle
+      ] = await Promise.all([
+        import('../../../../shared/ui/data-table/DataTable'),
+        import('../../../../shared/ui/data-table/data-table-state'),
+        import('../../../../shared/ui/data-table/DataTableLayout'),
+        import('../../../../shared/ui/data-table/data-table.css?inline'),
+        import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
+        import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline'),
+        import('../../../../shared/ui/data-table/data-table-column-settings.css?inline')
+      ]);
       return {
         module: {
           DataTable: table.DataTable,
@@ -212,9 +220,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
             state.usePersistedDataTableConfiguration,
           DataTableLayout: layout.DataTableLayout
         },
-        styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({
-          css: style.default
-        }))
+        styles: [tableStyle, layoutStyle, mobileStyle, columnStyle].map(
+          (style) => ({
+            css: style.default
+          })
+        )
       };
     }
   ),
@@ -222,15 +232,30 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     module: await import('@1flowbase/block-sdk')
   })),
   registration('@1flowbase/files', ['FileTableView'], async () => {
-    const [module, tableStyle, layoutStyle, mobileStyle] = await Promise.all([
+    const [
+      module,
+      tableStyle,
+      layoutStyle,
+      mobileStyle,
+      columnStyle,
+      fileStyle
+    ] = await Promise.all([
       import('../../components/files/FileTableView'),
       import('../../../../shared/ui/data-table/data-table.css?inline'),
       import('../../../../shared/ui/data-table/data-table-layout.css?inline'),
-      import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline')
+      import('../../../../shared/ui/data-table/data-table-mobile-list.css?inline'),
+      import('../../../../shared/ui/data-table/data-table-column-settings.css?inline'),
+      import('../../components/files/file-table-view.css?inline')
     ]);
     return {
       module,
-      styles: [tableStyle, layoutStyle, mobileStyle].map((style) => ({
+      styles: [
+        tableStyle,
+        layoutStyle,
+        mobileStyle,
+        columnStyle,
+        fileStyle
+      ].map((style) => ({
         css: style.default
       }))
     };

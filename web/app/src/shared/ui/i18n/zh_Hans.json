@@ -52,5 +52,13 @@
     "list_retry": "加载失败，点击重试",
     "list_end": "已加载全部记录",
     "list_select_loaded": "选择已加载记录"
+  },
+  "table": {
+    "columns": "列设置",
+    "customize": "自定义显示字段",
+    "selected": "已选 {{count}} 项",
+    "search": "搜索字段名称…",
+    "keep_one": "至少保留一列",
+    "no_fields": "没有匹配的字段"
   }
 }

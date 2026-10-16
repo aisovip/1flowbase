@@ -254,6 +254,20 @@
     "link_copied": "链接已复制",
     "copy_failed": "复制失败，请手动复制链接",
     "link_failed": "生成临时链接失败",
-    "open_public_preview": "打开临时图片预览"
+    "open_public_preview": "打开临时图片预览",
+    "search": "搜索文件名…",
+    "list": "附件列表",
+    "count": "{{count}} 条",
+    "upload_short": "上传",
+    "image_file": "图像文件",
+    "other_file": "文件",
+    "edit_title": "编辑文件",
+    "save": "保存",
+    "filename_required": "请输入文件名",
+    "delete_title": "删除文件记录",
+    "delete_description": "确定删除“{{filename}}”的文件记录？此操作不会立即清除存储中的文件内容。",
+    "saved": "文件名已更新",
+    "deleted": "文件记录已删除",
+    "range": "显示 {{start}}–{{end}} 条，共 {{total}} 条"
   }
 }

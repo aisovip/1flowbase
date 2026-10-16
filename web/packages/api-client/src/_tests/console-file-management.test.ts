@@ -8,6 +8,7 @@ import {
   deleteConsoleFileStorage,
   deleteConsoleFileTable,
   fetchConsoleFileStorages,
+  fetchConsoleFileRecords,
   fetchConsoleFileTables,
   updateConsoleFileStorage,
   updateConsoleFileTableBinding,
@@ -32,6 +33,26 @@ describe('console-file-management client', () => {
     }
   ])('reads the $name route', async ({ request, expected }) => {
     await expect(request()).resolves.toMatchObject(expected);
+  });
+
+  test('encodes filename filtering and sorting with server pagination', async () => {
+    const controller = new AbortController();
+    const result = (await fetchConsoleFileRecords(
+      'files/demo',
+      2,
+      10,
+      controller.signal,
+      { filename: 'a&b.png', sort: 'size:asc' }
+    )) as unknown as transport.ApiRequestOptions;
+    const url = new URL(result.path, 'https://example.test');
+    expect(url.pathname).toBe('/api/runtime/models/files%2Fdemo/list');
+    expect(url.searchParams.get('page')).toBe('2');
+    expect(url.searchParams.get('page_size')).toBe('10');
+    expect(JSON.parse(url.searchParams.get('filter')!)).toEqual({
+      filename: { $includes: 'a&b.png' }
+    });
+    expect(url.searchParams.get('sort')).toBe('size:asc');
+    expect(result.signal).toBe(controller.signal);
   });
 
   test('multipart upload includes the selected table and File and preserves cancellation and CSRF', async () => {

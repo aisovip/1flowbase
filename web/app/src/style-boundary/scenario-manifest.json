@@ -870,6 +870,8 @@
       "web/app/src/shared/ui/window-workspace/window-workspace.css",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
       "web/app/src/shared/ui/data-table/data-table-state.ts",
+      "web/app/src/shared/ui/data-table/DataTableColumnSettings.tsx",
+      "web/app/src/shared/ui/data-table/data-table-column-settings.css",
       "web/app/src/shared/ui/data-table/data-table.css"
     ],
     "boundaryNodes": [

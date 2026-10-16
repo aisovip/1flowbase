@@ -6,8 +6,6 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { vi } from 'vitest';
 
 vi.mock('antd', async (importOriginal) => {
@@ -443,12 +441,8 @@ describe('ApplicationLogsPage - table field settings', () => {
       })
     ).toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
-    fireEvent.click(
-      await screen.findByText('expand_id', {
-        selector: '.ant-select-item-option-content'
-      })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'expand_id' }));
 
     await waitFor(() => {
       const meta = useAuthStore.getState().me?.meta as
@@ -510,11 +504,11 @@ describe('ApplicationLogsPage - table field settings', () => {
     const filters = screen.getByRole('search');
 
     expect(
-      within(filters).getByRole('combobox', { name: '字段配置' })
+      within(filters).getByRole('button', { name: '字段配置' })
     ).toBeInTheDocument();
   });
 
-  test('renders table field configuration with Ant Design multiple select', async () => {
+  test('renders table field configuration with a counted popover trigger', async () => {
     render(
       <AppProviders>
         <AntdApp>
@@ -525,27 +519,15 @@ describe('ApplicationLogsPage - table field settings', () => {
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
 
-    const trigger = screen.getByRole('combobox', { name: '字段配置' });
+    const trigger = screen.getByRole('button', { name: '字段配置' });
 
-    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveTextContent(/\d+\/\d+/);
     expect(
       screen.queryByText('字段配置', {
         selector: '.application-runs-table__column-selector-trigger-caret'
       })
     ).not.toBeInTheDocument();
-  });
-
-  test('keeps table field configuration as a native responsive multiple select', async () => {
-    const tableSource = await readFile(
-      path.resolve(process.cwd(), 'src/shared/ui/data-table/DataTable.tsx'),
-      'utf8'
-    );
-
-    expect(tableSource).toContain('mode="multiple"');
-    expect(tableSource).toContain('maxTagCount="responsive"');
-    expect(tableSource).toContain('popupMatchSelectWidth');
-    expect(tableSource).not.toContain('maxTagCount={0}');
-    expect(tableSource).not.toContain("maxTagPlaceholder={() => '字段配置'}");
   });
 
   test('opens table field configuration as a dropdown menu', async () => {
@@ -559,15 +541,17 @@ describe('ApplicationLogsPage - table field settings', () => {
 
     expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
 
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
+    fireEvent.click(screen.getByRole('button', { name: '字段配置' }));
 
-    const fieldListbox = await screen.findByRole('listbox');
+    const fieldListbox = await screen.findByRole('dialog', {
+      name: '自定义显示字段'
+    });
 
     expect(
-      within(fieldListbox).getByRole('option', { name: 'expand_id' })
+      within(fieldListbox).getByRole('checkbox', { name: 'expand_id' })
     ).toBeInTheDocument();
     expect(
-      within(fieldListbox).getByRole('option', { name: '运行 ID' })
+      within(fieldListbox).getByRole('checkbox', { name: '运行 ID' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '重置默认字段' })

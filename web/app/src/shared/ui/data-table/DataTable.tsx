@@ -1,6 +1,8 @@
-import { DataTableMobileList, type DataTableMobilePagination } from './DataTableMobileList';
-import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
-import { Button, Pagination, Select, Table } from 'antd';
+import {
+  DataTableMobileList,
+  type DataTableMobilePagination
+} from './DataTableMobileList';
+import { Button, Pagination, Table } from 'antd';
 import { useCallback, useMemo } from 'react';
 import type { Key, MouseEvent, ReactNode, ThHTMLAttributes } from 'react';
 import type { TableProps } from 'antd';
@@ -8,8 +10,6 @@ import type { ColumnsType } from 'antd/es/table';
 
 import {
   getColumnMinWidth,
-  getDefaultColumnWidths,
-  getDefaultVisibleKeys,
   normalizeVisibleKeys,
   type DataTableColumn,
   type DataTableConfiguration
@@ -42,6 +42,7 @@ type DataTableBaseProps<T extends object> = {
   rowClassName?: (record: T, index: number) => string;
   rowKey: keyof T | ((record: T) => Key);
   toolbar?: ReactNode;
+  onChange?: TableProps<T>['onChange'];
   mobileList?: DataTableMobilePagination;
   onRow?: TableProps<T>['onRow'];
   rowSelection?: DataTableRowSelection<T>;
@@ -52,7 +53,9 @@ type DataTablePagePaginationProps = {
   page: number;
   pageSize: number;
   total: number;
-  onPageChange: (page: number) => void;
+  onPageChange: (page: number, pageSize: number) => void;
+  pageSizeOptions?: number[];
+  showTotal?: (total: number, range: [number, number]) => ReactNode;
 };
 
 type DataTableCursorPaginationProps = {
@@ -90,91 +93,7 @@ function ResizeHeaderCell({
   );
 }
 
-export function DataTableColumnSettings<T extends object>({
-  ariaLabel = i18nText('sharedUi', 'auto.field_configuration'),
-  className,
-  columns,
-  configuration,
-  placeholder = i18nText('sharedUi', 'auto.field_configuration'),
-  resetLabel = i18nText('sharedUi', 'auto.reset_default_fields')
-}: {
-  ariaLabel?: string;
-  className?: string;
-  columns: Array<DataTableColumn<T>>;
-  configuration: DataTableConfiguration;
-  placeholder?: string;
-  resetLabel?: string;
-}) {
-  const { visibleColumnKeys, setVisibleColumnKeys, setColumnWidths } =
-    configuration;
-
-  function handleColumnsChange(nextVisible: string[]) {
-    if (nextVisible.length === 0) {
-      return;
-    }
-
-    const nextVisibleKeys = new Set(nextVisible);
-    const next: string[] = [];
-    for (const column of columns) {
-      if (nextVisibleKeys.has(column.key)) {
-        next.push(column.key);
-      }
-    }
-
-    setVisibleColumnKeys(next);
-  }
-
-  const columnSelectOptions = columns.map((column) => ({
-    label: column.title,
-    value: column.key,
-    disabled:
-      visibleColumnKeys.length === 1 && visibleColumnKeys.includes(column.key)
-  }));
-
-  return (
-    <Select<string[]>
-      aria-label={ariaLabel}
-      className={['data-table__column-selector', className]
-        .filter(Boolean)
-        .join(' ')}
-      classNames={{
-        popup: {
-          root: 'data-table__column-selector-popup'
-        }
-      }}
-      listHeight={260}
-      maxTagCount="responsive"
-      mode="multiple"
-      optionFilterProp="label"
-      options={columnSelectOptions}
-      placement="bottomRight"
-      placeholder={placeholder}
-      popupMatchSelectWidth
-      value={visibleColumnKeys}
-      virtual={false}
-      popupRender={(originNode) => (
-        <div className="data-table__column-selector-popup-inner">
-          {originNode}
-          <div className="data-table__column-selector-footer">
-            <Button
-              block
-              icon={<CheckOutlined aria-hidden="true" />}
-              size="small"
-              type="text"
-              onClick={() => {
-                setVisibleColumnKeys(getDefaultVisibleKeys(columns));
-                setColumnWidths(getDefaultColumnWidths(columns));
-              }}
-            >
-              {resetLabel}
-            </Button>
-          </div>
-        </div>
-      )}
-      onChange={handleColumnsChange}
-    />
-  );
-}
+export { DataTableColumnSettings } from './DataTableColumnSettings';
 
 export function DataTable<T extends object>(props: DataTableProps<T>) {
   const {
@@ -257,11 +176,14 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
 
       return {
         key: column.key,
+        className: 'data-table__cell',
         title: column.title,
         dataIndex: column.dataIndex as string | undefined,
         width: fillsRemainingWidth ? undefined : width,
         align: column.align,
         ellipsis: column.ellipsis,
+        sorter: column.sorter,
+        sortOrder: column.sortOrder,
         render: (value: unknown, record: T, index: number) => {
           if (column.render) {
             return column.render(value, record, index);
@@ -302,7 +224,9 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
         {toolbar ? <div className="data-table__toolbar">{toolbar}</div> : null}
         <DataTableMobileList
           key={props.mobileList.resetKey}
-          columns={columns.filter((column) => appliedVisibleColumnKeys.includes(column.key))}
+          columns={columns.filter((column) =>
+            appliedVisibleColumnKeys.includes(column.key)
+          )}
           items={dataSource}
           rowKey={rowKey}
           rowSelection={rowSelection}
@@ -331,6 +255,7 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
             }
           }}
           pagination={false}
+          onChange={props.onChange}
           onRow={onRow}
           rowClassName={rowClassName}
           rowSelection={rowSelection}
@@ -366,11 +291,14 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
           current={props.page}
           pageSize={props.pageSize}
           total={props.total}
-          showSizeChanger={false}
-          showTotal={(paginationTotal) =>
-            i18nText('sharedUi', 'auto.total_items', {
-              value1: paginationTotal
-            })
+          showSizeChanger={Boolean(props.pageSizeOptions)}
+          pageSizeOptions={props.pageSizeOptions}
+          showTotal={
+            props.showTotal ??
+            ((paginationTotal) =>
+              i18nText('sharedUi', 'auto.total_items', {
+                value1: paginationTotal
+              }))
           }
           onChange={props.onPageChange}
         />

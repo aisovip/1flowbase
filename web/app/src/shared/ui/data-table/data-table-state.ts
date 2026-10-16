@@ -14,6 +14,8 @@ export type DataTableColumn<T extends object> = {
   dataIndex?: keyof T;
   render?: (value: unknown, record: T, index: number) => ReactNode;
   ellipsis?: boolean;
+  sorter?: boolean;
+  sortOrder?: 'ascend' | 'descend' | null;
   mobileRole?: 'title' | 'actions';
 };
 
@@ -56,9 +58,9 @@ export function normalizeVisibleKeys<T extends object>(
   visibleColumnKeys: string[]
 ) {
   const defaultVisibleKeys = getDefaultVisibleKeys(columns);
-  const normalized = columns.map((column) => column.key).filter((key) =>
-    visibleColumnKeys.includes(key)
-  );
+  const normalized = columns
+    .map((column) => column.key)
+    .filter((key) => visibleColumnKeys.includes(key));
 
   return normalized.length ? normalized : defaultVisibleKeys;
 }

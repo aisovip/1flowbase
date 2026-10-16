@@ -21,6 +21,8 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => ({
   fetchConsoleFileTables: vi.fn(),
   fetchConsoleFileRecords: vi.fn(),
   uploadConsoleFile: vi.fn(),
+  updateConsoleRuntimeModelRecord: vi.fn(),
+  deleteConsoleRuntimeModelRecord: vi.fn(),
   createConsoleTemporaryFileLink: vi.fn()
 }));
 const table = {
@@ -63,6 +65,7 @@ function mount(
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   useAuthStore.setState({
     csrfToken: 'csrf-123',
     actor: {
@@ -83,6 +86,111 @@ afterEach(() => {
 });
 
 describe('FileTableView', () => {
+  test('searches and sorts on the server instead of filtering the current page', async () => {
+    mount();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索文件名…' }), {
+      target: { value: 'report' }
+    });
+    await waitFor(() =>
+      expect(client.fetchConsoleFileRecords).toHaveBeenLastCalledWith(
+        'file_demo',
+        1,
+        5,
+        expect.any(AbortSignal),
+        { filename: 'report', sort: 'created_at:desc' }
+      )
+    );
+    fireEvent.click(screen.getByRole('columnheader', { name: /大小/ }));
+    await waitFor(() =>
+      expect(client.fetchConsoleFileRecords).toHaveBeenLastCalledWith(
+        'file_demo',
+        1,
+        5,
+        expect.any(AbortSignal),
+        { filename: 'report', sort: 'size:asc' }
+      )
+    );
+  });
+  test('edits the filename through the selected model and confirms deletion before sending it', async () => {
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [record],
+      total: 1
+    });
+    vi.mocked(client.updateConsoleRuntimeModelRecord).mockResolvedValue({
+      ...record,
+      filename: 'renamed.txt'
+    });
+    vi.mocked(client.deleteConsoleRuntimeModelRecord).mockResolvedValue({
+      deleted: true
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    const drawer = await screen.findByRole('dialog', { name: '编辑文件' });
+    fireEvent.change(within(drawer).getByRole('textbox'), {
+      target: { value: 'renamed.txt' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(client.updateConsoleRuntimeModelRecord).toHaveBeenCalledWith(
+        'file_demo',
+        record.id,
+        { filename: 'renamed.txt' },
+        'csrf-123'
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: '编辑文件' })
+      ).not.toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /删除/ }));
+    const confirm = await screen.findByRole('dialog');
+    expect(client.deleteConsoleRuntimeModelRecord).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: /删除/ }));
+    await waitFor(() =>
+      expect(client.deleteConsoleRuntimeModelRecord).toHaveBeenCalledWith(
+        'file_demo',
+        record.id,
+        'csrf-123'
+      )
+    );
+  });
+
+  test('reports failed URL copying instead of showing a success message', async () => {
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [record],
+      total: 1
+    });
+    vi.mocked(copy).mockResolvedValueOnce(false);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '复制链接' }));
+    expect(await screen.findByText('复制失败，请手动复制链接')).toBeVisible();
+    expect(screen.queryByText('链接已复制')).not.toBeInTheDocument();
+  });
+
+  test('keeps the editor and existing record when the server rejects a rename', async () => {
+    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+      items: [record],
+      total: 1
+    });
+    vi.mocked(client.updateConsoleRuntimeModelRecord).mockRejectedValue(
+      new Error('No write access')
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    const drawer = await screen.findByRole('dialog', { name: '编辑文件' });
+    fireEvent.change(within(drawer).getByRole('textbox'), {
+      target: { value: 'denied.txt' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存' }));
+    expect(await screen.findByText('No write access')).toBeVisible();
+    expect(drawer).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: record.filename })
+    ).toBeInTheDocument();
+    expect(client.fetchConsoleFileRecords).toHaveBeenCalledTimes(1);
+  });
+
   test.each(['text/plain', 'application/pdf', 'application/zip'])(
     'shows the access URL in the preview cell when %s has no backend preview',
     async (mimetype) => {
@@ -189,8 +297,9 @@ describe('FileTableView', () => {
     expect(client.fetchConsoleFileRecords).toHaveBeenCalledWith(
       'file_demo',
       1,
-      20,
-      expect.any(AbortSignal)
+      5,
+      expect.any(AbortSignal),
+      { filename: '', sort: 'created_at:desc' }
     );
   });
   test('does not enable upload or query records for a missing target table', async () => {
@@ -226,10 +335,22 @@ describe('FileTableView', () => {
       defaultOptions: { queries: { retry: false, staleTime: Infinity } }
     });
     queryClient.setQueryData(['files', 'tables', 'workspace-1'], [table]);
-    queryClient.setQueryData(['files', 'records', 'workspace-1', table.id, 1], {
-      items: [record],
-      total: 21
-    });
+    queryClient.setQueryData(
+      [
+        'files',
+        'records',
+        'workspace-1',
+        table.id,
+        1,
+        5,
+        '',
+        'created_at:desc'
+      ],
+      {
+        items: [record],
+        total: 21
+      }
+    );
     const second = { ...record, id: 'record-2', filename: 'second.txt' };
     const newest = { ...record, id: 'record-3', filename: 'newest.txt' };
     let uploaded = false;
@@ -248,7 +369,7 @@ describe('FileTableView', () => {
       };
     });
     mount(queryClient);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(await screen.findByTitle('2'));
     await screen.findByRole('link', { name: 'second.txt' });
     fireEvent.click(screen.getByRole('button', { name: /上传文件/ }));
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });
@@ -297,7 +418,12 @@ describe('FileTableView', () => {
       'csrf-123',
       expect.any(AbortSignal)
     );
-    fireEvent.click(screen.getByRole('button', { name: '复制链接' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: '临时公开' })).getByRole(
+        'button',
+        { name: '复制链接' }
+      )
+    );
     expect(copy).toHaveBeenCalledWith(url);
     expect(screen.getByText(/到期时间：/)).toBeVisible();
   });

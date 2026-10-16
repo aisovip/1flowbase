@@ -91,13 +91,20 @@ export function fetchConsoleFileRecords(
   modelCode: string,
   page: number,
   pageSize: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { filename?: string; sort?: string } = {}
 ) {
   const query = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
-    sort: 'created_at:desc'
+    sort: options.sort ?? 'created_at:desc'
   });
+  if (options.filename) {
+    query.set(
+      'filter',
+      JSON.stringify({ filename: { $includes: options.filename } })
+    );
+  }
   return apiFetch<{ items: ConsoleFileRecord[]; total: number }>({
     path: `/api/runtime/models/${encodeURIComponent(modelCode)}/list?${query}`,
     signal

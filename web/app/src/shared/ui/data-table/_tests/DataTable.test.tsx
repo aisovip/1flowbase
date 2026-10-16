@@ -9,6 +9,7 @@ import {
   type DataTableColumn,
   type DataTableConfiguration
 } from '../DataTable';
+import { useState } from 'react';
 import { normalizeDataTableState } from '../data-table-state';
 
 type SampleRow = {
@@ -227,31 +228,62 @@ describe('DataTable', () => {
     ).toBeInTheDocument();
   });
 
-  test('renders a shared column settings select and keeps column order from the table schema', async () => {
-    const configuration = createConfiguration();
-
-    render(
-      <DataTableColumnSettings
-        columns={columns}
-        configuration={configuration}
-      />
-    );
-
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
+  test('searches fields without losing hidden selections, keeps one column and restores defaults', async () => {
+    function Fixture() {
+      const [visibleColumnKeys, setVisibleColumnKeys] = useState([
+        'name',
+        'owner'
+      ]);
+      const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+        name: 240,
+        owner: 180
+      });
+      return (
+        <>
+          <DataTableColumnSettings
+            columns={columns}
+            configuration={{
+              visibleColumnKeys,
+              setVisibleColumnKeys,
+              columnWidths,
+              setColumnWidths
+            }}
+          />
+          <output>{JSON.stringify({ visibleColumnKeys, columnWidths })}</output>
+        </>
+      );
+    }
+    render(<Fixture />);
+    const trigger = screen.getByRole('button', { name: '字段配置' });
+    expect(trigger).toHaveTextContent('2/2');
+    fireEvent.click(trigger);
+    const panel = await screen.findByRole('dialog', { name: '自定义显示字段' });
+    fireEvent.change(within(panel).getByRole('textbox'), {
+      target: { value: '负责' }
+    });
+    expect(
+      within(panel).queryByRole('checkbox', { name: '名称' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('checkbox', { name: '负责人' }));
+    expect(trigger).toHaveTextContent('1/2');
+    fireEvent.change(within(panel).getByRole('textbox'), {
+      target: { value: '' }
+    });
+    expect(within(panel).getByRole('checkbox', { name: '名称' })).toBeChecked();
+    expect(
+      within(panel).getByRole('checkbox', { name: '名称' })
+    ).toBeDisabled();
     fireEvent.click(
-      await screen.findByText('负责人', {
-        selector: '.ant-select-item-option-content'
-      })
+      within(panel).getByRole('button', { name: '重置默认字段' })
     );
-
-    expect(configuration.setVisibleColumnKeys).toHaveBeenCalledWith(['name']);
-    expect(
-      within(screen.getByRole('listbox')).getByRole('option', {
-        name: '名称'
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '重置默认字段' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '"visibleColumnKeys":["name","owner"]'
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '"columnWidths":{"name":180,"owner":140}'
+    );
+    fireEvent.keyDown(within(panel).getByRole('textbox'), { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
   });
 });

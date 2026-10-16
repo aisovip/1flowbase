@@ -52,5 +52,13 @@
     "list_retry": "Loading failed. Retry",
     "list_end": "All records loaded",
     "list_select_loaded": "Select loaded records"
+  },
+  "table": {
+    "columns": "Columns",
+    "customize": "Customize visible fields",
+    "selected": "{{count}} selected",
+    "search": "Search fields…",
+    "keep_one": "Keep at least one column",
+    "no_fields": "No matching fields"
   }
 }
