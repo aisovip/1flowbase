@@ -133,11 +133,6 @@
 .file-table-view__table .data-table__pagination {
   padding: 20px 24px;
 }
-.file-table-view__table .data-table__pagination > :first-child {
-  margin-right: auto;
-  color: var(--ant-color-text-tertiary);
-  font-size: 13px;
-}
 @media (max-width: 768px) {
   .file-table-view__toolbar {
     padding: 16px;
@@ -155,10 +150,5 @@
   }
   .file-table-view__table .data-table__pagination {
     padding: 16px;
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-  .file-table-view__table .data-table__pagination > :first-child {
-    width: 100%;
   }
 }

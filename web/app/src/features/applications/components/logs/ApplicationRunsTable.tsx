@@ -53,7 +53,7 @@ export function ApplicationRunsTable({
   rowSelection?: DataTableRowSelection<ApplicationRunSummary>;
   selectedRunId?: string | null;
   configuration: ApplicationRunsTableConfiguration;
-  onPageChange: (page: number) => void;
+  onPageChange: (page: number, pageSize: number) => void;
   onSelectRun: (run: ApplicationRunSummary) => void;
 }) {
   const { t } = useTranslation('applications');
@@ -86,6 +86,7 @@ export function ApplicationRunsTable({
       mobileList={mobileList}
       page={page}
       pageSize={pageSize}
+      pageSizeOptions={[10, 20, 50, 100]}
       rowClassName={(record) =>
         record.id === selectedRunId ? 'application-runs-table__row--active' : ''
       }

@@ -286,22 +286,34 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
           </Button>
         </div>
       ) : (
-        <Pagination
-          className="data-table__pagination"
-          current={props.page}
-          pageSize={props.pageSize}
-          total={props.total}
-          showSizeChanger={Boolean(props.pageSizeOptions)}
-          pageSizeOptions={props.pageSizeOptions}
-          showTotal={
-            props.showTotal ??
-            ((paginationTotal) =>
-              i18nText('sharedUi', 'auto.total_items', {
-                value1: paginationTotal
-              }))
-          }
-          onChange={props.onPageChange}
-        />
+        <div className="data-table__pagination">
+          <span className="data-table__pagination-total">
+            {(
+              props.showTotal ??
+              ((total, [start, end]) =>
+                i18nText('sharedUi', 'pagination.range', { start, end, total }))
+            )(
+              props.total,
+              props.total === 0
+                ? [0, 0]
+                : [
+                    Math.min(
+                      (props.page - 1) * props.pageSize + 1,
+                      props.total
+                    ),
+                    Math.min(props.page * props.pageSize, props.total)
+                  ]
+            )}
+          </span>
+          <Pagination
+            current={props.page}
+            pageSize={props.pageSize}
+            total={props.total}
+            showSizeChanger={Boolean(props.pageSizeOptions?.length)}
+            pageSizeOptions={props.pageSizeOptions}
+            onChange={props.onPageChange}
+          />
+        </div>
       )}
     </section>
   );

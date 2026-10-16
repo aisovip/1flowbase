@@ -97,3 +97,19 @@
   width: 1px;
   background: var(--ant-color-border-secondary);
 }
+
+.data-table__pagination-total {
+  margin-right: auto;
+  color: var(--ant-color-text-tertiary);
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .data-table__pagination {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .data-table__pagination-total {
+    width: 100%;
+  }
+}

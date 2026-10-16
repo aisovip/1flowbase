@@ -104,7 +104,6 @@ const RUN_ARCHIVE_IMPORT_CHUNK_SIZE = 1024 * 1024;
 const RUN_ARCHIVE_IMPORT_POLL_INTERVAL_MS = 1_000;
 const RUN_ARCHIVE_IMPORT_MAX_POLLS = 120;
 const DEFAULT_TIME_RANGE = '7';
-const PAGE_SIZE = 20;
 const ARCHIVE_IMPORT_TARGET_KEY =
   '1flowbase.application.all-agent-flow.run_archive_import_target';
 const EMPTY_APPLICATIONS: Array<{ id: string; name: string }> = [];
@@ -391,6 +390,7 @@ export function ApplicationLogsWorkspace({
   const [keywordSearch, setKeywordSearch] = useState('');
   const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [sortBy, setSortBy] =
     useState<ApplicationRunSortField>(DEFAULT_SORT_BY);
   const [sortOrder, setSortOrder] =
@@ -492,7 +492,7 @@ export function ApplicationLogsWorkspace({
   const runsInput: FetchApplicationRunsInput = useMemo(
     () => ({
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
       ...statisticsFilters,
       timeRangeDays:
         statisticsFilters.started_from ||
@@ -504,7 +504,15 @@ export function ApplicationLogsWorkspace({
       sortOrder,
       titleIncludes: titleIncludes || undefined
     }),
-    [page, sortBy, sortOrder, timeRange, titleIncludes, statisticsFilters]
+    [
+      page,
+      pageSize,
+      sortBy,
+      sortOrder,
+      timeRange,
+      titleIncludes,
+      statisticsFilters
+    ]
   );
   const screens = Grid.useBreakpoint();
   const mobileListEnabled = screens.md === undefined ? undefined : !screens.md;
@@ -634,8 +642,9 @@ export function ApplicationLogsWorkspace({
     setSelectedRunIds([]);
   }
 
-  function changePage(nextPage: number) {
-    setPage(nextPage);
+  function changePage(nextPage: number, nextPageSize: number) {
+    setPage(nextPageSize === pageSize ? nextPage : 1);
+    setPageSize(nextPageSize);
     setSelectedRunIds([]);
   }
 
@@ -1290,7 +1299,7 @@ export function ApplicationLogsWorkspace({
               : undefined
           }
           page={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={total}
           configuration={runsTableConfiguration}
           columns={runsTableColumns}

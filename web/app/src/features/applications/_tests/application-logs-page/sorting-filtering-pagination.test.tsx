@@ -736,7 +736,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
         sortOrder: 'desc'
       }
     );
-    expect(screen.getByText('共 42 条')).toBeInTheDocument();
+    expect(screen.getByText('显示 1–20 条，共 42 条')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('2', { selector: 'li[title="2"] > a' }));
 
@@ -754,5 +754,22 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
       );
     });
     expect(await screen.findByText('title-21')).toBeInTheDocument();
+    expect(screen.getByText('显示 21–40 条，共 42 条')).toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(
+        document.querySelector('.data-table__pagination') as HTMLElement
+      ).getByRole('combobox')
+    );
+    fireEvent.click(
+      await screen.findByText('50 条/页', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    await waitFor(() => {
+      expect(runtimeApi.fetchApplicationRuns).toHaveBeenLastCalledWith(
+        'app-1',
+        expect.objectContaining({ page: 1, pageSize: 50 })
+      );
+    });
   });
 });
