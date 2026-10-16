@@ -35,25 +35,25 @@ pub(crate) fn generation(state: &ApiState) -> Result<String, ApiError> {
 }
 
 pub(super) fn origin(headers: &HeaderMap) -> Result<String, ApiError> {
-    let origin = headers
-        .get("origin")
+    let mut origins = headers.get_all("origin").iter();
+    let origin = origins
+        .next()
         .and_then(|value| value.to_str().ok())
         .ok_or(Error::PermissionDenied("managed_service_origin"))?;
+    if origins.next().is_some() {
+        return Err(Error::PermissionDenied("managed_service_origin").into());
+    }
     let url =
         url::Url::parse(origin).map_err(|_| Error::PermissionDenied("managed_service_origin"))?;
-    let host = headers
-        .get("host")
-        .and_then(|value| value.to_str().ok())
-        .ok_or(Error::PermissionDenied("managed_service_origin"))?;
-    let expected = url::Url::parse(&format!("{}://{host}", url.scheme()))
-        .map_err(|_| Error::PermissionDenied("managed_service_origin"))?;
+    // Admission requires session-bound CSRF; upgrades must match the Origin stored
+    // in that one-time ticket. Host describes the final proxy hop, not necessarily
+    // the browser-facing authority (for example HTTPS ingress through frp).
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()
         || url.path() != "/"
         || url.query().is_some()
         || url.fragment().is_some()
-        || url.origin() != expected.origin()
     {
         return Err(Error::PermissionDenied("managed_service_origin").into());
     }

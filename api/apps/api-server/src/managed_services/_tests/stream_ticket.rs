@@ -143,23 +143,37 @@ async fn mutation_and_hot_generation_revoke_preissued_ticket() {
     .is_err());
 }
 #[test]
-fn browser_origin_must_match_host_and_cannot_be_null_or_opaque() {
-    let headers = |origin: &str| {
-        let mut h = axum::http::HeaderMap::new();
-        h.insert("host", "console.example".parse().unwrap());
-        h.insert("origin", origin.parse().unwrap());
-        h
-    };
-    assert_eq!(
-        stream_ticket::origin(&headers("https://console.example")).unwrap(),
-        "https://console.example"
-    );
+fn browser_origin_is_bound_independently_of_proxy_host() {
+    for host in ["127.0.0.1:3400", "127.0.0.1:7600", "gateway.taichuy.cn"] {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("host", host.parse().unwrap());
+        headers.insert("origin", "https://gateway.taichuy.cn".parse().unwrap());
+        headers.insert("x-forwarded-host", "unrelated.example".parse().unwrap());
+        assert_eq!(
+            stream_ticket::origin(&headers).unwrap(),
+            "https://gateway.taichuy.cn"
+        );
+    }
+}
+
+#[test]
+fn browser_origin_must_be_a_single_http_origin() {
+    assert!(stream_ticket::origin(&axum::http::HeaderMap::new()).is_err());
     for origin in [
         "null",
-        "https://attacker.example",
+        "file:///tmp/console",
         "https://console.example/path",
         "https://user@console.example",
+        "https://console.example?query",
+        "https://console.example#fragment",
+        "https://console.example https://other.example",
     ] {
-        assert!(stream_ticket::origin(&headers(origin)).is_err());
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("origin", origin.parse().unwrap());
+        assert!(stream_ticket::origin(&headers).is_err(), "{origin}");
     }
+    let mut headers = axum::http::HeaderMap::new();
+    headers.append("origin", "https://console.example".parse().unwrap());
+    headers.append("origin", "https://other.example".parse().unwrap());
+    assert!(stream_ticket::origin(&headers).is_err());
 }
