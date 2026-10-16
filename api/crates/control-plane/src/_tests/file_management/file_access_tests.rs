@@ -130,7 +130,7 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
     let kv = Arc::new(TestKv::default());
     let service = FileAccessService::new(repository.clone(), drivers, engine, kv.clone());
     let link = service
-        .create_temporary_link(actor.clone(), table_id, id, 600)
+        .create_share_link(actor.clone(), table_id, id, 600)
         .await
         .unwrap();
     assert!(link.url.starts_with("/api/public/files/content?token="));
@@ -167,11 +167,11 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
         .contains("temporary_file_access_invalid"));
     assert!(FileAccessKey::from_token("malformed").is_err());
     assert!(service
-        .create_temporary_link(actor.clone(), table_id, id, 0)
+        .create_share_link(actor.clone(), table_id, id, 0)
         .await
         .is_err());
     assert!(service
-        .create_temporary_link(actor.clone(), table_id, id, i64::MAX)
+        .create_share_link(actor.clone(), table_id, id, i64::MAX)
         .await
         .is_err());
     let unauthorized = domain::ActorContext::scoped(
@@ -185,7 +185,7 @@ async fn file_access_preserves_stable_url_and_scopes_ephemeral_public_read() {
         .await
         .is_err());
     assert!(service
-        .create_temporary_link(unauthorized, table_id, id, 60)
+        .create_share_link(unauthorized, table_id, id, 60)
         .await
         .is_err());
     assert_eq!(kv.entries.lock().unwrap().len(), 1);
@@ -428,7 +428,7 @@ async fn image_preview_projects_upload_list_get_and_obeys_actual_storage_policy(
             .preview
     );
     let link = service
-        .create_temporary_link(actor.clone(), table_id, id, 600)
+        .create_share_link(actor.clone(), table_id, id, 600)
         .await
         .unwrap();
     assert!(link

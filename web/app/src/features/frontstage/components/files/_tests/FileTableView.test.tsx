@@ -23,7 +23,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => ({
   uploadConsoleFile: vi.fn(),
   updateConsoleRuntimeModelRecord: vi.fn(),
   deleteConsoleRuntimeModelRecord: vi.fn(),
-  createConsoleTemporaryFileLink: vi.fn()
+  createConsoleFileShareLink: vi.fn()
 }));
 const table = {
   id: 'table-1',
@@ -380,73 +380,90 @@ describe('FileTableView', () => {
       await screen.findByRole('link', { name: 'newest.txt' })
     ).toBeInTheDocument();
   });
-  test('uses the persisted path and creates and copies a temporary link', async () => {
-    const stored = { ...record, url: '/files/persisted/hello.txt' };
-    vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
-      items: [stored],
-      total: 1
-    });
-    vi.mocked(client.createConsoleTemporaryFileLink).mockResolvedValue({
-      url: '/api/public/files/content?token=temporary',
-      preview_url: null,
-      expires_at: '2026-10-13T12:00:00Z'
-    });
-    mount();
-    expect(
-      await screen.findByRole('link', { name: 'hello.txt' })
-    ).toHaveAttribute('href', stored.url);
-    fireEvent.click(await screen.findByRole('button', { name: '临时公开' }));
-    await waitFor(() =>
+  test.each([null, '/api/public/files/content?token=temporary&preview=true'])(
+    'creates a clickable share link and copies the same URL (preview: %s)',
+    async (previewUrl) => {
+      const stored = { ...record, url: '/files/persisted/hello.txt' };
+      vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
+        items: [stored],
+        total: 1
+      });
+      vi.mocked(client.createConsoleFileShareLink).mockResolvedValue({
+        url: '/api/public/files/content?token=temporary',
+        preview_url: previewUrl,
+        expires_at: '2026-10-13T12:00:00Z'
+      });
+      mount();
       expect(
-        screen.getByText('有效期内，任何持有链接的人均可访问此文件。')
-      ).toBeVisible()
-    );
-    fireEvent.change(screen.getByRole('spinbutton'), {
-      target: { value: '120' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
-    const field = await screen.findByRole('textbox', { name: '临时访问链接' });
-    const url = new URL(
-      '/api/public/files/content?token=temporary',
-      window.location.origin
-    ).href;
-    expect(field).toHaveValue(url);
-    expect(client.createConsoleTemporaryFileLink).toHaveBeenCalledWith(
-      table.id,
-      record.id,
-      { expires_in_seconds: 120 },
-      'csrf-123',
-      expect.any(AbortSignal)
-    );
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: '临时公开' })).getByRole(
-        'button',
-        { name: '复制链接' }
-      )
-    );
-    expect(copy).toHaveBeenCalledWith(url);
-    expect(screen.getByText(/到期时间：/)).toBeVisible();
-  });
+        await screen.findByRole('link', { name: 'hello.txt' })
+      ).toHaveAttribute('href', stored.url);
+      fireEvent.click(await screen.findByRole('button', { name: '分享' }));
+      await waitFor(() =>
+        expect(
+          screen.getByText('有效期内，任何持有链接的人均可访问此文件。')
+        ).toBeVisible()
+      );
+      fireEvent.change(screen.getByRole('spinbutton'), {
+        target: { value: '120' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
+      const field = await screen.findByRole('link', { name: '分享链接' });
+      const url = new URL(
+        previewUrl ?? '/api/public/files/content?token=temporary',
+        window.location.origin
+      ).href;
+      expect(field).toHaveAttribute('href', url);
+      expect(field).toHaveAttribute('target', '_blank');
+      expect(field).toHaveTextContent(url);
+      expect(screen.queryByText('打开分享图片预览')).not.toBeInTheDocument();
+      expect(client.createConsoleFileShareLink).toHaveBeenCalledWith(
+        table.id,
+        record.id,
+        { expires_in_seconds: 120 },
+        'csrf-123',
+        expect.any(AbortSignal)
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: '分享' })).getByRole(
+          'button',
+          { name: '复制链接' }
+        )
+      );
+      expect(copy).toHaveBeenCalledWith(url);
+      expect(screen.getByText(/到期时间：/)).toBeVisible();
+      fireEvent.click(
+        within(screen.getByRole('dialog', { name: '分享' })).getByRole(
+          'button',
+          { name: /取\s*消/ }
+        )
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: '分享' })
+        ).not.toBeInTheDocument()
+      );
+    }
+  );
 
   test('closes a pending link request on workspace change and ignores its late result', async () => {
     vi.mocked(client.fetchConsoleFileRecords).mockResolvedValue({
       items: [record],
       total: 1
     });
-    let resolve!: (value: client.TemporaryFileLink) => void;
-    vi.mocked(client.createConsoleTemporaryFileLink).mockImplementation(
+    let resolve!: (value: client.FileShareLink) => void;
+    vi.mocked(client.createConsoleFileShareLink).mockImplementation(
       () =>
         new Promise((done) => {
           resolve = done;
         })
     );
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: '临时公开' }));
+    fireEvent.click(await screen.findByRole('button', { name: '分享' }));
     fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
     await waitFor(() =>
-      expect(client.createConsoleTemporaryFileLink).toHaveBeenCalled()
+      expect(client.createConsoleFileShareLink).toHaveBeenCalled()
     );
-    const signal = vi.mocked(client.createConsoleTemporaryFileLink).mock
+    const signal = vi.mocked(client.createConsoleFileShareLink).mock
       .calls[0][4]!;
     useAuthStore.setState({
       actor: {
@@ -464,7 +481,7 @@ describe('FileTableView', () => {
     });
     await waitFor(() =>
       expect(
-        screen.queryByRole('textbox', { name: '临时访问链接' })
+        screen.queryByRole('link', { name: '分享链接' })
       ).not.toBeInTheDocument()
     );
   });
@@ -474,17 +491,17 @@ describe('FileTableView', () => {
       items: [record],
       total: 1
     });
-    vi.mocked(client.createConsoleTemporaryFileLink).mockRejectedValue(
+    vi.mocked(client.createConsoleFileShareLink).mockRejectedValue(
       new Error('file access denied')
     );
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: '临时公开' }));
+    fireEvent.click(await screen.findByRole('button', { name: '分享' }));
     fireEvent.click(screen.getByRole('button', { name: '生成链接' }));
     await waitFor(() =>
       expect(screen.getByText('file access denied')).toBeVisible()
     );
     expect(
-      screen.queryByRole('textbox', { name: '临时访问链接' })
+      screen.queryByRole('link', { name: '分享链接' })
     ).not.toBeInTheDocument();
   });
 });

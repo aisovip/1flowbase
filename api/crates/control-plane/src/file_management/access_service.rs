@@ -50,7 +50,7 @@ struct TemporaryFileGrant {
 }
 
 #[derive(Serialize)]
-pub struct TemporaryFileLink {
+pub struct FileShareLink {
     pub url: String,
     pub preview_url: Option<String>,
     pub expires_at: String,
@@ -151,13 +151,13 @@ where
         self.open_record(&record, preview).await
     }
 
-    pub async fn create_temporary_link(
+    pub async fn create_share_link(
         &self,
         actor: domain::ActorContext,
         file_table_id: Uuid,
         record_id: Uuid,
         expires_in_seconds: i64,
-    ) -> Result<TemporaryFileLink> {
+    ) -> Result<FileShareLink> {
         if expires_in_seconds <= 0 {
             return Err(ControlPlaneError::InvalidInput("expires_in_seconds").into());
         }
@@ -192,7 +192,7 @@ where
                 Some(Duration::seconds(expires_in_seconds)),
             )
             .await?;
-        Ok(TemporaryFileLink {
+        Ok(FileShareLink {
             url: format!("/api/public/files/content?token={token}"),
             preview_url: preview_available
                 .then(|| format!("/api/public/files/content?token={token}&preview=true")),

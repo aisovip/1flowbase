@@ -65,20 +65,20 @@ export interface ConsoleFileRecord extends Record<string, unknown> {
   preview_url: string | null;
 }
 
-export interface TemporaryFileLink {
+export interface FileShareLink {
   url: string;
   preview_url: string | null;
   expires_at: string;
 }
 
-export function createConsoleTemporaryFileLink(
+export function createConsoleFileShareLink(
   fileTableId: string,
   recordId: string,
   input: { expires_in_seconds: number },
   csrfToken: string,
   signal?: AbortSignal
 ) {
-  return apiFetch<TemporaryFileLink>({
+  return apiFetch<FileShareLink>({
     path: `/api/console/files/${encodeURIComponent(fileTableId)}/records/${encodeURIComponent(recordId)}/access-links`,
     method: 'POST',
     body: input,

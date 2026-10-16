@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 
 import {
-  createConsoleTemporaryFileLink,
+  createConsoleFileShareLink,
   createConsoleFileStorage,
   createConsoleFileTable,
   deleteConsoleFileStorage,
@@ -73,10 +73,10 @@ describe('console-file-management client', () => {
     expect((result.rawBody as FormData).get('file_table_id')).toBe('table-1');
   });
 
-  test('temporary access preserves IDs, expiration, CSRF and cancellation', async () => {
+  test('file sharing preserves IDs, expiration, CSRF and cancellation', async () => {
     const controller = new AbortController();
     await expect(
-      createConsoleTemporaryFileLink(
+      createConsoleFileShareLink(
         'table/1',
         'record 1',
         { expires_in_seconds: 123 },

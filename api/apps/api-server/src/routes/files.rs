@@ -39,11 +39,11 @@ pub struct UploadedFileResponse {
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct CreateTemporaryFileLinkInput {
+pub struct CreateFileShareLinkInput {
     pub expires_in_seconds: i64,
 }
 #[derive(Serialize, ToSchema)]
-pub struct TemporaryFileLinkResponse {
+pub struct FileShareLinkResponse {
     pub url: String,
     pub preview_url: Option<String>,
     pub expires_at: String,
@@ -86,7 +86,7 @@ enum BusinessFilesInput {
         file_table_id: Option<Uuid>,
         file: RemoteFileReference,
     },
-    CreateTemporaryLink {
+    CreateShareLink {
         file_table_id: String,
         record_id: String,
         expires_in_seconds: i64,
@@ -103,7 +103,7 @@ impl InterfaceContract for BusinessFilesInput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema(&[
-                ("variant", mp::tag_schema("CreateTemporaryLink")),
+                ("variant", mp::tag_schema("CreateShareLink")),
                 ("file_table_id", mp::text_schema()),
                 ("record_id", mp::text_schema()),
                 ("expires_in_seconds", mp::count_schema()),
@@ -142,12 +142,12 @@ impl InterfaceContract for BusinessFilesInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::CreateTemporaryLink {
+            Self::CreateShareLink {
                 file_table_id,
                 record_id,
                 expires_in_seconds,
             } => mp::object_value(&[
-                ("variant", serde_json::json!("CreateTemporaryLink")),
+                ("variant", serde_json::json!("CreateShareLink")),
                 ("file_table_id", mp::text(file_table_id)?),
                 ("record_id", mp::text(record_id)?),
                 ("expires_in_seconds", serde_json::json!(expires_in_seconds)),
@@ -219,14 +219,14 @@ type FileContentOutput = control_plane::file_management::FileContent;
 enum BusinessFilesOutput {
     Uploaded(UploadedFileResponse),
     Content(FileContentOutput),
-    TemporaryLink(TemporaryFileLinkResponse),
+    ShareLink(FileShareLinkResponse),
 }
 
 impl InterfaceContract for BusinessFilesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
-            mp::object_schema(&[("variant", mp::tag_schema("TemporaryLink"))]),
+            mp::object_schema(&[("variant", mp::tag_schema("ShareLink"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("Uploaded")),
                 (
@@ -244,9 +244,7 @@ impl InterfaceContract for BusinessFilesOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::TemporaryLink(_) => {
-                mp::object_value(&[("variant", serde_json::json!("TemporaryLink"))])
-            }
+            Self::ShareLink(_) => mp::object_value(&[("variant", serde_json::json!("ShareLink"))]),
             Self::Uploaded(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Uploaded".to_owned())),
                 (
@@ -286,7 +284,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route(
             "/files/:file_table_id/records/:record_id/access-links",
-            console_post(create_temporary_file_link, Authenticated),
+            console_post(create_file_share_link, Authenticated),
         )
         .route("/files/upload", console_post(upload_file, Authenticated))
         .route(
@@ -534,14 +532,14 @@ impl BusinessFilesAdapter {
                     .map_err(map_runtime_error)?;
                 Ok(BusinessFilesOutput::Content(content))
             }
-            BusinessFilesInput::CreateTemporaryLink {
+            BusinessFilesInput::CreateShareLink {
                 file_table_id,
                 record_id,
                 expires_in_seconds,
             } => {
                 let link = self
                     .access_service()
-                    .create_temporary_link(
+                    .create_share_link(
                         actor,
                         parse_uuid(&file_table_id, "file_table_id")?,
                         parse_uuid(&record_id, "record_id")?,
@@ -549,13 +547,11 @@ impl BusinessFilesAdapter {
                     )
                     .await
                     .map_err(map_runtime_error)?;
-                Ok(BusinessFilesOutput::TemporaryLink(
-                    TemporaryFileLinkResponse {
-                        url: link.url,
-                        preview_url: link.preview_url,
-                        expires_at: link.expires_at,
-                    },
-                ))
+                Ok(BusinessFilesOutput::ShareLink(FileShareLinkResponse {
+                    url: link.url,
+                    preview_url: link.preview_url,
+                    expires_at: link.expires_at,
+                }))
             }
         }
     }
@@ -699,18 +695,18 @@ pub async fn read_file_content(
 
 #[utoipa::path(post, path = "/api/console/files/{file_table_id}/records/{record_id}/access-links",
     params(("file_table_id" = String, Path), ("record_id" = String, Path)),
-    request_body = CreateTemporaryFileLinkInput,
-    responses((status = 201, body = TemporaryFileLinkResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
-pub async fn create_temporary_file_link(
+    request_body = CreateFileShareLinkInput,
+    responses((status = 201, body = FileShareLinkResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
+pub async fn create_file_share_link(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((file_table_id, record_id)): Path<(String, String)>,
-    Json(input): Json<CreateTemporaryFileLinkInput>,
+    Json(input): Json<CreateFileShareLinkInput>,
 ) -> Result<
     (
         StatusCode,
         HeaderMap,
-        Json<ApiSuccess<TemporaryFileLinkResponse>>,
+        Json<ApiSuccess<FileShareLinkResponse>>,
     ),
     ApiError,
 > {
@@ -718,14 +714,14 @@ pub async fn create_temporary_file_link(
         Arc::clone(&state),
         "http.console.files.access-links.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
-        BusinessFilesInput::CreateTemporaryLink {
+        BusinessFilesInput::CreateShareLink {
             file_table_id,
             record_id,
             expires_in_seconds: input.expires_in_seconds,
         },
     )
     .await?;
-    let BusinessFilesOutput::TemporaryLink(link) = output else {
+    let BusinessFilesOutput::ShareLink(link) = output else {
         unreachable!("file link binding returned a different output")
     };
     let mut headers = HeaderMap::new();

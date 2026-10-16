@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -39,16 +40,17 @@ import {
 import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import { useNativeBlockSurface } from '../../lib/native-modules/native-block-surface-context';
-import { FileTemporaryAccessModal } from './FileTemporaryAccessModal';
+import { FileShareModal } from './FileShareModal';
 import { FileRecordPreview } from './FileRecordPreview';
 import { formatFileSize } from './file-size';
 
 export interface FileTableViewProps {
   fileTableCode: string;
+  toolbarExtra?: ReactNode;
 }
 
 /** Host owns authenticated multipart requests; Blocks only select a file table. */
-export function FileTableView({ fileTableCode }: FileTableViewProps) {
+export function FileTableView({ fileTableCode, toolbarExtra }: FileTableViewProps) {
   const { message } = App.useApp();
   const { getPrefixCls } = useContext(ConfigProvider.ConfigContext);
   const uploadPrefixCls = getPrefixCls('upload');
@@ -72,7 +74,7 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   }, [search]);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [publicTarget, setPublicTarget] = useState<{
+  const [shareTarget, setShareTarget] = useState<{
     record: ConsoleFileRecord;
     tableId: string;
     workspaceId: string | undefined;
@@ -110,11 +112,11 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
   });
   useEffect(() => {
     setPage(1);
-    setPublicTarget(undefined);
+    setShareTarget(undefined);
     setSearch('');
     setFilename('');
   }, [fileTableCode, workspaceId]);
-  useEffect(() => setPublicTarget(undefined), [csrfToken]);
+  useEffect(() => setShareTarget(undefined), [csrfToken]);
 
   const columns = useMemo<DataTableColumn<ConsoleFileRecord>[]>(
     () => [
@@ -236,9 +238,9 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
             record={record}
             fileTableCode={fileTableCode}
             csrfToken={csrfToken}
-            onPublic={() =>
+            onShare={() =>
               table &&
-              setPublicTarget({ record, tableId: table.id, workspaceId })
+              setShareTarget({ record, tableId: table.id, workspaceId })
             }
             onChanged={async () => {
               await queryClient.invalidateQueries({
@@ -362,21 +364,8 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                   />
-                  <DataTableColumnSettings
-                    columns={columns}
-                    configuration={configuration}
-                  />
                 </div>
-                <Space>
-                  <Button
-                    icon={<ReloadOutlined />}
-                    aria-label={i18nText('frontstage', 'files.refresh')}
-                    disabled={!table}
-                    loading={records.isFetching}
-                    onClick={() => void records.refetch()}
-                  >
-                    {i18nText('frontstage', 'auto.refresh')}
-                  </Button>
+                <Space wrap>
                   <Button
                     type="primary"
                     icon={<UploadOutlined />}
@@ -386,6 +375,20 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
                   >
                     {i18nText('frontstage', 'files.upload_short')}
                   </Button>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    aria-label={i18nText('frontstage', 'files.refresh')}
+                    disabled={!table}
+                    loading={records.isFetching}
+                    onClick={() => void records.refetch()}
+                  >
+                    {i18nText('frontstage', 'auto.refresh')}
+                  </Button>
+                  <DataTableColumnSettings
+                    columns={columns}
+                    configuration={configuration}
+                  />
+                  {toolbarExtra}
                 </Space>
               </div>
               <div className="file-table-view__summary">
@@ -404,17 +407,17 @@ export function FileTableView({ fileTableCode }: FileTableViewProps) {
           }
         />
       </DataTableLayout>
-      {publicTarget &&
-      publicTarget.tableId === table?.id &&
-      publicTarget.workspaceId === workspaceId &&
+      {shareTarget &&
+      shareTarget.tableId === table?.id &&
+      shareTarget.workspaceId === workspaceId &&
       csrfToken ? (
-        <FileTemporaryAccessModal
-          key={`${publicTarget.tableId}:${publicTarget.record.id}:${workspaceId}`}
-          fileTableId={publicTarget.tableId}
-          recordId={publicTarget.record.id}
-          filename={publicTarget.record.filename}
+        <FileShareModal
+          key={`${shareTarget.tableId}:${shareTarget.record.id}:${workspaceId}`}
+          fileTableId={shareTarget.tableId}
+          recordId={shareTarget.record.id}
+          filename={shareTarget.record.filename}
           csrfToken={csrfToken}
-          onClose={() => setPublicTarget(undefined)}
+          onClose={() => setShareTarget(undefined)}
         />
       ) : null}
       <Modal

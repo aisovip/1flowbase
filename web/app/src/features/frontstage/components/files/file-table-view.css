@@ -127,7 +127,7 @@
   border: 0;
   box-shadow: none;
 }
-.file-table-view__public:not(:disabled) {
+.file-table-view__share:not(:disabled) {
   color: var(--ant-color-primary-text);
 }
 .file-table-view__table .data-table__pagination {

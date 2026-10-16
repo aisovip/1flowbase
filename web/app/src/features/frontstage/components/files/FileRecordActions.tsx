@@ -12,13 +12,13 @@ export function FileRecordActions({
   record,
   fileTableCode,
   csrfToken,
-  onPublic,
+  onShare,
   onChanged
 }: {
   record: ConsoleFileRecord;
   fileTableCode: string;
   csrfToken?: string | null;
-  onPublic: () => void;
+  onShare: () => void;
   onChanged: () => Promise<void>;
 }) {
   const { message, modal } = App.useApp();
@@ -32,12 +32,12 @@ export function FileRecordActions({
     <>
       <div className="file-table-view__actions">
         <Button
-          className="file-table-view__public"
+          className="file-table-view__share"
           type="text"
           disabled={!csrfToken}
-          onClick={onPublic}
+          onClick={onShare}
         >
-          {i18nText('frontstage', 'files.temporary_public')}
+          {i18nText('frontstage', 'files.share')}
         </Button>
         <Button
           type="text"

@@ -107,8 +107,8 @@ export function createFrontendModuleExtraLib(
       source: moduleSource,
       filePath: 'file:///node_modules/@1flowbase/files/index.d.ts',
       content: `declare module '@1flowbase/files' {
-  import type { ReactElement } from 'react';
-  export interface FileTableViewProps { fileTableCode: string; }
+  import type { ReactElement, ReactNode } from 'react';
+  export interface FileTableViewProps { fileTableCode: string; toolbarExtra?: ReactNode; }
   export function FileTableView(props: FileTableViewProps): ReactElement;
 }`
     };
