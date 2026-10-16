@@ -167,7 +167,8 @@ async fn notification_authorization_http_encrypts_fences_late_polls_and_preserve
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let installed = management
         .install_uploaded_plugin(InstallUploadedPluginCommand {
             actor_user_id: actor_id,

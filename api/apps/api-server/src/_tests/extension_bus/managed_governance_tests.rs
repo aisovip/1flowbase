@@ -68,7 +68,7 @@ async fn insert_completed_history(
     ids
 }
 
-async fn request(
+pub(super) async fn request(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -204,7 +204,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let authority = PluginContributionAuthorityService::new(
         runtime.store.clone(),
         HostContributionGrantPolicy::root_composition(),
@@ -1260,7 +1261,8 @@ async fn root_2325_http_history_cursor_and_authorization() {
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
 
     let installation = management
         .install_uploaded_plugin(InstallUploadedPluginCommand {
@@ -1378,3 +1380,5 @@ async fn root_2325_http_history_cursor_and_authorization() {
 mod managed_removal_tests;
 
 mod system_scope;
+
+mod activation_permissions;

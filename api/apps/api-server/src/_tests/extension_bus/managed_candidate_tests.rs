@@ -14,6 +14,7 @@ struct Fixture {
     runtime: RuntimeFixture,
     management: Arc<crate::app_state::ApiPluginManagementService>,
     actor: domain::ActorContext,
+    switch_actor: Uuid,
 }
 impl Fixture {
     async fn new() -> Self {
@@ -25,6 +26,33 @@ impl Fixture {
         let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
             .await
             .unwrap();
+        let app = crate::app_with_state(state.clone());
+        let (cookie, csrf) =
+            crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+        crate::_tests::support::create_role(&app, &cookie, &csrf, "switch_operator").await;
+        let member = crate::_tests::support::create_member(
+            &app,
+            &cookie,
+            &csrf,
+            "switch_operator",
+            "temp-pass",
+        )
+        .await;
+        crate::_tests::support::replace_member_roles(
+            &app,
+            &cookie,
+            &csrf,
+            &member,
+            &["switch_operator"],
+        )
+        .await;
+        let (status, body) = super::managed_governance_tests::request(&app, &cookie, &csrf, "PUT",
+            "/api/console/settings/roles/switch_operator/console-policy", serde_json::json!({"groups":[{
+                "kind":"other","group_id":"other.plugins","enabled":true,"strategy":"custom",
+                "operations":[{"kind":"simple","operation_id":"plugins.families.switch","enabled":true}]
+            }]})).await;
+        assert_eq!(status, axum::http::StatusCode::NO_CONTENT, "{body}");
+        let switch_actor = Uuid::parse_str(&member).unwrap();
         let runtime = RuntimeFixture::new(&state);
         let management = Arc::new(
             PluginManagementService::new(
@@ -33,13 +61,19 @@ impl Fixture {
                 state.official_plugin_source.clone(),
                 &state.provider_install_root,
             )
-            .with_node_id(&state.api_node_id),
+            .with_node_id(&state.api_node_id)
+            .with_managed_activation()
+            .for_plugin_console_operation(
+                domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+                "plugins.families.switch",
+            ),
         );
         Self {
             state,
             runtime,
             management,
             actor,
+            switch_actor,
         }
     }
     fn authority(
@@ -133,7 +167,7 @@ impl Fixture {
         target: Uuid,
     ) -> tokio::task::JoinHandle<anyhow::Result<domain::PluginTaskRecord>> {
         let management = self.management.clone();
-        let actor = self.actor.user_id;
+        let actor = self.switch_actor;
         tokio::spawn(async move {
             management
                 .switch_version(SwitchPluginVersionCommand {
@@ -511,13 +545,19 @@ async fn root_2007_ac_009_pause_revoke_retire_historical_authority() {
     );
     let mut foreign_actor = fixture.actor.clone();
     foreign_actor.current_workspace_id = Uuid::now_v7();
-    assert!(restarted.query(&foreign_actor, source).await.is_err());
+    let foreign_snapshot = restarted.query(&foreign_actor, source).await.unwrap();
+    assert_eq!(
+        foreign_snapshot.workspace_id,
+        foreign_actor.current_workspace_id
+    );
+    assert_eq!(foreign_snapshot.revision, 0);
+    assert!(foreign_snapshot.authorizations.is_empty());
     let histories: i64 = sqlx::query_scalar("select count(*) from plugin_contribution_authorization_revisions where installation_id=$1 and workspace_id=$2").bind(source).bind(foreign_actor.current_workspace_id).fetch_one(fixture.runtime.store.pool()).await.unwrap();
     assert_eq!(
         histories, 0,
-        "a rejected read cannot create authority history"
+        "root inspection of an empty scope cannot create authority history"
     );
-    // Re-enable and old graph retention cannot recreate a revoked permission.
+    // Explicit root re-enable is a new approval; retained graphs alone do not grant it.
     fixture
         .management
         .assign_plugin(AssignPluginCommand {
@@ -526,17 +566,19 @@ async fn root_2007_ac_009_pause_revoke_retire_historical_authority() {
         })
         .await
         .unwrap();
-    assert!(fixture
+    fixture
         .management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: fixture.actor.user_id,
-            installation_id: source
+            installation_id: source,
         })
         .await
-        .is_err());
-    assert_eq!(
-        restarted.query(&fixture.actor, source).await.unwrap(),
-        revoked
-    );
+        .unwrap();
+    let renewed = restarted.query(&fixture.actor, source).await.unwrap();
+    assert!(renewed.revision > revoked.revision);
+    assert!(renewed
+        .authorizations
+        .iter()
+        .any(|grant| grant.status == domain::ContributionAuthorizationStatus::Active));
     fixture.runtime.host.stop().await.unwrap();
 }

@@ -796,7 +796,8 @@ async fn root_2014_ac_015_017_protocol_equivalence() {
         f.state.official_plugin_source.clone(),
         &f.state.provider_install_root,
     )
-    .with_node_id(&f.state.api_node_id);
+    .with_node_id(&f.state.api_node_id)
+    .with_managed_activation();
     management
         .disable_plugin(DisablePluginCommand {
             actor_user_id: f.actor.user_id,

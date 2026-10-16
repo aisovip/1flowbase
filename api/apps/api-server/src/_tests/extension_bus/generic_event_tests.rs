@@ -103,7 +103,8 @@ impl Fixture {
             state.official_plugin_source.clone(),
             &state.provider_install_root,
         )
-        .with_node_id(&state.api_node_id);
+        .with_node_id(&state.api_node_id)
+        .with_managed_activation();
         let authority = PluginContributionAuthorityService::new(
             store.clone(),
             HostContributionGrantPolicy::root_composition(),

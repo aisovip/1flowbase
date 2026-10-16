@@ -43,6 +43,7 @@ impl TemplateDependencies {
             self.provider_install_root.clone(),
         )
         .with_node_id(self.api_node_id.clone())
+        .with_managed_activation()
         .with_model_routing_cache_store(self.cache_store.clone());
         let mut resolved = BTreeSet::new();
         for dependency in dependencies {

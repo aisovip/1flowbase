@@ -141,7 +141,8 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let authority = PluginContributionAuthorityService::new(
         store.clone(),
         HostContributionGrantPolicy::root_composition(),
@@ -201,13 +202,25 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
                 .grant(&actor, id, grant(name, "data", "plugin_data.owned.write"))
                 .await
                 .unwrap();
+            let contribution = declared
+                .managed
+                .as_ref()
+                .unwrap()
+                .module
+                .contributions
+                .iter()
+                .find(|entry| {
+                    entry.contribution_id.as_str() == format!("acme.composition-{name}.events")
+                })
+                .unwrap();
             assert!(
-                management
-                    .enable_plugin(EnablePluginCommand {
-                        actor_user_id: actor_id,
-                        installation_id: id
-                    })
-                    .await
+                HostContributionGrantPolicy::root_composition()
+                    .effective_permissions(
+                        &installed.installation,
+                        actor.current_workspace_id,
+                        contribution,
+                        &authority.query(&actor, id).await.unwrap()
+                    )
                     .is_err(),
                 "AUTH-04: a .data grant cannot supply the event contribution write"
             );

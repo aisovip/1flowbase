@@ -153,6 +153,7 @@ impl PluginInterfaceAdapter {
             self.0.provider_install_root.clone(),
         )
         .with_node_id(self.0.api_node_id.clone())
+        .with_managed_activation()
         .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
         .with_model_routing_cache_store(self.0.cache_store.clone())
         .for_plugin_console_operation(
@@ -174,6 +175,7 @@ impl PluginInterfaceAdapter {
             self.0.provider_install_root.clone(),
         )
         .with_node_id(self.0.api_node_id.clone())
+        .with_managed_activation()
         .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
         .with_model_routing_cache_store(self.0.cache_store.clone())
         .for_model_provider_console_operation(operation)
@@ -452,27 +454,12 @@ impl PluginInterfaceAdapter {
                 body,
             } => {
                 let installation_id = parse_uuid(&body.installation_id, "installation_id")?;
-                control_plane::plugin_management::PluginContributionAuthorityService::new(
-                    self.0.store.for_actor(actor.clone()),
-                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(
-                    ),
-                )
-                .with_node_id(self.0.api_node_id.clone())
-                .authorize_root_installed_activation(
-                    actor,
-                    installation_id,
-                    std::path::Path::new(&self.0.provider_install_root),
-                )
-                .await?;
                 Ok(PluginInterfaceOutput::Task(to_task_response(
                     self.service(actor, "plugins.families.switch")
                         .switch_version(SwitchPluginVersionCommand {
                             actor_user_id: actor.user_id,
                             provider_code,
-                            target_installation_id: parse_uuid(
-                                &body.installation_id,
-                                "installation_id",
-                            )?,
+                            target_installation_id: installation_id,
                         })
                         .await?,
                 )))

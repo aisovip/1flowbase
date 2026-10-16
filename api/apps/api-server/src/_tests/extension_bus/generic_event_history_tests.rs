@@ -30,7 +30,8 @@ async fn root_2014_ac_008_generic_history_and_f01() {
         fixture._state.official_plugin_source.clone(),
         &fixture._state.provider_install_root,
     )
-    .with_node_id(&fixture._state.api_node_id);
+    .with_node_id(&fixture._state.api_node_id)
+    .with_managed_activation();
     let governance = ManagedExecutionService::new(fixture.store.clone(), composition.governance());
     management
         .disable_plugin(DisablePluginCommand {

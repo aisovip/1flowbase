@@ -558,6 +558,7 @@ impl NetworkPluginAdapter {
             self.0.provider_install_root.clone(),
         )
         .with_node_id(self.0.api_node_id.clone())
+        .with_managed_activation()
         .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
         .with_model_routing_cache_store(self.0.cache_store.clone())
         .for_network_egress_provider_console_operation(operation)

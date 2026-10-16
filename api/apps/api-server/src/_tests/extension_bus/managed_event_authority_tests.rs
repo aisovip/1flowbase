@@ -176,7 +176,8 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let authority = PluginContributionAuthorityService::new(
         store.clone(),
         HostContributionGrantPolicy::root_composition(),
@@ -199,12 +200,19 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             })
             .await
             .unwrap();
-        assert!(management
-            .enable_plugin(EnablePluginCommand {
-                actor_user_id: actor_id,
-                installation_id: id
-            })
-            .await
+        let parsed = plugin_framework::parse_plugin_manifest(
+            &serde_yaml::to_string(&manifest(name)).unwrap(),
+        )
+        .unwrap();
+        let contribution = &parsed.managed.as_ref().unwrap().module.contributions[0];
+        let policy = HostContributionGrantPolicy::root_composition();
+        assert!(policy
+            .effective_permissions(
+                &installed.installation,
+                actor.current_workspace_id,
+                contribution,
+                &authority.query(&actor, id).await.unwrap()
+            )
             .is_err());
         authority
             .grant(&actor, id, grant(name, "event.subscribe"))
@@ -212,12 +220,13 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             .unwrap();
         if name == "a" {
             assert!(
-                management
-                    .enable_plugin(EnablePluginCommand {
-                        actor_user_id: actor_id,
-                        installation_id: id
-                    })
-                    .await
+                policy
+                    .effective_permissions(
+                        &installed.installation,
+                        actor.current_workspace_id,
+                        contribution,
+                        &authority.query(&actor, id).await.unwrap()
+                    )
                     .is_err(),
                 "subscribe alone cannot grant publish"
             );

@@ -340,11 +340,6 @@ impl ExtensionCenterAdapter {
                 )
                 .await?
                 {
-                    control_plane::plugin_management::PluginContributionAuthorityService::new(
-                        self.0.store.for_actor(actor.clone()),
-                        control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
-                    ).with_node_id(self.0.api_node_id.clone())
-                        .authorize_root_installed_activation(actor, installation_id, std::path::Path::new(&self.0.provider_install_root)).await?;
                     if target.category == domain::ExtensionCategory::HostExtensions {
                         service(&self.0, actor, "extension_center.installed.select")
                             .switch_version(
@@ -423,20 +418,6 @@ impl ExtensionCenterAdapter {
                 let actor = actor.clone();
                 let task = tokio::spawn(async move {
                     let _operation = operation;
-                    let manifest = super::managed_schema::restore_installed_managed_schema(
-                        &dependencies,
-                        actor.current_workspace_id,
-                        installation_id,
-                    )
-                    .await
-                    .map_err(|error| error.0)?;
-                    if let Some(manifest) = manifest {
-                        control_plane::plugin_management::PluginContributionAuthorityService::new(
-                            dependencies.store.for_actor(actor.clone()),
-                            control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
-                        ).with_node_id(dependencies.api_node_id.clone())
-                            .authorize_root_activation(&actor, installation_id, &manifest).await?;
-                    }
                     service(&dependencies, &actor, "extension_center.installed.enable")
                         .enable_plugin(EnablePluginCommand {
                             actor_user_id: actor.user_id,

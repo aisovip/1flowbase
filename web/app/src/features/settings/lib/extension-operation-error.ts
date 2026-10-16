@@ -17,6 +17,13 @@ export function extensionOperationErrorText(
       return t('auto.extension_artifact_checksum_failed');
     case 'extension_artifact_signature_invalid':
       return t('auto.extension_artifact_signature_failed');
+    case 'permission_denied':
+    case 'console_operation_permission_denied':
+      return t('auto.extension_operation_permission_denied');
+    case 'contribution_permission_not_delegable':
+      return t('auto.extension_capability_not_supported');
+    case 'managed_activation_not_configured':
+      return t('auto.extension_activation_unavailable');
     case 'managed_contribution_authorization_required':
       return t('auto.extension_contribution_authorization_required');
     case 'managed_archive_identity_conflict':

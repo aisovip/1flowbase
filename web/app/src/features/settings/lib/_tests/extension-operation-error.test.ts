@@ -3,6 +3,10 @@ import { ApiClientError } from '@1flowbase/api-client';
 import { extensionOperationErrorText } from '../extension-operation-error';
 
 test.each([
+  ['permission_denied', 'auto.extension_operation_permission_denied'],
+  ['console_operation_permission_denied', 'auto.extension_operation_permission_denied'],
+  ['contribution_permission_not_delegable', 'auto.extension_capability_not_supported'],
+  ['managed_activation_not_configured', 'auto.extension_activation_unavailable'],
   [
     'managed_contribution_authorization_required',
     'auto.extension_contribution_authorization_required'

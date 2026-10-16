@@ -4,6 +4,16 @@
 
 This document describes current contracts, not a release acceptance claim. See the [historical #2007 test inventory](archive/2007/plugin-composition-test-batch.md) for that stage's commands. Later namespaced event contracts are described in the [invocation lifecycle](interface-lifecycle.md); Create → A → B/C below is a concrete example.
 
+## Plugin activation and capability approval
+
+User operation permission and plugin capability authority are separate decisions. Root may manage plugins without role configuration; other users need the corresponding enable, disable, or version-switch operation.
+
+Every entry point activates or switches through `PluginManagementService`. After target identity validation, the shared preparation service reads the verified manifest, checks or prepares capability approvals, applies declared schema, and enters the existing activation/generation publication flow. Managed activation fails closed if preparation is not configured.
+
+An explicit root enable/switch approves the version's declared, host-supported capabilities, including previously revoked capabilities. Ordinary restart and runtime rebuild do not create approvals. Non-root operators must use exact active approvals for the target installation; enable/switch cannot inherit approvals from another version, expand scopes, or restore revoked authority. The separate authorization-view operation is not required.
+
+Approval and additive schema preparation precede activation. If later activation fails, completed approvals and schema remain and retries reuse exact records. Failure must not revoke concurrent approvals or delete data. Existing lifecycle owners retain desired-state recovery and candidate publication responsibilities. Runtime calls continue to enforce current authority, ownership, and revocation.
+
 ## Plugin selection and implementation limits
 
 Choose the governance boundary by whether a plugin implements trusted Host internals. Then assess contribution kind, execution mode and activation scope separately. Existing `HostExtension`, `RuntimeExtension` and `CapabilityPlugin` names are not a ladder of increasing permissions.

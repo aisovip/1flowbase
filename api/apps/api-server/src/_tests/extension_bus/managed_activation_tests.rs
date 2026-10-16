@@ -169,7 +169,8 @@ async fn root_2007_ac_001_002_package_activation() {
             state.official_plugin_source.clone(),
             &state.provider_install_root,
         )
-        .with_node_id(&state.api_node_id),
+        .with_node_id(&state.api_node_id)
+        .with_managed_activation(),
     );
     let package = crate::api_workspace_root()
         .unwrap()
@@ -209,41 +210,8 @@ async fn root_2007_ac_001_002_package_activation() {
         .unwrap()
         .authorizations
         .is_empty());
-    assert!(management
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: actor_id,
-            installation_id
-        })
-        .await
-        .is_err());
-    assert!(composition
-        .snapshot(actor.current_workspace_id)
-        .await
-        .is_none());
-    authority
-        .grant(&actor, installation_id, grant("first"))
-        .await
-        .unwrap();
-    authority
-        .grant(&actor, installation_id, grant("data"))
-        .await
-        .unwrap();
-    // Both executables request the same permission; granting first still cannot admit second.
-    assert!(management
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: actor_id,
-            installation_id
-        })
-        .await
-        .is_err());
-    assert!(composition
-        .snapshot(actor.current_workspace_id)
-        .await
-        .is_none());
-    authority
-        .grant(&actor, installation_id, grant("second"))
-        .await
-        .unwrap();
+    // Explicit root enable now prepares every declared capability. Runtime revocation
+    // and stale snapshots remain covered below, independently of root's new approval.
     management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: actor_id,

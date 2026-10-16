@@ -60,7 +60,8 @@ async fn notification_plugin_uses_unified_instances_and_managed_sdk_dispatch() {
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let installed = management
         .install_uploaded_plugin(InstallUploadedPluginCommand {
             actor_user_id: actor_id,

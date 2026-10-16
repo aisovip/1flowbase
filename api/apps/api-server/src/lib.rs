@@ -801,6 +801,7 @@ async fn app_and_runtime_host_from_config(
         config.provider_install_root.clone(),
     )
     .with_node_id(config.api_node_id.clone())
+    .with_managed_activation()
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
     plugin_management
         .ensure_builtin_plugin(

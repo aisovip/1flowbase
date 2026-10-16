@@ -1,3 +1,5 @@
+mod managed_activation;
+pub use managed_activation::*;
 mod managed_data;
 pub use managed_data::ManagedPluginDataService;
 mod managed_credential;
@@ -84,6 +86,7 @@ pub use package_router::{route_plugin_package, RoutedPluginPackageKind};
 pub struct PluginManagementService<R, H> {
     repository: R,
     runtime: H,
+    managed_activation: Option<Arc<dyn ManagedPluginActivationPort>>,
     official_source: Arc<dyn OfficialPluginSourcePort>,
     install_root: PathBuf,
     node_id: String,
@@ -178,6 +181,7 @@ impl<R, H> PluginManagementService<R, H> {
         Self {
             repository,
             runtime,
+            managed_activation: None,
             official_source,
             install_root: install_root.into(),
             node_id: String::new(),
@@ -187,6 +191,50 @@ impl<R, H> PluginManagementService<R, H> {
             model_routing_cache_store: None,
         }
         .with_default_node_id()
+    }
+
+    /// Configure the common managed-plugin preparation using the same repository and artifact root.
+    pub fn with_managed_activation(self) -> Self
+    where
+        R: crate::ports::PluginContributionAuthorityRepository
+            + RoleConsolePolicyReader
+            + PluginRepository
+            + crate::ports::ManagedSchemaRepository
+            + crate::ports::ModelDefinitionRepository
+            + Clone
+            + 'static,
+    {
+        let preparation = Arc::new(ManagedPluginActivationService::new(
+            self.repository.clone(),
+            self.node_id.clone(),
+            self.install_root.clone(),
+        ));
+        self.with_managed_activation_preparation(preparation)
+    }
+
+    pub(crate) fn with_managed_activation_preparation(
+        mut self,
+        preparation: Arc<dyn ManagedPluginActivationPort>,
+    ) -> Self {
+        self.managed_activation = Some(preparation);
+        self
+    }
+
+    async fn prepare_managed_activation(
+        &self,
+        actor: &domain::ActorContext,
+        installation: &domain::PluginInstallationRecord,
+    ) -> Result<()> {
+        if installation.contract_version != "1flowbase.extension-bus/v1" {
+            return Ok(());
+        }
+        self.managed_activation
+            .as_ref()
+            .ok_or(ControlPlaneError::UpstreamUnavailable(
+                "managed_activation_not_configured",
+            ))?
+            .prepare(actor, installation.id)
+            .await
     }
 
     pub fn with_allow_uploaded_host_extensions(mut self, allow: bool) -> Self {

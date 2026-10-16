@@ -24,7 +24,8 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         state.official_plugin_source.clone(),
         &state.provider_install_root,
     )
-    .with_node_id(&state.api_node_id);
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
     let mut declaration = manifest("system");
     let module = "acme.composition-system";
     declaration["binding_targets"] = json!(["system"]);

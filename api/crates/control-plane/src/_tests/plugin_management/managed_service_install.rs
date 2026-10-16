@@ -12,6 +12,16 @@ use domain::PluginDesiredState;
 use std::sync::Arc;
 use uuid::Uuid;
 
+// These lifecycle unit tests start after approval. Real approval/schema behavior is
+// exercised by the API + PostgreSQL activation_permissions fixture.
+struct PreparedManagedFixture;
+#[async_trait::async_trait]
+impl crate::plugin_management::ManagedPluginActivationPort for PreparedManagedFixture {
+    async fn prepare(&self, _: &domain::ActorContext, _: Uuid) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 fn package(version: &str) -> Vec<u8> {
     let manifest = format!(
         r#"manifest_version: 2
@@ -165,6 +175,27 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         .await
         .iter()
         .all(|event| event == "plugin.installed"));
+    // Every common-service entry fails closed if managed preparation was not composed.
+    let error = service
+        .enable_plugin(crate::plugin_management::EnablePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id: upgrade.installation.id,
+        })
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("managed_activation_not_configured"));
+    assert_eq!(
+        repository
+            .get_installation(upgrade.installation.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::Disabled
+    );
+    assert!(runtime.loaded_installations().await.is_empty());
     std::fs::remove_dir_all(install_root).unwrap();
 }
 
@@ -301,7 +332,8 @@ async fn system_family_switch_selects_enabled_version_without_workspace_assignme
         MemoryProviderRuntime::default(),
         source,
         &install_root,
-    );
+    )
+    .with_managed_activation_preparation(Arc::new(PreparedManagedFixture));
     let switch = || SwitchPluginVersionCommand {
         actor_user_id: repository.actor.user_id,
         provider_code: "managed_fixture".into(),
@@ -427,7 +459,8 @@ async fn rejected_managed_enable_restores_only_its_own_selection() {
             runtime.clone(),
             source.clone(),
             &install_root,
-        );
+        )
+        .with_managed_activation_preparation(Arc::new(PreparedManagedFixture));
         let result = service
             .enable_plugin(EnablePluginCommand {
                 actor_user_id: repository.actor.user_id,

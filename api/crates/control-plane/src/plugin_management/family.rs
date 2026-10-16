@@ -169,6 +169,7 @@ where
             .await?;
 
         let enable_result = async {
+            self.prepare_managed_activation(&actor, &installation).await?;
             let updated = self
                 .repository
                 .update_desired_state(&UpdatePluginDesiredStateInput {
@@ -1127,6 +1128,16 @@ where
             .await?;
 
         if current.contract_version == "1flowbase.extension-bus/v1" {
+            if let Err(error) = self.prepare_managed_activation(actor, target).await {
+                self.transition_task(
+                    &running_task,
+                    domain::PluginTaskStatus::Failed,
+                    Some(error.to_string()),
+                    running_task.detail_json.clone(),
+                )
+                .await?;
+                return Err(error);
+            }
             return self.runtime.switch_managed_installation(execution_scope, current.id, target.id,
                 audit_log((execution_scope != domain::SYSTEM_SCOPE_ID).then_some(execution_scope), Some(actor_user_id), if execution_scope == domain::SYSTEM_SCOPE_ID { "plugin_installation" } else { "plugin_assignment" }, Some(target.id), "plugin.version_switched",
                     json!({"previous_installation_id":current.id,"target_installation_id":target.id,"provider_code":provider_code})), running_task).await;

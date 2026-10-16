@@ -84,44 +84,14 @@ impl<R> PluginContributionAuthorityService<R>
 where
     R: PluginContributionAuthorityRepository + PluginRepository + RoleConsolePolicyReader,
 {
-    pub async fn authorize_root_installed_activation(
-        &self,
-        actor: &ActorContext,
-        installation_id: Uuid,
-        install_root: &std::path::Path,
-    ) -> Result<()> {
-        if !actor.is_root {
-            return Ok(());
-        }
-        let node_id = self
-            .candidate_node_id
-            .as_deref()
-            .ok_or(ControlPlaneError::InvalidInput("api_node_id"))?;
-        if let Some(manifest) = verified_installed_managed_manifest(
-            &self.repository,
-            node_id,
-            install_root,
-            installation_id,
-        )
-        .await?
-        {
-            self.authorize_root_activation(actor, installation_id, &manifest)
-                .await?;
-        }
-        Ok(())
-    }
-
     /// No separate grant interaction for root. Runtime callbacks retain durable, scoped authority.
     /// The caller supplies a manifest read from the verified, installed artifact.
-    pub async fn authorize_root_activation(
+    pub async fn prepare_activation_authority(
         &self,
         actor: &ActorContext,
         installation_id: Uuid,
         manifest: &plugin_framework::PluginManifestV1,
     ) -> Result<()> {
-        if !actor.is_root {
-            return Ok(());
-        }
         let installation = self.managed_installation(installation_id).await?;
         if manifest.publisher_namespace != installation.organization
             || manifest.plugin_code()? != installation.provider_code
@@ -137,7 +107,42 @@ where
         let grants = self
             .host_policy
             .declared_activation_grants(&installation, manifest)?;
-        let mut snapshot = self.query(actor, installation_id).await?;
+        // The caller has already authorized enable/switch. Inspecting approved capabilities
+        // here must not require the separate authorization-view operation.
+        let scope_id =
+            domain::managed_installation_scope(&installation, actor.current_workspace_id);
+        let mut snapshot = if actor.is_root {
+            self.query(actor, installation_id).await?
+        } else {
+            self.repository
+                .query_contribution_authority(
+                    installation_id,
+                    scope_id,
+                    &audit_log(
+                        Some(actor.current_workspace_id),
+                        Some(actor.user_id),
+                        "plugin_installation",
+                        Some(installation_id),
+                        "plugin.activation_authority.checked",
+                        json!({}),
+                    ),
+                )
+                .await
+                .map_err(|error| {
+                    if matches!(
+                        error.downcast_ref::<ControlPlaneError>(),
+                        Some(ControlPlaneError::PermissionDenied(
+                            "contribution_workspace_history_required"
+                        ))
+                    ) {
+                        anyhow::Error::from(ControlPlaneError::PermissionDenied(
+                            "managed_contribution_authorization_required",
+                        ))
+                    } else {
+                        error
+                    }
+                })?
+        };
         for grant in grants {
             if snapshot.authorizations.iter().any(|existing| {
                 existing.status == domain::ContributionAuthorizationStatus::Active
@@ -148,6 +153,12 @@ where
                     && existing.permission_contract_version == grant.permission_contract_version
             }) {
                 continue;
+            }
+            if !actor.is_root {
+                return Err(ControlPlaneError::PermissionDenied(
+                    "managed_contribution_authorization_required",
+                )
+                .into());
             }
             snapshot = self.grant(actor, installation_id, grant).await?;
         }
