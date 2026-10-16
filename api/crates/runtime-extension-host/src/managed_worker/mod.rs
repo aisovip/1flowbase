@@ -29,6 +29,18 @@ struct MountedContribution {
     service_workers: Option<Arc<service_workers::ServiceWorkers>>,
 }
 
+/// Unbound host ports; execute_with_services applies the contribution grants
+/// and caller binding before any port reaches a worker callback.
+pub(crate) struct ManagedHostServices {
+    pub(crate) plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
+    pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
+    pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
+    pub(crate) file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
+    pub(crate) application_logs:
+        Option<Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>>,
+    pub(crate) http_egress: Option<Arc<dyn runtime_core::runtime_backend::HttpEgressPort>>,
+}
+
 #[derive(Debug)]
 pub(crate) struct ManagedWorkers {
     mounted: BTreeMap<ManagedExecutionIdentity, MountedContribution>,
@@ -204,16 +216,19 @@ impl ManagedWorkers {
     pub(crate) fn execute_with_services(
         &self,
         request: RuntimeManagedCapabilityRequest,
-        plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
-        plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
-        file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
-        file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
-        application_logs: Option<Arc<dyn runtime_core::runtime_backend::ApplicationLogsPort>>,
-        http_egress: Option<Arc<dyn runtime_core::runtime_backend::HttpEgressPort>>,
+        services: ManagedHostServices,
     ) -> Result<
         impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
         runtime_core::runtime_backend::RuntimeBackendError,
     > {
+        let ManagedHostServices {
+            plugin_data,
+            plugin_credentials,
+            file_import,
+            file_read,
+            application_logs,
+            http_egress,
+        } = services;
         let binding = &self.exact_mount(&request.handle)?.binding;
         let permissions = binding
             .contribution

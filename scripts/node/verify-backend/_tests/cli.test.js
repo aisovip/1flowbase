@@ -461,13 +461,23 @@ test('main routes backend verification through the heavy managed gate', async ()
   }));
 });
 
-test('verify-backend uses all available CPU for cargo jobs and tests in CI', async () => {
+test('verify-backend uses all available CPU for cargo jobs and tests in CI', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-verify-backend-'));
   const fakeBinDir = path.join(tempDir, 'bin');
   const logPath = path.join(tempDir, 'cargo.log');
   const warningOutputDir = path.join(tempDir, 'warnings');
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
-  const scriptPath = path.join(repoRoot, 'scripts', 'node', 'verify-backend.js');
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const scriptPath = path.join(tempDir, 'run-backend.cjs');
+  // Exercise the real runner and warning capture against an isolated source
+  // fixture; unrelated production findings belong to the static gate lane.
+  fs.mkdirSync(path.join(tempDir, 'scripts', 'node'), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, 'api'));
+  fs.writeFileSync(path.join(tempDir, 'scripts', 'node', 'tooling.js'), 'process.exitCode = 0;');
+  fs.writeFileSync(scriptPath, `
+    const { main } = require(${JSON.stringify(path.join(repoRoot, 'scripts/node/verify-backend.js'))});
+    main([], { repoRoot: __dirname }).then(status => { process.exitCode = status; });
+  `);
   const fakeCargoPath = path.join(fakeBinDir, 'cargo');
   const expectedParallelism = getExpectedParallelism();
 

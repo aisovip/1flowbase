@@ -892,7 +892,7 @@ async fn dispatch_response_for_endpoint(
                             if let Some(reservation) = plan.reservation.as_mut() {
                                 reservation.release().await;
                             }
-                            return Err(error.into());
+                            return Err(error);
                         }
                     }
                     if response_mode.as_deref() == Some("streaming") {

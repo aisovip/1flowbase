@@ -1,6 +1,4 @@
 import { useCallback, useState } from 'react';
-import type { AriaAttributes } from 'react';
-import type { MenuItemType } from 'antd/es/menu/interface';
 import BellOutlined from '@ant-design/icons/es/icons/BellOutlined';
 import {
   Alert,
@@ -58,7 +56,7 @@ export function NotificationBell() {
     inbox.write.isError;
   return (
     <>
-      <Menu<MenuItemType & Pick<AriaAttributes, 'aria-label'>>
+      <Menu
         className="notification-bell-menu"
         mode="horizontal"
         selectedKeys={open ? ['notifications'] : []}
@@ -67,9 +65,11 @@ export function NotificationBell() {
         items={[
           {
             key: 'notifications',
-            'aria-label': t('inbox'),
             label: (
-              <span className="notification-bell-menu__icon">
+              <span
+                className="notification-bell-menu__icon"
+                aria-label={t('inbox')}
+              >
                 <Badge
                   count={inbox.unread.data?.unread_count}
                   size="small"

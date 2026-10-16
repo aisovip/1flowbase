@@ -57,9 +57,11 @@ pub(super) async fn read_current(
     };
     let lock_suffix = if lock { "for update of r" } else { "" };
     // node_run_records is an outer-join view: lock its physical owner first.
-    let locked = sqlx::query_scalar::<_, Uuid>(&format!(
+    // SQL structure is selected only by location(owner) and the static lock
+    // predicates above; every flow/row identifier remains a bind parameter.
+    let locked = sqlx::query_scalar::<_, Uuid>(sqlx::AssertSqlSafe(format!(
         "select r.id from {lock_table} r join flow_runs f on {flow_predicate} where r.id=$1 and f.id=$2 and f.scope_id=$3 and f.application_id=$4 and r.scope_id=$3 {node_predicate} {lock_suffix}"
-    ))
+    )))
     .bind(id).bind(flow.flow_run_id).bind(flow.scope_id).bind(flow.application_id)
     .fetch_optional(&mut **tx).await?;
     anyhow::ensure!(
@@ -72,9 +74,10 @@ pub(super) async fn read_current(
         ResponsesHistoryDocumentOwner::SpanMetadata { .. } => column.to_owned(),
         _ => format!("runtime_original_json({column},raw_json_payloads,'{column}')"),
     };
-    Ok(sqlx::query_scalar::<_, Value>(&format!(
+    // The expression and table contain only adapter-owned mapping constants.
+    Ok(sqlx::query_scalar::<_, Value>(sqlx::AssertSqlSafe(format!(
         "select {value_expression} from {table} where id=$1"
-    ))
+    )))
     .bind(id)
     .fetch_one(&mut **tx)
     .await?)
@@ -144,9 +147,10 @@ async fn write_document(
             sqlx::query("update runtime_spans set metadata=$2 where id=$1")
                 .bind(id).bind(value).execute(&mut **tx).await?
         }
-        _ => sqlx::query(&format!(
+        // Table/column come only from location(owner); the payload stays bound.
+        _ => sqlx::query(sqlx::AssertSqlSafe(format!(
             "update {table} set {column}=($2::jsonb->0),raw_json_payloads=(raw_json_payloads-'{column}') || jsonb_strip_nulls(jsonb_build_object('{column}',($2::jsonb->1))) where id=$1"
-        )).bind(id).bind(lossless_json_parameter(value)).execute(&mut **tx).await?,
+        ))).bind(id).bind(lossless_json_parameter(value)).execute(&mut **tx).await?,
     };
     anyhow::ensure!(
         updated.rows_affected() == 1,

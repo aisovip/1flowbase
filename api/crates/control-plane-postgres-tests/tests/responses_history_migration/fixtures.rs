@@ -479,12 +479,23 @@ pub(super) async fn durable_flow_state(
         ("client_trajectory_sections", "t.flow_run_id=$1", "t.event_id"),
         ("client_trajectory_archive_heads", "t.flow_run_id=$1", "t.request_id"),
         (
+            "client_trajectory_archive_blocks",
+            "t.request_id in (select request_id from client_trajectory_archive_heads where flow_run_id=$1)",
+            "t.block_id",
+        ),
+        (
+            "client_trajectory_archive_segments",
+            "t.request_id in (select request_id from client_trajectory_archive_heads where flow_run_id=$1)",
+            "t.block_id",
+        ),
+        (
             "client_trajectory_archive_parts",
             "t.request_id in (select request_id from client_trajectory_archive_heads where flow_run_id=$1)",
             "t.part_id",
         ),
     ] {
-        let rows:Value=sqlx::query_scalar(&format!("select coalesce(jsonb_agg(to_jsonb(t) order by {order}),'[]'::jsonb) from {table} t where {predicate}"))
+        // All SQL fragments come from the literal inventory above; the flow ID is bound.
+        let rows:Value=sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select coalesce(jsonb_agg(to_jsonb(t) order by {order}),'[]'::jsonb) from {table} t where {predicate}")))
             .bind(flow.flow_run_id).fetch_one(store.pool()).await.unwrap();
         result.insert(table.into(), rows);
     }
@@ -618,6 +629,13 @@ pub(super) async fn original_public_request(
         .await
         .unwrap();
     assert_eq!(archived.persisted_through, 1);
+    // Integrity completion may seal staging parts in the background. Finish the
+    // existing maintenance path before snapshots so physical publication cannot
+    // masquerade as a history migration write. The batch size is work granularity.
+    store
+        .compact_retained_runtime_storage(std::slice::from_ref(&flow.flow_run_id), 1)
+        .await
+        .unwrap();
     let page = store
         .client_trajectory_page(flow.flow_run_id, None, None, 1)
         .await

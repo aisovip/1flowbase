@@ -222,13 +222,16 @@ async fn main() -> Result<()> {
             let receipt = apply_verified_flow(&repository, &snapshot, &resolution.verified, &key)
                 .await
                 .with_context(|| format!("apply flow {}", flow.flow_run_id))?;
-            receipts.push(receipt);
-            private_files::write_json(
+            let persisted = private_files::write_json(
                 &options
                     .output
                     .join(format!("{}.receipt.json", flow.flow_run_id)),
-                receipts.last().unwrap(),
-            )?;
+                &receipt,
+            );
+            // Keep every committed receipt available for rollback even when
+            // persisting its private journal fails.
+            receipts.push(receipt);
+            persisted?;
         }
         for flow in &flows {
             let snapshot = repository

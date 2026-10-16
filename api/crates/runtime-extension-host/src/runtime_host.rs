@@ -1027,12 +1027,14 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             }
             workers.execute_with_services(
                 request,
-                Arc::clone(&self.plugin_data),
-                self.plugin_credentials.clone(),
-                self.file_import.clone(),
-                self.file_read.clone(),
-                self.application_logs.clone(),
-                self.http_egress.clone(),
+                crate::managed_worker::ManagedHostServices {
+                    plugin_data: Arc::clone(&self.plugin_data),
+                    plugin_credentials: self.plugin_credentials.clone(),
+                    file_import: self.file_import.clone(),
+                    file_read: self.file_read.clone(),
+                    application_logs: self.application_logs.clone(),
+                    http_egress: self.http_egress.clone(),
+                },
             )?
         };
         Ok(Box::pin(async move {

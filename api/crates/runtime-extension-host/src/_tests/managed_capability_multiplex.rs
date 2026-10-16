@@ -1,4 +1,4 @@
-use crate::managed_worker::{LoadedManagedBinding, ManagedWorkers};
+use crate::managed_worker::{LoadedManagedBinding, ManagedHostServices, ManagedWorkers};
 use extension_contracts::*;
 use extension_package_runtime::{PluginExecutionMode, PluginRuntimeLimits};
 use runtime_core::runtime_backend::{RuntimeExecutionPrincipal, RuntimeManagedCapabilityRequest};
@@ -109,29 +109,21 @@ sys.stdin.read()
         input_payload: serde_json::json!({}),
         duplex: None,
     };
+    let services = |plugin_data: Arc<dyn PluginDataPort>| ManagedHostServices {
+        plugin_data,
+        plugin_credentials: None,
+        file_import: None,
+        file_read: None,
+        application_logs: None,
+        http_egress: None,
+    };
     let port = Arc::new(DataPort::default());
     // This data-only contribution has no application-log or HTTP grants/caller binding.
     assert!(workers
-        .execute_with_services(
-            request("foreign"),
-            port.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        .execute_with_services(request("foreign"), services(port.clone()),)
         .is_err());
     let output = workers
-        .execute_with_services(
-            request("system-scope"),
-            port.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        .execute_with_services(request("system-scope"), services(port.clone()))
         .unwrap()
         .await
         .unwrap();
@@ -144,7 +136,7 @@ sys.stdin.read()
     drop(calls);
     workers.unmount(&handle).unwrap();
     assert!(workers
-        .execute_with_services(request("system-scope"), port, None, None, None, None, None)
+        .execute_with_services(request("system-scope"), services(port))
         .is_err());
 }
 

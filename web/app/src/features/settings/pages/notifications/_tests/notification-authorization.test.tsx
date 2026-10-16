@@ -244,7 +244,10 @@ test('explicit cancel aborts an in-flight poll and ignores its late authorized r
     await vi.advanceTimersByTimeAsync(5000);
   });
   const pollCommand = commands.find((command) => command.body.type === 'poll');
-  expect(pollCommand).toBeDefined();
+  expect(pollCommand).toMatchObject({
+    body: { type: 'poll' },
+    signal: { aborted: false }
+  });
   fireEvent.click(screen.getByRole('button', { name: '取消授权' }));
   await act(async () => {
     await Promise.resolve();

@@ -97,6 +97,7 @@ pub(super) struct SourceGroup {
 type ProofKey = (u32, usize, String);
 type ScopedProofKey = (Uuid, ProofKey);
 type States = [MigrationAccumulator; 2];
+type ResolvedSourceGroup = (States, Vec<(ScopedProofKey, SourcedReplacement)>);
 type ResponseKey = (SourceNamespace, String);
 
 /// Incremental source processing. Finish each native flow after its final source
@@ -122,7 +123,7 @@ fn parse_proof(value: &Value) -> Result<History> {
         "native_history_evidence_invalid"
     );
     ensure!(
-        matches!(proof.version, 1 | 2 | 3),
+        matches!(proof.version, 1..=3),
         "native_history_version_unsupported"
     );
     Ok(proof)
@@ -485,10 +486,7 @@ impl HistorySourceGraph {
         })
     }
 
-    fn resolve_group(
-        &self,
-        group: &SourceGroup,
-    ) -> Result<Option<(States, Vec<(ScopedProofKey, SourcedReplacement)>)>> {
+    fn resolve_group(&self, group: &SourceGroup) -> Result<Option<ResolvedSourceGroup>> {
         if let Some(failure) = &group.failure {
             anyhow::bail!("{failure}");
         }

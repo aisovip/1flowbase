@@ -48,7 +48,7 @@ fn parse_proof(value: &Value) -> Result<History> {
         "responses_history_owned_proof_invalid"
     );
     ensure!(
-        matches!(proof.version, 1 | 2 | 3),
+        matches!(proof.version, 1..=3),
         "native_history_version_unsupported"
     );
     Ok(proof)
@@ -428,7 +428,7 @@ impl Replacements {
             let key = proof_key(&parsed);
             if let Some((existing_old, existing_current, coverage)) = replacements.get_mut(&key) {
                 ensure!(
-                    &*existing_old == &old && &*existing_current == &current,
+                    *existing_old == old && *existing_current == current,
                     "responses_history_replacement_ambiguous"
                 );
                 if sourced.coverage() == SourceCoverage::FullHistory {
@@ -602,11 +602,10 @@ pub fn build_plan(
         } else if let Some(latest_checkpoint) = snapshot.checkpoints.last() {
             // Preserve repository latest selection when an earlier inline checkpoint
             // migrates. This unchanged full pool is the last legacy insertion.
-            if !inline.contains_key(&latest_checkpoint.checkpoint_id) {
-                inline.insert(
-                    latest_checkpoint.checkpoint_id,
-                    inline_pool(latest_checkpoint)?.clone(),
-                );
+            if let std::collections::btree_map::Entry::Vacant(entry) =
+                inline.entry(latest_checkpoint.checkpoint_id)
+            {
+                entry.insert(inline_pool(latest_checkpoint)?.clone());
             }
         }
     }

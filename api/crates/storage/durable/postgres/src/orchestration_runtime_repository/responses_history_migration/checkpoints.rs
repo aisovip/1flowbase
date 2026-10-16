@@ -60,7 +60,8 @@ pub(super) async fn load_all(
     lock: bool,
 ) -> Result<Vec<ResponsesHistoryCheckpoint>> {
     let suffix = if lock { "for update of c" } else { "" };
-    let rows=sqlx::query(&format!("select c.id,c.scope_id,c.node_run_id,(n.flow_run_id=$1 and n.scope_id=$2) as node_valid,runtime_original_json(c.locator_payload,c.raw_json_payloads,'locator_payload') as locator_payload,runtime_original_json(c.variable_snapshot,c.raw_json_payloads,'variable_snapshot') as variable_snapshot from flow_run_checkpoints c left join node_runs n on n.id=c.node_run_id where c.flow_run_id=$1 order by c.created_at,c.id {suffix}"))
+    // Only a static locking suffix varies; all source values remain bound.
+    let rows=sqlx::query(sqlx::AssertSqlSafe(format!("select c.id,c.scope_id,c.node_run_id,(n.flow_run_id=$1 and n.scope_id=$2) as node_valid,runtime_original_json(c.locator_payload,c.raw_json_payloads,'locator_payload') as locator_payload,runtime_original_json(c.variable_snapshot,c.raw_json_payloads,'variable_snapshot') as variable_snapshot from flow_run_checkpoints c left join node_runs n on n.id=c.node_run_id where c.flow_run_id=$1 order by c.created_at,c.id {suffix}")))
         .bind(flow.flow_run_id).bind(flow.scope_id).fetch_all(&mut **tx).await?;
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
