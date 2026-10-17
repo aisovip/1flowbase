@@ -5,7 +5,10 @@ where
     R: ModelProviderRepository + PluginRepository + Clone + Send + Sync,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
-    pub(super) fn with_provider_session_scope(&self, run: &domain::FlowRunRecord) -> Self {
+    pub(in crate::orchestration_runtime) fn with_provider_session_scope(
+        &self,
+        run: &domain::FlowRunRecord,
+    ) -> Self {
         let mut invoker = self.clone();
         let identity = run
             .input_payload
@@ -36,7 +39,7 @@ where
         invoker
     }
 
-    pub(super) fn session_provider_scope(
+    pub(in crate::orchestration_runtime) fn session_provider_scope(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         node_id: &str,
