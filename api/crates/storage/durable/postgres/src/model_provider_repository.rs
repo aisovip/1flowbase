@@ -81,7 +81,7 @@ impl ModelProviderRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         scope_digest: &str,
     ) -> Result<Option<Uuid>> {
-        session_affinity::get_binding(&self.pool, workspace_id, scope_digest).await
+        session_affinity::get_binding(self.pool(), workspace_id, scope_digest).await
     }
 
     async fn bind_model_provider_session(
@@ -90,8 +90,13 @@ impl ModelProviderRepository for PgControlPlaneStore {
         scope_digest: &str,
         provider_instance_id: Uuid,
     ) -> Result<Uuid> {
-        session_affinity::bind_session(&self.pool, workspace_id, scope_digest, provider_instance_id)
-            .await
+        session_affinity::bind_session(
+            self.pool(),
+            workspace_id,
+            scope_digest,
+            provider_instance_id,
+        )
+        .await
     }
 
     async fn create_instance(
