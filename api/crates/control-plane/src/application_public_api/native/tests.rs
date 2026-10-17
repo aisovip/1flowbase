@@ -311,4 +311,17 @@ fn provider_session_identity_cannot_be_overwritten_by_public_inputs_or_mapping()
             selector: "sys.provider_session_identity".into()
         }
     );
+    request.metadata.set_provider_session_identity(None);
+    assert_eq!(
+        NativeInputMapper::map(&request, &mapping).unwrap_err(),
+        NativeInputMappingError::SelectorCollision {
+            selector: "sys.provider_session_identity".into()
+        }
+    );
+    let mapped =
+        NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native()).unwrap();
+    assert!(mapped
+        .node_input_payload
+        .pointer("/sys/provider_session_identity")
+        .is_none());
 }

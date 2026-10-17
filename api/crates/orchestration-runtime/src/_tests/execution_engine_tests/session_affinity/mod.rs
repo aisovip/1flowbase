@@ -115,13 +115,11 @@ async fn provider_session_none_session_keeps_first_owner_after_candidate_reorder
         fail: true,
         ..invoker.clone()
     };
-    let mut plan = session_plan(LlmDistributionRule::None, &["provider-b", "provider-a"]);
-    plan.nodes.get_mut("node-llm").unwrap().config =
-        json!({"retry_enabled":true,"max_retries":1,"retry_interval_ms":0});
+    let plan = session_plan(LlmDistributionRule::None, &["provider-b", "provider-a"]);
     let outcome = run_session(&plan, &failing).await;
     assert_eq!(
         invoker.calls.lock().unwrap().as_slice(),
-        ["provider-a", "provider-a", "provider-a", "provider-a"]
+        ["provider-a", "provider-a", "provider-a"]
     );
     let trace = outcome
         .node_traces

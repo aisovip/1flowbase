@@ -131,6 +131,14 @@ impl NativeInputMapper {
                 "sys.provider_session_identity",
                 Value::String(identity.to_owned()),
             )?;
+        } else if node_input_payload
+            .pointer("/sys/provider_session_identity")
+            .is_some()
+        {
+            // Public input mappings cannot mint host identity when ingress supplied none.
+            return Err(NativeInputMappingError::SelectorCollision {
+                selector: "sys.provider_session_identity".into(),
+            });
         }
 
         Ok(NativeMappedInput {
