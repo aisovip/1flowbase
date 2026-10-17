@@ -13,7 +13,7 @@ where
     let mut request_runtimes = Vec::with_capacity(request_count);
     for attempt_index in 0..request_count {
         let resolved = resolve_llm_request_runtime(
-            &node.id,
+            &node.node_id,
             runtime,
             runtime_context,
             invoker,
